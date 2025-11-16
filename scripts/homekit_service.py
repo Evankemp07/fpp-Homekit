@@ -49,6 +49,7 @@ import time
 import logging
 import threading
 import signal
+from typing import List
 
 # Try importing required modules with helpful error messages
 try:
@@ -120,10 +121,130 @@ PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_FILE = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_config.json')
 PID_FILE = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_service.pid')
 
-# Default FPP API settings
-FPP_HOST = 'localhost'
-FPP_PORT = 32320
-FPP_API_BASE = f'http://{FPP_HOST}:{FPP_PORT}/api'
+# ---------------------------------------------------------------------------
+# FPP API discovery helpers
+# ---------------------------------------------------------------------------
+
+def _read_http_port_from_settings(settings_path: str) -> int:
+    """Parse the FPP settings file to extract HTTPPort if present."""
+    if not settings_path or not os.path.isfile(settings_path):
+        return 0
+    try:
+        with open(settings_path, 'r', encoding='utf-8', errors='ignore') as fh:
+            for line in fh:
+                if line.strip().startswith('HTTPPort'):
+                    parts = line.split('=', 1)
+                    if len(parts) == 2:
+                        port_str = parts[1].strip()
+                        if port_str.isdigit():
+                            port = int(port_str)
+                            if port > 0:
+                                return port
+    except Exception as err:
+        logger.debug("Unable to parse FPP settings at %s: %s", settings_path, err)
+    return 0
+
+
+def _candidate_settings_paths() -> List[str]:
+    """Return probable locations of the FPP settings file."""
+    candidates = []
+    fppdir = os.environ.get('FPPDIR')
+    if fppdir:
+        candidates.append(os.path.join(fppdir, 'settings'))
+    mediadir = os.environ.get('MEDIADIR')
+    if mediadir:
+        candidates.append(os.path.join(mediadir, 'settings'))
+        candidates.append(os.path.join(os.path.dirname(mediadir), 'settings'))
+    candidates.extend([
+        '/home/fpp/media/settings',
+        '/opt/fpp/media/settings',
+    ])
+    # Deduplicate while preserving order
+    seen = set()
+    ordered = []
+    for path in candidates:
+        if path and path not in seen:
+            seen.add(path)
+            ordered.append(path)
+    return ordered
+
+
+def build_fpp_api_endpoints() -> List[str]:
+    """Create a ordered list of candidate FPP API base URLs."""
+    hosts = []
+    env_host = os.environ.get('FPP_API_HOST')
+    if env_host:
+        hosts.append(env_host)
+    hosts.extend(['localhost', '127.0.0.1'])
+    hosts = list(dict.fromkeys([h for h in hosts if h]))
+
+    ports = []
+    env_port = os.environ.get('FPP_API_PORT')
+    if env_port:
+        try:
+            port_val = int(env_port)
+            if port_val > 0:
+                ports.append(port_val)
+        except ValueError:
+            logger.debug("Ignoring invalid FPP_API_PORT value: %s", env_port)
+
+    for path in _candidate_settings_paths():
+        port_from_file = _read_http_port_from_settings(path)
+        if port_from_file > 0:
+            ports.append(port_from_file)
+
+    # Default ports (most common first)
+    ports.extend([80, 8080, 32320])
+
+    # Deduplicate positive values while preserving order
+    seen_ports = set()
+    ordered_ports = []
+    for port in ports:
+        if isinstance(port, int) and port > 0 and port not in seen_ports:
+            seen_ports.add(port)
+            ordered_ports.append(port)
+
+    endpoints = []
+    for host in hosts:
+        for port in ordered_ports:
+            if port == 80:
+                endpoints.append(f'http://{host}/api')
+            else:
+                endpoints.append(f'http://{host}:{port}/api')
+
+    # Final dedupe preserving order
+    endpoints = list(dict.fromkeys(endpoints))
+
+    if not endpoints:
+        endpoints = ['http://localhost/api']
+
+    logger.info("Discovered FPP API endpoints: %s", endpoints)
+    return endpoints
+
+
+FPP_API_ENDPOINTS = build_fpp_api_endpoints()
+
+
+def _request_with_fallback(method: str, path: str, **kwargs):
+    """Attempt an HTTP request against the list of candidate endpoints."""
+    last_exception = None
+    last_response = None
+    for base in FPP_API_ENDPOINTS:
+        url = f'{base}{path}'
+        try:
+            response = requests.request(method, url, timeout=kwargs.pop('timeout', 5), **kwargs)
+            if response.status_code == 200:
+                return response
+            last_response = response
+            logger.debug("FPP API %s %s returned %s", method, url, response.status_code)
+        except Exception as exc:
+            last_exception = exc
+            logger.debug("FPP API %s %s failed: %s", method, url, exc)
+    if last_response is not None:
+        return last_response
+    if last_exception:
+        raise last_exception
+    raise RuntimeError("Unable to contact FPP API")
 
 class FPPLightAccessory(Accessory):
     """HomeKit Light accessory that controls FPP playlists"""

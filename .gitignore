@@ -1,0 +1,12 @@
+# Generated runtime files that should not mark the repo dirty
+scripts/homekit_service.log
+scripts/homekit_accessory.state
+scripts/homekit_pairing_info.json
+scripts/homekit_service.pid
+scripts/install.log
+scripts/.start_attempt
+
+# Python cache
+__pycache__/
+scripts/__pycache__/
+

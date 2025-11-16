@@ -50,15 +50,20 @@ if (file_exists($cssPath)) {
                 </span>
             </div>
             
-            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
-                <button class="homekit-button" onclick="restartService()" id="restart-btn">Restart Service</button>
-                <button class="homekit-button secondary" onclick="refreshStatus()" id="refresh-btn">Refresh</button>
-                <button class="homekit-button secondary" onclick="viewLogs()" id="view-logs-btn" style="display: none;">View Logs</button>
+            <div class="playlist-config">
+                <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">Playlist Configuration</h3>
+                <div class="playlist-config-controls">
+                    <select class="form-select" id="playlist-select" aria-label="Select playlist to start">
+                        <option value="">-- Loading playlists... --</option>
+                    </select>
+                    <button class="homekit-button" type="button" id="save-playlist-btn">Save Playlist</button>
+                    <button class="homekit-button secondary" type="button" id="refresh-playlists-btn">Refresh</button>
+                </div>
             </div>
             
-            <div id="service-log-section" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
-                <h4 style="margin: 0 0 12px 0; font-size: 16px; font-weight: 600;">Service Log</h4>
-                <pre id="service-log-content" style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; font-family: 'SF Mono', Monaco, monospace; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto; color: var(--text-secondary); margin: 0;">Loading log...</pre>
+            <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap;">
+                <button class="homekit-button" onclick="restartService()" id="restart-btn">Restart Service</button>
+                <button class="homekit-button secondary" onclick="refreshStatus()" id="refresh-btn">Refresh</button>
             </div>
         </div>
         
@@ -122,6 +127,15 @@ if (file_exists($cssPath)) {
     const API_BASE = '/api/plugin/<?php echo $plugin; ?>';
     let refreshInterval = null;
     let isUpdating = false;
+    let playlistsLoaded = false;
+    let currentPlaylist = '';
+    let qrLoaded = false;
+    let currentSetupCode = '';
+    let currentSetupId = '';
+    
+    const playlistSelect = document.getElementById('playlist-select');
+    const savePlaylistBtn = document.getElementById('save-playlist-btn');
+    const refreshPlaylistsBtn = document.getElementById('refresh-playlists-btn');
     
     // Debug logging
     function debugLog(message, data = null) {
@@ -197,6 +211,134 @@ if (file_exists($cssPath)) {
                 setTimeout(() => msgDiv.remove(), 500);
             }, 5000);
         }
+    }
+    
+    function updatePlaylistStatusText(name) {
+        const playlistStatusEl = document.getElementById('playlist-status');
+        if (!playlistStatusEl) {
+            return;
+        }
+        if (name) {
+            playlistStatusEl.innerHTML = '<span style="color: var(--success-color);">' + escapeHtml(name) + '</span>';
+        } else {
+            playlistStatusEl.innerHTML = '<span style="color: var(--warning-color);">Not configured</span>';
+        }
+    }
+    
+    function setPlaylistLoadingState(isLoading) {
+        if (playlistSelect) {
+            playlistSelect.disabled = isLoading;
+        }
+        if (refreshPlaylistsBtn) {
+            refreshPlaylistsBtn.disabled = isLoading;
+            refreshPlaylistsBtn.innerHTML = isLoading ? '<span class="spinner"></span> Refreshing...' : 'Refresh';
+        }
+        if (!isLoading) {
+            updateSaveButtonState();
+        }
+    }
+    
+    function updateSaveButtonState() {
+        if (!savePlaylistBtn || !playlistSelect) {
+            return;
+        }
+        const selectedValue = playlistSelect.value;
+        const shouldDisable = !selectedValue || selectedValue === currentPlaylist;
+        savePlaylistBtn.disabled = shouldDisable;
+    }
+    
+    function loadPlaylists(forceMessage = false) {
+        if (!playlistSelect) {
+            return;
+        }
+        
+        setPlaylistLoadingState(true);
+        debugLog('Loading playlists...');
+        
+        fetch(API_BASE + '/playlists')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                playlistsLoaded = true;
+                playlistSelect.innerHTML = '';
+                
+                if (data.playlists && data.playlists.length > 0) {
+                    playlistSelect.appendChild(new Option('-- Select Playlist --', ''));
+                    data.playlists.forEach((playlist) => {
+                        playlistSelect.appendChild(new Option(playlist, playlist));
+                    });
+                } else {
+                    playlistSelect.appendChild(new Option('No playlists available', ''));
+                    if (forceMessage) {
+                        showMessage('No playlists found. Create playlists in FPP first.', 'warning');
+                    }
+                }
+                
+                playlistSelect.value = currentPlaylist || '';
+                updateSaveButtonState();
+                debugLog('Playlists loaded', data);
+            })
+            .catch(error => {
+                debugLog('Error loading playlists', { error: error.message });
+                showMessage('Error loading playlists: ' + error.message, 'error');
+            })
+            .finally(() => {
+                setPlaylistLoadingState(false);
+            });
+    }
+    
+    function savePlaylist() {
+        if (!playlistSelect || !savePlaylistBtn) {
+            return;
+        }
+        
+        const playlistName = playlistSelect.value;
+        if (!playlistName) {
+            showMessage('Please select a playlist before saving.', 'warning');
+            return;
+        }
+        
+        savePlaylistBtn.disabled = true;
+        const originalLabel = savePlaylistBtn.textContent;
+        savePlaylistBtn.innerHTML = '<span class="spinner"></span> Saving...';
+        
+        const formData = new FormData();
+        formData.append('playlist_name', playlistName);
+        
+        debugLog('Saving playlist configuration', { playlist: playlistName });
+        fetch(API_BASE + '/config', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                debugLog('Save response', data);
+                if (data.status === 'saved') {
+                    currentPlaylist = playlistName;
+                    updatePlaylistStatusText(currentPlaylist);
+                    showMessage('Configuration saved.', 'success');
+                    setTimeout(() => loadStatus(), 300);
+                } else {
+                    throw new Error(data.message || 'Failed to save configuration');
+                }
+            })
+            .catch(error => {
+                debugLog('Error saving playlist', { error: error.message });
+                showMessage('Error saving configuration: ' + error.message, 'error');
+            })
+            .finally(() => {
+                savePlaylistBtn.disabled = false;
+                savePlaylistBtn.textContent = originalLabel;
+            });
     }
     
     function escapeHtml(text) {
@@ -343,17 +485,10 @@ if (file_exists($cssPath)) {
         fppStatusEl.innerHTML = statusHtml;
         
         // Update playlist
-        const playlistEl = document.getElementById('playlist-status');
-        if (playlist) {
-            playlistEl.innerHTML = escapeHtml(playlist);
-        } else {
-            playlistEl.innerHTML = '<span style="color: var(--warning-color);">Not configured - <a href="plugin.php?plugin=<?php echo $plugin; ?>&page=content.php" class="link">Configure now</a></span>';
-        }
-        
-        // Show/hide view logs button based on service status
-        const viewLogsBtn = document.getElementById('view-logs-btn');
-        if (viewLogsBtn) {
-            viewLogsBtn.style.display = serviceRunning ? 'none' : 'inline-block';
+        currentPlaylist = playlist || '';
+        updatePlaylistStatusText(currentPlaylist);
+        if (playlistSelect && playlistsLoaded) {
+            playlistSelect.value = currentPlaylist;
         }
         
         // Show/hide pairing sections
@@ -363,16 +498,20 @@ if (file_exists($cssPath)) {
         if (paired) {
             pairingSection.style.display = 'none';
             pairedSection.style.display = 'block';
+            qrLoaded = false;
         } else {
             pairingSection.style.display = 'block';
             pairedSection.style.display = 'none';
             
             if (serviceRunning) {
-                loadQRCode();
+                if (!qrLoaded) {
+                    loadQRCode();
+                }
             } else {
                 document.getElementById('qr-loading').style.display = 'none';
                 document.getElementById('qr-content').style.display = 'none';
                 document.getElementById('qr-error').style.display = 'block';
+                qrLoaded = false;
             }
         }
     }
@@ -393,6 +532,11 @@ if (file_exists($cssPath)) {
             .then(data => {
                 debugLog('Pairing info response', data);
                 const setupCode = data.setup_code || '123-45-678';
+                const setupId = data.setup_id || 'HOME';
+                
+                currentSetupCode = setupCode;
+                currentSetupId = setupId;
+                
                 document.getElementById('setup-code-text').textContent = setupCode;
                 
                 // Load QR code image
@@ -401,16 +545,19 @@ if (file_exists($cssPath)) {
                 qrImage.onload = () => {
                     document.getElementById('qr-loading').style.display = 'none';
                     document.getElementById('qr-content').style.display = 'block';
+                    qrLoaded = true;
                 };
                 qrImage.onerror = () => {
                     document.getElementById('qr-loading').style.display = 'none';
                     document.getElementById('qr-error').style.display = 'block';
+                    qrLoaded = false;
                 };
             })
             .catch(error => {
                 debugLog('Error loading pairing info', { error: error.message });
                 document.getElementById('qr-loading').style.display = 'none';
                 document.getElementById('qr-error').style.display = 'block';
+                qrLoaded = false;
             });
     }
     
@@ -475,35 +622,6 @@ if (file_exists($cssPath)) {
     function capitalize(str) {
         return str.charAt(0).toUpperCase() + str.slice(1);
     }
-    
-    // View service logs
-    window.viewLogs = function() {
-        const logSection = document.getElementById('service-log-section');
-        const logContent = document.getElementById('service-log-content');
-        const viewLogsBtn = document.getElementById('view-logs-btn');
-        
-        if (logSection.style.display === 'none') {
-            logSection.style.display = 'block';
-            viewLogsBtn.textContent = 'Hide Logs';
-            logContent.textContent = 'Loading log...';
-            
-            fetch(API_BASE + '/log')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.log_exists && data.log_content) {
-                        logContent.textContent = data.log_content || '(Log file is empty)';
-                    } else {
-                        logContent.textContent = '(No log file found. Service may not have started yet.)';
-                    }
-                })
-                .catch(error => {
-                    logContent.textContent = 'Error loading log: ' + error.message;
-                });
-        } else {
-            logSection.style.display = 'none';
-            viewLogsBtn.textContent = 'View Logs';
-        }
-    };
     
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
