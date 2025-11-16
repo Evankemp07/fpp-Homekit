@@ -345,14 +345,42 @@ function fppHomekitQRCode() {
     }
     
     // Use Python to generate QR code image
-    $pythonScript = "import qrcode; import io; import base64; qr = qrcode.QRCode(version=1, box_size=10, border=4); qr.add_data('" . escapeshellarg($qrData) . "'); qr.make(fit=True); img = qr.make_image(fill_color='black', back_color='white'); buf = io.BytesIO(); img.save(buf, format='PNG'); print(base64.b64encode(buf.getvalue()).decode())";
-    
-    $output = shell_exec("python3 -c " . escapeshellarg($pythonScript) . " 2>&1");
+    $pythonScript = <<<'PYCODE'
+import sys
+import io
+import base64
+
+try:
+    import qrcode
+except Exception as exc:
+    sys.stderr.write(f"QR_IMPORT_ERROR:{exc}")
+    sys.exit(1)
+
+if len(sys.argv) < 2:
+    sys.stderr.write("QR_NO_DATA")
+    sys.exit(1)
+
+qr_data = sys.argv[1]
+
+qr = qrcode.QRCode(version=1, box_size=10, border=4)
+qr.add_data(qr_data)
+qr.make(fit=True)
+img = qr.make_image(fill_color="black", back_color="white")
+buf = io.BytesIO()
+img.save(buf, format="PNG")
+sys.stdout.write(base64.b64encode(buf.getvalue()).decode("ascii"))
+PYCODE;
+
+    $command = "python3 -c " . escapeshellarg($pythonScript) . " " . escapeshellarg($qrData);
+    $output = shell_exec($command);
     
     if ($output) {
-        header('Content-Type: image/png');
-        echo base64_decode(trim($output));
-        return;
+        $decoded = base64_decode(trim($output), true);
+        if ($decoded !== false) {
+            header('Content-Type: image/png');
+            echo $decoded;
+            return;
+        }
     }
     
     // Fallback: return QR code data as JSON
