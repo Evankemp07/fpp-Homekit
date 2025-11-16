@@ -134,74 +134,136 @@ function fppHomekitStatus() {
         'status_text' => 'Unknown'
     );
     
-    try {
-        $ch = curl_init('http://localhost:32320/api/status');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 3);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-        
-        if ($httpCode == 200 && $response) {
-            $statusData = json_decode($response, true);
-            if ($statusData && is_array($statusData)) {
-                // Merge the FPP status data
-                $fppStatus = array_merge($fppStatus, $statusData);
-                
-                // Determine playing state - check multiple possible fields
-                $playing = false;
-                if (isset($fppStatus['playing'])) {
-                    $playing = (bool)$fppStatus['playing'];
-                } elseif (isset($fppStatus['status_name'])) {
-                    $statusName = strtolower($fppStatus['status_name']);
-                    $playing = ($statusName === 'playing');
-                } elseif (isset($fppStatus['status'])) {
-                    $status = strtolower($fppStatus['status']);
-                    $playing = ($status === 'playing');
+    // Try multiple connection methods to reach FPP API
+    $fppHosts = array('localhost', '127.0.0.1');
+    $fppPort = 32320;
+    
+    // Check if FPPDIR is set (FPP environment variable)
+    if (isset($_SERVER['FPPDIR']) || isset($_ENV['FPPDIR'])) {
+        $fppDir = isset($_SERVER['FPPDIR']) ? $_SERVER['FPPDIR'] : $_ENV['FPPDIR'];
+        // Try to read FPP config to get actual port
+        $fppConfigFile = $fppDir . '/settings';
+        if (file_exists($fppConfigFile)) {
+            $configContent = @file_get_contents($fppConfigFile);
+            if ($configContent) {
+                // Look for port setting in config
+                if (preg_match('/^HTTPPort\s*=\s*(\d+)/m', $configContent, $matches)) {
+                    $fppPort = (int)$matches[1];
                 }
-                $fppStatus['playing'] = $playing;
-                
-                // Create human-readable status text
-                $statusName = isset($fppStatus['status_name']) ? strtolower($fppStatus['status_name']) : 'unknown';
-                switch ($statusName) {
-                    case 'playing':
-                        $fppStatus['status_text'] = 'Playing';
-                        if (!empty($fppStatus['current_sequence'])) {
-                            $fppStatus['status_text'] .= ': ' . $fppStatus['current_sequence'];
-                        } elseif (!empty($fppStatus['current_playlist'])) {
-                            $fppStatus['status_text'] .= ': ' . $fppStatus['current_playlist'];
-                        }
-                        break;
-                    case 'paused':
-                        $fppStatus['status_text'] = 'Paused';
-                        break;
-                    case 'stopped':
-                        $fppStatus['status_text'] = 'Stopped';
-                        break;
-                    case 'idle':
-                        $fppStatus['status_text'] = 'Idle';
-                        break;
-                    case 'testing':
-                        $fppStatus['status_text'] = 'Testing';
-                        break;
-                    default:
-                        $fppStatus['status_text'] = ucfirst($statusName);
-                        break;
-                }
-            }
-        } else {
-            // FPP API not available or error
-            $fppStatus['status_text'] = 'FPP API Unavailable';
-            if ($httpCode > 0) {
-                $fppStatus['status_text'] .= ' (HTTP ' . $httpCode . ')';
-            } elseif ($curlError) {
-                $fppStatus['status_text'] .= ' (' . $curlError . ')';
             }
         }
-    } catch (Exception $e) {
-        $fppStatus['status_text'] = 'Error: ' . $e->getMessage();
+    }
+    
+    $connected = false;
+    $lastError = '';
+    
+    foreach ($fppHosts as $host) {
+        try {
+            $url = "http://{$host}:{$fppPort}/api/status";
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+            
+            if ($httpCode == 200 && $response) {
+                $statusData = json_decode($response, true);
+                if ($statusData && is_array($statusData)) {
+                    // Merge the FPP status data
+                    $fppStatus = array_merge($fppStatus, $statusData);
+                    
+                    // Determine playing state - check multiple possible fields
+                    $playing = false;
+                    if (isset($fppStatus['playing'])) {
+                        $playing = (bool)$fppStatus['playing'];
+                    } elseif (isset($fppStatus['status_name'])) {
+                        $statusName = strtolower($fppStatus['status_name']);
+                        $playing = ($statusName === 'playing');
+                    } elseif (isset($fppStatus['status'])) {
+                        $status = strtolower($fppStatus['status']);
+                        $playing = ($status === 'playing');
+                    }
+                    $fppStatus['playing'] = $playing;
+                    
+                    // Create human-readable status text
+                    $statusName = isset($fppStatus['status_name']) ? strtolower($fppStatus['status_name']) : 'unknown';
+                    switch ($statusName) {
+                        case 'playing':
+                            $fppStatus['status_text'] = 'Playing';
+                            if (!empty($fppStatus['current_sequence'])) {
+                                $fppStatus['status_text'] .= ': ' . $fppStatus['current_sequence'];
+                            } elseif (!empty($fppStatus['current_playlist'])) {
+                                $fppStatus['status_text'] .= ': ' . $fppStatus['current_playlist'];
+                            }
+                            break;
+                        case 'paused':
+                            $fppStatus['status_text'] = 'Paused';
+                            break;
+                        case 'stopped':
+                            $fppStatus['status_text'] = 'Stopped';
+                            break;
+                        case 'idle':
+                            $fppStatus['status_text'] = 'Idle';
+                            break;
+                        case 'testing':
+                            $fppStatus['status_text'] = 'Testing';
+                            break;
+                        default:
+                            $fppStatus['status_text'] = ucfirst($statusName);
+                            break;
+                    }
+                    $connected = true;
+                    break; // Successfully connected, exit loop
+                }
+            } else {
+                // Store error but continue trying other hosts
+                if ($curlError) {
+                    $lastError = $curlError;
+                } elseif ($httpCode > 0) {
+                    $lastError = "HTTP $httpCode";
+                }
+            }
+        } catch (Exception $e) {
+            $lastError = $e->getMessage();
+        }
+    }
+    
+    if (!$connected) {
+        // FPP API not available - provide helpful error message
+        $fppStatus['status_text'] = 'FPP Not Running';
+        $fppStatus['error_detail'] = '';
+        
+        // Check if FPPD process is running
+        $fppdRunning = false;
+        if (function_exists('exec')) {
+            $output = array();
+            @exec('pgrep -f fppd 2>/dev/null', $output);
+            if (!empty($output)) {
+                $fppdRunning = true;
+            } else {
+                // Try alternative method
+                @exec('ps aux | grep -i "[f]ppd" 2>/dev/null', $output);
+                if (!empty($output)) {
+                    $fppdRunning = true;
+                }
+            }
+        }
+        
+        if ($fppdRunning) {
+            $fppStatus['status_text'] = 'FPP Running (API Unreachable)';
+            $fppStatus['error_detail'] = "FPP daemon is running but API at port $fppPort is not accessible. Check FPP web interface.";
+        } else {
+            $fppStatus['status_text'] = 'FPP Not Running';
+            $fppStatus['error_detail'] = 'FPP daemon does not appear to be running. Start FPP to enable status monitoring.';
+        }
+        
+        if ($lastError) {
+            $fppStatus['error_detail'] .= ' Error: ' . $lastError;
+        }
     }
     
     $result['fpp_status'] = $fppStatus;
@@ -402,15 +464,48 @@ function fppHomekitPairingInfo() {
 function fppHomekitPlaylists() {
     $playlists = array();
     
+    // Try multiple connection methods to reach FPP API
+    $fppHosts = array('localhost', '127.0.0.1');
+    $fppPort = 32320;
+    
+    // Check if FPPDIR is set (FPP environment variable)
+    if (isset($_SERVER['FPPDIR']) || isset($_ENV['FPPDIR'])) {
+        $fppDir = isset($_SERVER['FPPDIR']) ? $_SERVER['FPPDIR'] : $_ENV['FPPDIR'];
+        // Try to read FPP config to get actual port
+        $fppConfigFile = $fppDir . '/settings';
+        if (file_exists($fppConfigFile)) {
+            $configContent = @file_get_contents($fppConfigFile);
+            if ($configContent) {
+                // Look for port setting in config
+                if (preg_match('/^HTTPPort\s*=\s*(\d+)/m', $configContent, $matches)) {
+                    $fppPort = (int)$matches[1];
+                }
+            }
+        }
+    }
+    
     try {
-        $ch = curl_init('http://localhost:32320/api/playlists');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
+        $connected = false;
+        $response = false;
+        $httpCode = 0;
+        $curlError = '';
+        
+        foreach ($fppHosts as $host) {
+            $ch = curl_init("http://{$host}:{$fppPort}/api/playlists");
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+            
+            if ($httpCode == 200 && $response) {
+                $connected = true;
+                break; // Successfully connected
+            }
+        }
         
         if ($httpCode == 200 && $response) {
             $data = json_decode($response, true);

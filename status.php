@@ -291,8 +291,9 @@ if (file_exists($cssPath)) {
         
         // Update FPP status
         const playing = fppStatus.playing || false;
-        const statusText = fppStatus.status_text || fppStatus.status_name || 'Unknown';
+        let statusText = fppStatus.status_text || fppStatus.status_name || 'Unknown';
         const statusName = (fppStatus.status_name || 'unknown').toLowerCase();
+        const errorDetail = fppStatus.error_detail || '';
         
         // Determine status indicator class based on status
         let statusClass = 'stopped';
@@ -302,10 +303,18 @@ if (file_exists($cssPath)) {
             statusClass = 'paused';
         } else if (statusName === 'testing') {
             statusClass = 'testing';
+        } else if (statusText.includes('Not Running') || statusText.includes('Unavailable') || statusText.includes('Unreachable')) {
+            statusClass = 'stopped';
+        }
+        
+        // Add error detail as tooltip or additional info
+        let statusHtml = '<span class="status-indicator ' + statusClass + '"></span>' + escapeHtml(statusText);
+        if (errorDetail && (statusText.includes('Not Running') || statusText.includes('Unavailable') || statusText.includes('Unreachable'))) {
+            statusHtml += '<br><small style="color: var(--text-secondary); font-size: 12px; margin-left: 16px;">' + escapeHtml(errorDetail) + '</small>';
         }
         
         const fppStatusEl = document.getElementById('fpp-status');
-        fppStatusEl.innerHTML = '<span class="status-indicator ' + statusClass + '"></span>' + escapeHtml(statusText);
+        fppStatusEl.innerHTML = statusHtml;
         
         // Update playlist
         const playlistEl = document.getElementById('playlist-status');
