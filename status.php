@@ -775,8 +775,24 @@ if (file_exists($cssPath)) {
     
     function testMQTT() {
         const testMqttBtn = document.getElementById('test-mqtt-btn');
+        const mqttBrokerInput = document.getElementById('mqtt-broker');
+        const mqttPortInput = document.getElementById('mqtt-port');
         
         if (!testMqttBtn) {
+            return;
+        }
+        
+        // Get current values from UI
+        const broker = mqttBrokerInput ? mqttBrokerInput.value.trim() : '';
+        const port = mqttPortInput ? parseInt(mqttPortInput.value) : 1883;
+        
+        if (!broker) {
+            showMessage('Please enter a broker hostname or IP address.', 'warning');
+            return;
+        }
+        
+        if (!port || port < 1 || port > 65535) {
+            showMessage('Please enter a valid port number (1-65535).', 'warning');
             return;
         }
         
@@ -784,9 +800,16 @@ if (file_exists($cssPath)) {
         const originalLabel = testMqttBtn.textContent;
         testMqttBtn.innerHTML = '<span class="spinner"></span> Testing...';
         
-        debugLog('Testing MQTT connection...');
+        debugLog('Testing MQTT connection...', { broker: broker, port: port });
+        
+        // Send broker and port from UI to test
+        const formData = new FormData();
+        formData.append('mqtt_broker', broker);
+        formData.append('mqtt_port', port);
+        
         fetch(API_BASE + '/test-mqtt', {
-            method: 'POST'
+            method: 'POST',
+            body: formData
         })
             .then(response => {
                 if (!response.ok) {

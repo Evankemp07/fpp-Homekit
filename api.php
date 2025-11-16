@@ -852,6 +852,10 @@ function fppHomekitTestMQTT() {
     $scriptsDir = $pluginDir . '/scripts';
     $configFile = $scriptsDir . '/homekit_config.json';
     
+    // Allow testing with values from UI (broker/port from POST), or use saved config
+    $testBroker = isset($_POST['mqtt_broker']) ? trim($_POST['mqtt_broker']) : null;
+    $testPort = isset($_POST['mqtt_port']) ? intval($_POST['mqtt_port']) : null;
+    
     // Use Python to read MQTT config (same logic as homekit_service.py)
     $pythonGetConfigScript = <<<PYCODE
 import sys
@@ -965,6 +969,14 @@ PYCODE;
                 }
             }
         }
+    }
+    
+    // Override with test values from UI if provided
+    if ($testBroker !== null && $testBroker !== '') {
+        $mqttBroker = $testBroker;
+    }
+    if ($testPort !== null && $testPort > 0 && $testPort <= 65535) {
+        $mqttPort = $testPort;
     }
     
     // Test MQTT connection using Python
