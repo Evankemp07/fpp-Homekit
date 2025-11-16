@@ -290,11 +290,22 @@ if (file_exists($cssPath)) {
             (paired ? 'Paired' : 'Not Paired');
         
         // Update FPP status
-        const playing = fppStatus.playing || fppStatus.status_name === 'playing';
-        const statusName = fppStatus.status_name || 'unknown';
+        const playing = fppStatus.playing || false;
+        const statusText = fppStatus.status_text || fppStatus.status_name || 'Unknown';
+        const statusName = (fppStatus.status_name || 'unknown').toLowerCase();
+        
+        // Determine status indicator class based on status
+        let statusClass = 'stopped';
+        if (playing || statusName === 'playing') {
+            statusClass = 'playing';
+        } else if (statusName === 'paused') {
+            statusClass = 'paused';
+        } else if (statusName === 'testing') {
+            statusClass = 'testing';
+        }
+        
         const fppStatusEl = document.getElementById('fpp-status');
-        fppStatusEl.innerHTML = '<span class="status-indicator ' + (playing ? 'playing' : 'stopped') + '"></span>' + 
-            (playing ? 'Playing' : capitalize(statusName));
+        fppStatusEl.innerHTML = '<span class="status-indicator ' + statusClass + '"></span>' + escapeHtml(statusText);
         
         // Update playlist
         const playlistEl = document.getElementById('playlist-status');

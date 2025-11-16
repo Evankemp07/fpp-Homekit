@@ -123,21 +123,87 @@ function fppHomekitStatus() {
     $result['paired'] = $paired;
     
     // Get FPP status
-    $fppStatus = array('playing' => false, 'status_name' => 'unknown');
+    $fppStatus = array(
+        'playing' => false, 
+        'status_name' => 'unknown',
+        'current_sequence' => '',
+        'current_playlist' => '',
+        'seconds_elapsed' => 0,
+        'seconds_remaining' => 0,
+        'volume' => 0,
+        'status_text' => 'Unknown'
+    );
+    
     try {
         $ch = curl_init('http://localhost:32320/api/status');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
         curl_close($ch);
         
         if ($httpCode == 200 && $response) {
-            $fppStatus = json_decode($response, true);
+            $statusData = json_decode($response, true);
+            if ($statusData && is_array($statusData)) {
+                // Merge the FPP status data
+                $fppStatus = array_merge($fppStatus, $statusData);
+                
+                // Determine playing state - check multiple possible fields
+                $playing = false;
+                if (isset($fppStatus['playing'])) {
+                    $playing = (bool)$fppStatus['playing'];
+                } elseif (isset($fppStatus['status_name'])) {
+                    $statusName = strtolower($fppStatus['status_name']);
+                    $playing = ($statusName === 'playing');
+                } elseif (isset($fppStatus['status'])) {
+                    $status = strtolower($fppStatus['status']);
+                    $playing = ($status === 'playing');
+                }
+                $fppStatus['playing'] = $playing;
+                
+                // Create human-readable status text
+                $statusName = isset($fppStatus['status_name']) ? strtolower($fppStatus['status_name']) : 'unknown';
+                switch ($statusName) {
+                    case 'playing':
+                        $fppStatus['status_text'] = 'Playing';
+                        if (!empty($fppStatus['current_sequence'])) {
+                            $fppStatus['status_text'] .= ': ' . $fppStatus['current_sequence'];
+                        } elseif (!empty($fppStatus['current_playlist'])) {
+                            $fppStatus['status_text'] .= ': ' . $fppStatus['current_playlist'];
+                        }
+                        break;
+                    case 'paused':
+                        $fppStatus['status_text'] = 'Paused';
+                        break;
+                    case 'stopped':
+                        $fppStatus['status_text'] = 'Stopped';
+                        break;
+                    case 'idle':
+                        $fppStatus['status_text'] = 'Idle';
+                        break;
+                    case 'testing':
+                        $fppStatus['status_text'] = 'Testing';
+                        break;
+                    default:
+                        $fppStatus['status_text'] = ucfirst($statusName);
+                        break;
+                }
+            }
+        } else {
+            // FPP API not available or error
+            $fppStatus['status_text'] = 'FPP API Unavailable';
+            if ($httpCode > 0) {
+                $fppStatus['status_text'] .= ' (HTTP ' . $httpCode . ')';
+            } elseif ($curlError) {
+                $fppStatus['status_text'] .= ' (' . $curlError . ')';
+            }
         }
     } catch (Exception $e) {
-        // Ignore errors
+        $fppStatus['status_text'] = 'Error: ' . $e->getMessage();
     }
+    
     $result['fpp_status'] = $fppStatus;
     
     // Get configured playlist
