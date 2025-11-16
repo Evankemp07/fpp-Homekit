@@ -132,6 +132,7 @@ if (file_exists($cssPath)) {
     let qrLoaded = false;
     let currentSetupCode = '';
     let currentSetupId = '';
+    let autoStartAttempted = false;
     
     const playlistSelect = document.getElementById('playlist-select');
     const savePlaylistBtn = document.getElementById('save-playlist-btn');
@@ -421,6 +422,11 @@ if (file_exists($cssPath)) {
         const serviceStatusEl = document.getElementById('service-status');
         serviceStatusEl.innerHTML = '<span class="status-indicator ' + (serviceRunning ? 'running' : 'stopped') + '"></span>' + 
             (serviceRunning ? 'Running' : 'Stopped');
+        if (serviceRunning) {
+            autoStartAttempted = false;
+        } else if (!autoStartAttempted) {
+            attemptAutoStart();
+        }
         
         // Update pairing status
         const pairingStatusEl = document.getElementById('pairing-status');
@@ -432,8 +438,8 @@ if (file_exists($cssPath)) {
         let statusText = fppStatus.status_text || fppStatus.status_name || 'Unknown';
         const statusName = (fppStatus.status_name || 'unknown').toLowerCase();
         const errorDetail = fppStatus.error_detail || '';
-        const currentPlaylist = fppStatus.current_playlist || '';
-        const currentSequence = fppStatus.current_sequence || '';
+        const fppCurrentPlaylist = fppStatus.current_playlist || '';
+        const fppCurrentSequence = fppStatus.current_sequence || '';
         
         // Determine status indicator class based on status
         let statusClass = 'stopped';
@@ -452,11 +458,11 @@ if (file_exists($cssPath)) {
         
         if (playing) {
             statusHtml += '<strong>Playing</strong>';
-            if (currentPlaylist) {
-                statusHtml += '<div style="color: var(--text-secondary); font-size: 13px; margin-top: 4px;">Playlist: ' + escapeHtml(currentPlaylist) + '</div>';
+            if (fppCurrentPlaylist) {
+                statusHtml += '<div style="color: var(--text-secondary); font-size: 13px; margin-top: 4px;">Playlist: ' + escapeHtml(fppCurrentPlaylist) + '</div>';
             }
-            if (currentSequence) {
-                statusHtml += '<div style="color: var(--text-secondary); font-size: 13px; margin-top: 2px;">Sequence: ' + escapeHtml(currentSequence) + '</div>';
+            if (fppCurrentSequence) {
+                statusHtml += '<div style="color: var(--text-secondary); font-size: 13px; margin-top: 2px;">Sequence: ' + escapeHtml(fppCurrentSequence) + '</div>';
             }
         } else {
             statusHtml += '<div>' + escapeHtml(statusText) + '</div>';
@@ -490,6 +496,7 @@ if (file_exists($cssPath)) {
         if (playlistSelect && playlistsLoaded) {
             playlistSelect.value = currentPlaylist;
         }
+        updateSaveButtonState();
         
         // Show/hide pairing sections
         const pairingSection = document.getElementById('pairing-section');
@@ -514,6 +521,37 @@ if (file_exists($cssPath)) {
                 qrLoaded = false;
             }
         }
+    }
+    
+    function attemptAutoStart() {
+        if (autoStartAttempted) {
+            return;
+        }
+        autoStartAttempted = true;
+        debugLog('Attempting to auto-start HomeKit service...');
+        showMessage('Starting HomeKit service...', 'info');
+        
+        fetch(API_BASE + '/restart', { method: 'POST' })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                debugLog('Auto-start response', data);
+                if (data.started || data.status === 'restarted') {
+                    showMessage('HomeKit service started.', 'success');
+                } else {
+                    showMessage(data.message || 'Starting HomeKit service...', 'info');
+                }
+                // Give the service a moment before polling
+                setTimeout(() => loadStatus(), 1200);
+            })
+            .catch(error => {
+                debugLog('Auto-start failed', { error: error.message });
+                showMessage('Unable to start service automatically: ' + error.message, 'error');
+            });
     }
     
     // Load QR code
@@ -625,11 +663,20 @@ if (file_exists($cssPath)) {
     
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
-        // Load initial status
+        if (refreshPlaylistsBtn) {
+            refreshPlaylistsBtn.addEventListener('click', () => loadPlaylists(true));
+        }
+        if (savePlaylistBtn) {
+            savePlaylistBtn.addEventListener('click', savePlaylist);
+            savePlaylistBtn.disabled = true;
+        }
+        if (playlistSelect) {
+            playlistSelect.addEventListener('change', updateSaveButtonState);
+        }
+        
+        loadPlaylists(true);
         loadStatus();
         
-        // Auto-refresh every 30 seconds
-        // Clear any existing interval first
         if (refreshInterval) {
             clearInterval(refreshInterval);
         }
@@ -637,7 +684,6 @@ if (file_exists($cssPath)) {
             loadStatus();
         }, 30000);
         
-        // Also refresh when page becomes visible (user switches back to tab)
         document.addEventListener('visibilitychange', function() {
             if (!document.hidden) {
                 loadStatus();

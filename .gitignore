@@ -5,6 +5,7 @@ scripts/homekit_pairing_info.json
 scripts/homekit_service.pid
 scripts/install.log
 scripts/.start_attempt
+scripts/restart.log
 
 # Python cache
 __pycache__/

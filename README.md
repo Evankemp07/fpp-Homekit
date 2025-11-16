@@ -13,9 +13,9 @@ Integrates Falcon Pixel Player with Apple HomeKit, allowing you to control FPP p
 ## Installation
 
 1. Install the plugin through FPP's plugin manager
-2. Configure which playlist to start in the Configuration page
-3. Go to the Status page to view the QR code
-4. Pair with HomeKit using the Home app on your iOS device
+2. Open the Status page and choose which playlist should start when HomeKit turns the accessory ON
+3. Scan the QR code on the Status page with the Home app on your iOS device
+4. Control the accessory from HomeKit (turn ON to start the playlist, OFF to stop)
 
 ## Requirements
 
@@ -27,7 +27,7 @@ Integrates Falcon Pixel Player with Apple HomeKit, allowing you to control FPP p
 
 ## Usage
 
-1. **Configure Playlist**: Go to Configuration page and select which playlist should start when HomeKit turns the light ON
+1. **Configure Playlist**: On the Status page, select which playlist should start when HomeKit turns the light ON
 2. **Pair with HomeKit**: On the Status page, scan the QR code with your iPhone/iPad using the Home app
 3. **Control FPP**: Once paired, control FPP from the Home app - turn the light ON to start your playlist, OFF to stop
 
@@ -35,6 +35,4 @@ Integrates Falcon Pixel Player with Apple HomeKit, allowing you to control FPP p
 
 - **Service not running**: Check that Python dependencies are installed and avahi-daemon is running
 - **Can't pair**: Ensure service is running and your iOS device is on the same network
-- **Playlist doesn't start**: Verify playlist name is correctly configured and exists in FPP
-
-See the Help page in the plugin for more troubleshooting tips.
+- **Playlist doesn't start**: Verify the playlist name is correctly configured and exists in FPP
