@@ -19,8 +19,16 @@
 			    "packages": [
 					"python3",
 					"python3-pip",
+					"python3-dev",
 					"avahi-daemon",
-					"libavahi-compat-libdnssd-dev"
+					"libavahi-compat-libdnssd-dev",
+					"libffi-dev",
+					"libssl-dev",
+					"build-essential",
+					"libjpeg-dev",
+					"zlib1g-dev",
+					"libfreetype6-dev",
+					"liblcms2-dev"
 				],
 				"scripts": [
 				]
