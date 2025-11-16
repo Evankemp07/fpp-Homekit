@@ -801,6 +801,10 @@ function fppHomekitTestMQTT() {
 import sys
 import time
 import json
+import warnings
+
+# Suppress deprecation warnings
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 try:
     import paho.mqtt.client as mqtt
@@ -828,7 +832,12 @@ def on_disconnect(client, userdata, rc):
     pass
 
 try:
-    client = mqtt.Client(client_id="fpp-homekit-test")
+    # Use callback API version 2 if available to avoid deprecation warning
+    try:
+        client = mqtt.Client(client_id="fpp-homekit-test", callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
+    except (AttributeError, TypeError):
+        # Fallback for older paho-mqtt versions
+        client = mqtt.Client(client_id="fpp-homekit-test")
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
     
@@ -864,20 +873,32 @@ except Exception as e:
     print(json.dumps({"success": False, "error": str(e)}))
 PYCODE;
 
-    $command = "python3 -c " . escapeshellarg($pythonScript) . " " . 
+    $command = "python3 -W ignore::DeprecationWarning -c " . escapeshellarg($pythonScript) . " " . 
                escapeshellarg($mqttBroker) . " " . 
                escapeshellarg($mqttPort) . " " . 
-               escapeshellarg($mqttTopicPrefix) . " 2>&1";
+               escapeshellarg($mqttTopicPrefix) . " 2>/dev/null";
     
     $output = shell_exec($command);
     $result = array('success' => false, 'error' => 'Unknown error');
     
     if ($output) {
-        $decoded = @json_decode(trim($output), true);
-        if ($decoded && is_array($decoded)) {
-            $result = $decoded;
+        // Try to extract JSON from output (in case there are any warnings before it)
+        $jsonStart = strpos($output, '{"success"');
+        if ($jsonStart !== false) {
+            $jsonOutput = substr($output, $jsonStart);
+            $decoded = @json_decode(trim($jsonOutput), true);
+            if ($decoded && is_array($decoded)) {
+                $result = $decoded;
+            } else {
+                $result['error'] = 'Failed to parse test result: ' . htmlspecialchars(substr($jsonOutput, 0, 200));
+            }
         } else {
-            $result['error'] = 'Failed to parse test result: ' . htmlspecialchars(substr($output, 0, 200));
+            $decoded = @json_decode(trim($output), true);
+            if ($decoded && is_array($decoded)) {
+                $result = $decoded;
+            } else {
+                $result['error'] = 'Failed to parse test result: ' . htmlspecialchars(substr($output, 0, 200));
+            }
         }
     } else {
         $result['error'] = 'No output from MQTT test script';

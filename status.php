@@ -447,20 +447,22 @@ if (file_exists($cssPath)) {
         const fppStatus = data.fpp_status || {};
         const playlist = data.playlist || '';
         
-        // Update service status
+        // Update service status - indicator on right
         const serviceStatusEl = document.getElementById('service-status');
-        serviceStatusEl.innerHTML = '<span class="status-indicator ' + (serviceRunning ? 'running' : 'stopped') + '"></span>' + 
-            (serviceRunning ? 'Running' : 'Stopped');
+        const serviceStatusText = serviceRunning ? 'Running' : 'Stopped';
+        const serviceStatusClass = serviceRunning ? 'running' : 'stopped';
+        serviceStatusEl.innerHTML = serviceStatusText + '<span class="status-indicator ' + serviceStatusClass + '"></span>';
         if (serviceRunning) {
             autoStartAttempted = false;
         } else if (!autoStartAttempted) {
             attemptAutoStart();
         }
         
-        // Update pairing status
+        // Update pairing status - indicator on right
         const pairingStatusEl = document.getElementById('pairing-status');
-        pairingStatusEl.innerHTML = '<span class="status-indicator ' + (paired ? 'paired' : 'not-paired') + '"></span>' + 
-            (paired ? 'Paired' : 'Not Paired');
+        const pairingStatusText = paired ? 'Paired' : 'Not Paired';
+        const pairingStatusClass = paired ? 'paired' : 'not-paired';
+        pairingStatusEl.innerHTML = pairingStatusText + '<span class="status-indicator ' + pairingStatusClass + '"></span>';
         
         // Update FPP status
         const playing = fppStatus.playing || false;
