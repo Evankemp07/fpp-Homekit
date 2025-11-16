@@ -311,18 +311,39 @@ def get_mqtt_config() -> dict:
         'topic_prefix': os.environ.get('FPP_MQTT_PREFIX', 'FPP')
     }
     
-    # If not enabled via env, check FPP settings files
+    # Check FPP settings files for MQTT configuration
+    for path in _candidate_settings_paths():
+        file_config = _read_mqtt_settings(path)
+        # Update config if we found MQTT settings (even if not explicitly enabled)
+        if file_config.get('broker') and file_config['broker'] != 'localhost':
+            # Found explicit broker config, use it
+            mqtt_config.update(file_config)
+            logger.info(f"Found MQTT config in {path}: broker={file_config.get('broker')}, enabled={file_config.get('enabled')}")
+            break
+        elif file_config.get('enabled'):
+            # MQTT explicitly enabled in settings
+            mqtt_config.update(file_config)
+            logger.info(f"MQTT enabled in {path}")
+            break
+    
+    # If MQTT is not explicitly disabled and we have a broker, try to use it
+    # This allows MQTT to work even if FPP settings don't explicitly enable it
     if not mqtt_config['enabled']:
+        # Check if MQTT was explicitly disabled
+        mqtt_disabled = False
         for path in _candidate_settings_paths():
             file_config = _read_mqtt_settings(path)
-            if file_config['enabled']:
-                mqtt_config.update(file_config)
+            if file_config.get('broker') and not file_config.get('enabled'):
+                # Found settings file with MQTT disabled
+                mqtt_disabled = True
                 break
+        
+        # If not explicitly disabled, enable MQTT by default (FPP often has MQTT running)
+        if not mqtt_disabled:
+            mqtt_config['enabled'] = True
+            logger.info("MQTT not explicitly configured, enabling by default (will attempt connection)")
     
-    # Default to enabled if broker is set (assume MQTT is available)
-    if not mqtt_config['enabled'] and mqtt_config['broker']:
-        mqtt_config['enabled'] = True
-    
+    logger.info(f"MQTT config: enabled={mqtt_config['enabled']}, broker={mqtt_config['broker']}:{mqtt_config['port']}, prefix={mqtt_config['topic_prefix']}")
     return mqtt_config
 
 
@@ -338,12 +359,15 @@ class FPPMQTTClient:
     def connect(self):
         """Connect to MQTT broker."""
         if not MQTT_AVAILABLE:
-            logger.error("MQTT not available - paho-mqtt not installed")
+            logger.error("MQTT not available - paho-mqtt not installed. Install with: pip install paho-mqtt")
             return False
         
         if not self.config.get('enabled'):
             logger.warning("MQTT not enabled in configuration")
             return False
+        
+        broker = self.config.get('broker', 'localhost')
+        port = self.config.get('port', 1883)
         
         try:
             self.client = mqtt.Client(client_id=f"fpp-homekit-{os.getpid()}")
@@ -357,25 +381,33 @@ class FPPMQTTClient:
             self.client.on_connect = self._on_connect
             self.client.on_disconnect = self._on_disconnect
             
-            broker = self.config.get('broker', 'localhost')
-            port = self.config.get('port', 1883)
-            
-            logger.info(f"Connecting to MQTT broker at {broker}:{port}")
+            logger.info(f"Attempting to connect to MQTT broker at {broker}:{port}...")
             self.client.connect(broker, port, keepalive=60)
             self.client.loop_start()
             
             # Wait for connection (max 5 seconds)
-            for _ in range(50):
+            for i in range(50):
                 if self.connected:
-                    logger.info("MQTT connected successfully")
+                    logger.info(f"✓ MQTT connected successfully to {broker}:{port}")
                     return True
                 time.sleep(0.1)
             
-            logger.warning("MQTT connection timeout")
+            # Connection timeout - stop the loop and clean up
+            self.client.loop_stop()
+            logger.warning(f"MQTT connection timeout after 5 seconds to {broker}:{port}")
+            logger.warning("  - Check if MQTT broker is running")
+            logger.warning("  - Verify broker address and port in FPP settings")
+            logger.warning("  - Falling back to HTTP API for control commands")
             return False
             
+        except ConnectionRefusedError:
+            logger.error(f"MQTT broker refused connection at {broker}:{port}")
+            logger.error("  - Broker may not be running or port is incorrect")
+            logger.error("  - Falling back to HTTP API")
+            return False
         except Exception as e:
-            logger.error(f"Failed to connect to MQTT broker: {e}")
+            logger.error(f"Failed to connect to MQTT broker at {broker}:{port}: {e}")
+            logger.error("  - Falling back to HTTP API for control commands")
             return False
     
     def _on_connect(self, client, userdata, flags, rc):
@@ -410,6 +442,21 @@ class FPPMQTTClient:
                 return False
         except Exception as e:
             logger.error(f"Error publishing MQTT command: {e}")
+            return False
+    
+    def subscribe(self, topic: str, callback):
+        """Subscribe to an MQTT topic."""
+        if not self.connected or not self.client:
+            logger.error("MQTT not connected, cannot subscribe")
+            return False
+        
+        try:
+            self.client.subscribe(topic, qos=1)
+            self.client.message_callback_add(topic, callback)
+            logger.info(f"Subscribed to MQTT topic: {topic}")
+            return True
+        except Exception as e:
+            logger.error(f"Error subscribing to {topic}: {e}")
             return False
     
     def disconnect(self):
@@ -453,17 +500,15 @@ class FPPLightAccessory(Accessory):
         self.config = self.load_config()
         self.playlist_name = self.config.get('playlist_name', '')
         
-        # Initialize MQTT client
+        # Initialize MQTT client (required, no HTTP fallback)
+        if not MQTT_AVAILABLE:
+            raise RuntimeError("MQTT support required but paho-mqtt not installed. Install with: pip install paho-mqtt")
+        
         mqtt_config = get_mqtt_config()
         self.mqtt_client = FPPMQTTClient(mqtt_config)
-        self.use_mqtt = mqtt_config.get('enabled', False) and MQTT_AVAILABLE
         
-        if self.use_mqtt:
-            if not self.mqtt_client.connect():
-                logger.warning("MQTT connection failed, falling back to HTTP API")
-                self.use_mqtt = False
-        else:
-            logger.info("Using HTTP API for FPP control (MQTT not enabled or unavailable)")
+        if not self.mqtt_client.connect():
+            raise RuntimeError("Failed to connect to MQTT broker. Check FPP MQTT settings and ensure broker is running.")
         
         # Add Light service with On characteristic
         service = self.add_preload_service('Lightbulb')
@@ -473,11 +518,14 @@ class FPPLightAccessory(Accessory):
         self.is_on = False
         self.fpp_status_polling = True
         
-        # Start status polling thread
-        self.poll_thread = threading.Thread(target=self.poll_fpp_status, daemon=True)
+        # Subscribe to FPP status updates via MQTT
+        self.subscribe_to_status()
+        
+        # Start status polling thread (will use MQTT subscriptions)
+        self.poll_thread = threading.Thread(target=self.poll_fpp_status_mqtt, daemon=True)
         self.poll_thread.start()
         
-        logger.info(f"FPP-Controller Accessory initialized with playlist: {self.playlist_name} (using {'MQTT' if self.use_mqtt else 'HTTP'})")
+        logger.info(f"FPP-Controller Accessory initialized with playlist: {self.playlist_name} (MQTT only)")
     
     def load_config(self):
         """Load configuration from JSON file"""
@@ -519,84 +567,74 @@ class FPPLightAccessory(Accessory):
         self.is_on = value
         self.on_char.set_value(value)
     
+    def subscribe_to_status(self):
+        """Subscribe to FPP status updates via MQTT."""
+        status_topic = f"{self.mqtt_client.topic_prefix}/status"
+        
+        def on_status_message(client, userdata, msg):
+            """Handle FPP status updates from MQTT."""
+            try:
+                payload = msg.payload.decode('utf-8')
+                # FPP status messages can be JSON or simple text
+                if payload.startswith('{'):
+                    import json
+                    status_data = json.loads(payload)
+                    status_name = status_data.get('status_name', 'idle')
+                else:
+                    # Simple text status
+                    status_name = payload.lower()
+                
+                fpp_playing = status_name == 'playing'
+                
+                # Update HomeKit state if it differs from FPP state
+                if fpp_playing != self.is_on:
+                    logger.info(f"FPP status changed via MQTT: {status_name} (playing={fpp_playing})")
+                    self.is_on = fpp_playing
+                    self.on_char.set_value(fpp_playing)
+            except Exception as e:
+                logger.error(f"Error processing MQTT status message: {e}")
+        
+        self.mqtt_client.subscribe(status_topic, on_status_message)
+        
+        # Also subscribe to playlist status
+        playlist_topic = f"{self.mqtt_client.topic_prefix}/playlist/status"
+        self.mqtt_client.subscribe(playlist_topic, on_status_message)
+    
     def start_playlist(self):
-        """Start the configured FPP playlist"""
+        """Start the configured FPP playlist via MQTT"""
         if not self.playlist_name:
             logger.warning("No playlist configured")
             return
         
-        if self.use_mqtt and self.mqtt_client.connected:
-            # Use MQTT to start playlist
-            success = self.mqtt_client.publish_command(f"StartPlaylist/{self.playlist_name}")
-            if success:
-                logger.info(f"Started playlist via MQTT: {self.playlist_name}")
-                return
-            else:
-                logger.warning("MQTT command failed, falling back to HTTP")
-        
-        # Fallback to HTTP API
-        try:
-            response = _request_with_fallback('POST', f'/playlists/{self.playlist_name}/start', timeout=5)
-            if response.status_code == 200:
-                logger.info(f"Started playlist via HTTP: {self.playlist_name}")
-            else:
-                logger.error(f"Failed to start playlist: {response.status_code} - {response.text}")
-        except Exception as e:
-            logger.error(f"Error starting playlist: {e}")
+        logger.info(f"Starting playlist via MQTT: {self.playlist_name}")
+        success = self.mqtt_client.publish_command(f"StartPlaylist/{self.playlist_name}")
+        if not success:
+            logger.error(f"Failed to start playlist via MQTT: {self.playlist_name}")
     
     def stop_playlist(self):
-        """Stop FPP playback"""
-        if self.use_mqtt and self.mqtt_client.connected:
-            # Use MQTT to stop playback
-            success = self.mqtt_client.publish_command("Stop")
-            if success:
-                logger.info("Stopped FPP playback via MQTT")
-                return
-            else:
-                logger.warning("MQTT command failed, falling back to HTTP")
-        
-        # Fallback to HTTP API
-        try:
-            response = _request_with_fallback('POST', '/command/Stop', timeout=5)
-            if response.status_code == 200:
-                logger.info("Stopped FPP playback via HTTP")
-            else:
-                logger.error(f"Failed to stop playback: {response.status_code} - {response.text}")
-        except Exception as e:
-            logger.error(f"Error stopping playback: {e}")
+        """Stop FPP playback via MQTT"""
+        logger.info("Stopping playback via MQTT")
+        success = self.mqtt_client.publish_command("Stop")
+        if not success:
+            logger.error("Failed to stop playback via MQTT")
     
-    def get_fpp_status(self):
-        """Get current FPP playback status"""
-        try:
-            response = _request_with_fallback('GET', '/status', timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                # Check if FPP is playing
-                # FPP status typically has a 'status_name' field that can be 'idle', 'playing', etc.
-                status_name = data.get('status_name', 'idle')
-                return status_name == 'playing'
-            else:
-                logger.warning(f"Failed to get FPP status: {response.status_code}")
-                return False
-        except Exception as e:
-            logger.error(f"Error getting FPP status: {e}")
-            return False
-    
-    def poll_fpp_status(self):
-        """Poll FPP status periodically to sync HomeKit state"""
+    def poll_fpp_status_mqtt(self):
+        """Keep MQTT connection alive and handle reconnections"""
         while self.fpp_status_polling:
             try:
-                fpp_playing = self.get_fpp_status()
+                # MQTT client loop handles messages automatically
+                # Just check connection status periodically
+                if not self.mqtt_client.connected:
+                    logger.warning("MQTT disconnected, attempting reconnect...")
+                    if self.mqtt_client.connect():
+                        logger.info("MQTT reconnected successfully")
+                        self.subscribe_to_status()
+                    else:
+                        logger.error("MQTT reconnection failed")
                 
-                # Update HomeKit state if it differs from FPP state
-                if fpp_playing != self.is_on:
-                    logger.info(f"Syncing HomeKit state: {fpp_playing}")
-                    self.is_on = fpp_playing
-                    self.on_char.set_value(fpp_playing)
-                
-                time.sleep(3)  # Poll every 3 seconds
+                time.sleep(5)  # Check connection every 5 seconds
             except Exception as e:
-                logger.error(f"Error in status polling: {e}")
+                logger.error(f"Error in MQTT status polling: {e}")
                 time.sleep(5)
     
     def stop(self):

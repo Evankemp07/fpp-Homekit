@@ -326,7 +326,8 @@ function fppHomekitStatus() {
     }
     $result['paired'] = $paired;
     
-    // Get FPP status
+    // FPP status is now handled via MQTT by the Python service
+    // PHP status page just shows that MQTT is being used
     $fppStatus = array(
         'playing' => false, 
         'status_name' => 'unknown',
@@ -335,125 +336,35 @@ function fppHomekitStatus() {
         'seconds_elapsed' => 0,
         'seconds_remaining' => 0,
         'volume' => 0,
-        'status_text' => 'Unknown'
+        'status_text' => 'Status via MQTT',
+        'error_detail' => 'FPP status is monitored via MQTT by the HomeKit service. Check service logs for details.'
     );
     
-    $connected = false;
-    $lastError = '';
-    $apiEndpointUsed = '';
-    
-    $candidateEndpoints = fppHomekitBuildApiEndpoints();
-    
-    // Try a simple connectivity test first - check if we can reach any FPP endpoint
-    $apiResult = fppHomekitApiRequest('GET', '/status', array('timeout' => 3, 'connect_timeout' => 2));
-    if ($apiResult['success'] && $apiResult['http_code'] == 200 && !empty($apiResult['body'])) {
-        $statusData = json_decode($apiResult['body'], true);
-        if ($statusData && is_array($statusData)) {
-            $apiEndpointUsed = $apiResult['endpoint'];
-            $fppStatus = array_merge($fppStatus, $statusData);
-            
-            // Determine playing state - check multiple possible fields
-            $playing = false;
-            if (isset($fppStatus['playing'])) {
-                $playing = (bool)$fppStatus['playing'];
-            } elseif (isset($fppStatus['status_name'])) {
-                $statusName = strtolower($fppStatus['status_name']);
-                $playing = ($statusName === 'playing');
-            } elseif (isset($fppStatus['status'])) {
-                $status = strtolower($fppStatus['status']);
-                $playing = ($status === 'playing');
-            }
-            $fppStatus['playing'] = $playing;
-            
-            // Create human-readable status text
-            $statusName = isset($fppStatus['status_name']) ? strtolower($fppStatus['status_name']) : 'unknown';
-            switch ($statusName) {
-                case 'playing':
-                    $fppStatus['status_text'] = 'Playing';
-                    if (!empty($fppStatus['current_sequence'])) {
-                        $fppStatus['status_text'] .= ': ' . $fppStatus['current_sequence'];
-                    } elseif (!empty($fppStatus['current_playlist'])) {
-                        $fppStatus['status_text'] .= ': ' . $fppStatus['current_playlist'];
-                    }
-                    break;
-                case 'paused':
-                    $fppStatus['status_text'] = 'Paused';
-                    break;
-                case 'stopped':
-                    $fppStatus['status_text'] = 'Stopped';
-                    break;
-                case 'idle':
-                    $fppStatus['status_text'] = 'Idle';
-                    break;
-                case 'testing':
-                    $fppStatus['status_text'] = 'Testing';
-                    break;
-                default:
-                    $fppStatus['status_text'] = ucfirst($statusName);
-                    break;
-            }
-            $connected = true;
+    // Check if FPPD process is running (just for info)
+    $fppdRunning = false;
+    if (function_exists('exec')) {
+        $output = array();
+        @exec('pgrep -f fppd 2>/dev/null', $output);
+        if (!empty($output)) {
+            $fppdRunning = true;
         } else {
-            $lastError = 'Unable to parse FPP status response.';
-        }
-    } else {
-        $apiEndpointUsed = $apiResult['endpoint'];
-        $lastError = $apiResult['error'] ?: ($apiResult['http_code'] ? "HTTP {$apiResult['http_code']}" : 'No response from FPP API');
-    }
-    
-    if (!$connected) {
-        // FPP API not available - provide helpful error message
-        $fppStatus['status_text'] = 'FPP Not Running';
-        $fppStatus['error_detail'] = '';
-        
-        // Check if FPPD process is running
-        $fppdRunning = false;
-        if (function_exists('exec')) {
-            $output = array();
-            @exec('pgrep -f fppd 2>/dev/null', $output);
+            @exec('ps aux | grep -i "[f]ppd" 2>/dev/null', $output);
             if (!empty($output)) {
                 $fppdRunning = true;
-            } else {
-                // Try alternative method
-                @exec('ps aux | grep -i "[f]ppd" 2>/dev/null', $output);
-                if (!empty($output)) {
-                    $fppdRunning = true;
-                }
             }
         }
-        
-        if ($fppdRunning) {
-            $fppStatus['status_text'] = 'FPP Running (API Unreachable)';
-            $fppStatus['error_detail'] = "FPP daemon is running but the REST API is not accessible. Check the FPP web interface and network configuration.";
-        } else {
-            $fppStatus['status_text'] = 'FPP Not Running';
-            $fppStatus['error_detail'] = 'FPP daemon does not appear to be running. Start FPP to enable status monitoring.';
-        }
-        
-        $details = array();
-        if ($lastError) {
-            $details[] = 'Error: ' . $lastError;
-        }
-        if (!empty($apiResult['url'])) {
-            $details[] = 'Last URL attempted: ' . $apiResult['url'];
-        } elseif (!empty($apiEndpointUsed)) {
-            $details[] = 'Last endpoint attempted: ' . $apiEndpointUsed;
-        }
-        if (!empty($candidateEndpoints) && count($candidateEndpoints) <= 5) {
-            $details[] = 'Tried endpoints: ' . implode(', ', array_slice($candidateEndpoints, 0, 5));
-        }
-        if (!empty($details)) {
-            $fppStatus['error_detail'] .= ' ' . implode('. ', $details);
-        }
+    }
+    
+    if ($fppdRunning) {
+        $fppStatus['status_text'] = 'FPP Running (MQTT)';
+        $fppStatus['error_detail'] = 'FPP daemon is running. Status updates are received via MQTT.';
+    } else {
+        $fppStatus['status_text'] = 'FPP Not Running';
+        $fppStatus['error_detail'] = 'FPP daemon does not appear to be running. Start FPP to enable control.';
     }
     
     $result['fpp_status'] = $fppStatus;
-    if (!empty($apiEndpointUsed)) {
-        $result['fpp_api_endpoint'] = $apiEndpointUsed;
-    }
-    if (!empty($candidateEndpoints)) {
-        $result['fpp_api_endpoints'] = $candidateEndpoints;
-    }
+    $result['control_method'] = 'MQTT';
     
     // Get configured playlist
     $playlist = '';
@@ -708,69 +619,32 @@ function fppHomekitPairingInfo() {
 // GET /api/plugin/fpp-Homekit/playlists
 function fppHomekitPlaylists() {
     $playlists = array();
-    $apiResult = fppHomekitApiRequest('GET', '/playlists', array('timeout' => 5, 'connect_timeout' => 2));
-    if ($apiResult['success'] && $apiResult['http_code'] == 200 && !empty($apiResult['body'])) {
-        $data = json_decode($apiResult['body'], true);
-        if ($data) {
-            $playlistArray = null;
-            if (isset($data['playlists']) && is_array($data['playlists'])) {
-                $playlistArray = $data['playlists'];
-            } elseif (is_array($data) && isset($data[0])) {
-                $playlistArray = $data;
-            }
-            
-            if ($playlistArray) {
-                foreach ($playlistArray as $playlist) {
-                    if (is_array($playlist) && isset($playlist['name'])) {
-                        $playlists[] = $playlist['name'];
-                    } elseif (is_string($playlist)) {
-                        $playlists[] = $playlist;
-                    } elseif (is_array($playlist)) {
-                        if (isset($playlist['playlist'])) {
-                            $playlists[] = $playlist['playlist'];
-                        } elseif (isset($playlist['PlaylistName'])) {
-                            $playlists[] = $playlist['PlaylistName'];
-                        } elseif (isset($playlist['playlistName'])) {
-                            $playlists[] = $playlist['playlistName'];
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        if (defined('DEBUG') && DEBUG) {
-            $error = $apiResult['error'] ?: ($apiResult['http_code'] ? "HTTP {$apiResult['http_code']}" : 'Unknown error');
-            error_log("FPP API playlists error: " . $error);
-        }
+    
+    // Read playlists directly from filesystem (MQTT-only, no HTTP API)
+    // FPP playlists are stored in /home/fpp/media/playlists as JSON files
+    $playlistDirs = array(
+        '/home/fpp/media/playlists',  // Standard FPP location
+        '/opt/fpp/media/playlists'     // Alternative location
+    );
+    
+    // Add environment variable path if set
+    $fppMediaDir = getenv('FPP_MEDIA_DIR');
+    if ($fppMediaDir) {
+        $playlistDirs[] = $fppMediaDir . '/playlists';
     }
     
-    // Fallback: Read playlists directly from filesystem if API failed
-    // FPP playlists are stored in /home/fpp/media/playlists as JSON files
-    if (empty($playlists)) {
-        $playlistDirs = array(
-            '/home/fpp/media/playlists',  // Standard FPP location
-            '/opt/fpp/media/playlists'     // Alternative location
-        );
-        
-        // Add environment variable path if set
-        $fppMediaDir = getenv('FPP_MEDIA_DIR');
-        if ($fppMediaDir) {
-            $playlistDirs[] = $fppMediaDir . '/playlists';
-        }
-        
-        foreach ($playlistDirs as $playlistDir) {
-            if ($playlistDir && is_dir($playlistDir) && is_readable($playlistDir)) {
-                $files = scandir($playlistDir);
-                foreach ($files as $file) {
-                    if ($file !== '.' && $file !== '..' && pathinfo($file, PATHINFO_EXTENSION) === 'json') {
-                        $playlistName = pathinfo($file, PATHINFO_FILENAME);
-                        if ($playlistName && !in_array($playlistName, $playlists)) {
-                            $playlists[] = $playlistName;
-                        }
+    foreach ($playlistDirs as $playlistDir) {
+        if ($playlistDir && is_dir($playlistDir) && is_readable($playlistDir)) {
+            $files = scandir($playlistDir);
+            foreach ($files as $file) {
+                if ($file !== '.' && $file !== '..' && pathinfo($file, PATHINFO_EXTENSION) === 'json') {
+                    $playlistName = pathinfo($file, PATHINFO_FILENAME);
+                    if ($playlistName && !in_array($playlistName, $playlists)) {
+                        $playlists[] = $playlistName;
                     }
                 }
-                break; // Found a valid directory, no need to check others
             }
+            break; // Found a valid directory, no need to check others
         }
     }
     
