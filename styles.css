@@ -157,24 +157,39 @@
 }
 
 .qr-code {
-    border-radius: 16px;
-    padding: 20px;
-    background: white;
+    border-radius: 18px;
+    padding: 24px;
+    background: #ffffff;
     display: inline-block;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 12px 25px rgba(15, 23, 42, 0.16);
+    border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .setup-code {
-    font-size: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 20px;
+}
+
+.setup-code-label {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-secondary);
+}
+
+.setup-code-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 26px;
     font-weight: 600;
-    margin-top: 16px;
     letter-spacing: 2px;
     font-family: 'SF Mono', Monaco, monospace;
     color: var(--text-primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
 }
 
 .copy-btn {

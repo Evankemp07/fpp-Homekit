@@ -92,16 +92,34 @@ function fppHomekitStatus() {
         if ($pid) {
             // Check if process is running (works on Unix-like systems)
             if (function_exists('posix_kill')) {
-                if (posix_kill($pid, 0)) {
+                if (@posix_kill($pid, 0)) {
                     $running = true;
                 }
-            } else {
-                // Fallback for systems without posix_kill (Windows, some macOS setups)
-                // Try using ps command
+            }
+
+            if (!$running) {
+                // Fallback #1: /proc/<pid>
+                if (file_exists("/proc/{$pid}")) {
+                    $running = true;
+                }
+            }
+
+            if (!$running) {
+                // Fallback #2: kill -0
                 $output = array();
                 $return_var = 0;
-                @exec("ps -p $pid 2>&1", $output, $return_var);
-                if ($return_var === 0 && !empty($output)) {
+                @exec("kill -0 $pid 2>/dev/null", $output, $return_var);
+                if ($return_var === 0) {
+                    $running = true;
+                }
+            }
+
+            if (!$running) {
+                // Fallback #3: ps command (works on macOS/BusyBox)
+                $output = array();
+                $return_var = 0;
+                @exec("ps $pid 2>/dev/null", $output, $return_var);
+                if ($return_var === 0 && count($output) > 1) {
                     $running = true;
                 }
             }
