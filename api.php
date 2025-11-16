@@ -371,6 +371,36 @@ function fppHomekitPlaylists() {
         }
     }
     
+    // Fallback: Read playlists directly from filesystem if API failed
+    // FPP playlists are stored in /home/fpp/media/playlists as JSON files
+    if (empty($playlists)) {
+        $playlistDirs = array(
+            '/home/fpp/media/playlists',  // Standard FPP location
+            '/opt/fpp/media/playlists'     // Alternative location
+        );
+        
+        // Add environment variable path if set
+        $fppMediaDir = getenv('FPP_MEDIA_DIR');
+        if ($fppMediaDir) {
+            $playlistDirs[] = $fppMediaDir . '/playlists';
+        }
+        
+        foreach ($playlistDirs as $playlistDir) {
+            if ($playlistDir && is_dir($playlistDir) && is_readable($playlistDir)) {
+                $files = scandir($playlistDir);
+                foreach ($files as $file) {
+                    if ($file !== '.' && $file !== '..' && pathinfo($file, PATHINFO_EXTENSION) === 'json') {
+                        $playlistName = pathinfo($file, PATHINFO_FILENAME);
+                        if ($playlistName && !in_array($playlistName, $playlists)) {
+                            $playlists[] = $playlistName;
+                        }
+                    }
+                }
+                break; // Found a valid directory, no need to check others
+            }
+        }
+    }
+    
     // Sort playlists alphabetically
     sort($playlists);
     
