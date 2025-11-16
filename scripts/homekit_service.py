@@ -48,6 +48,7 @@ import json
 import time
 import logging
 import threading
+import signal
 
 # Try importing required modules with helpful error messages
 try:
@@ -277,9 +278,17 @@ def main():
         
         # Save setup code and setup ID for QR code generation
         try:
-            setup_code = driver.state.pincode.decode()
-            setup_id = driver.state.setup_id.decode() if hasattr(driver.state, 'setup_id') and driver.state.setup_id else 'HOME'
-            mac = driver.state.mac.decode() if hasattr(driver.state, 'mac') and driver.state.mac else ''
+            def _as_str(value, default=''):
+                if isinstance(value, bytes):
+                    try:
+                        return value.decode()
+                    except Exception:
+                        return value.decode('utf-8', errors='ignore')
+                return value if isinstance(value, str) else default
+
+            setup_code = _as_str(driver.state.pincode, '000-00-000')
+            setup_id = _as_str(getattr(driver.state, 'setup_id', ''), 'HOME')
+            mac = _as_str(getattr(driver.state, 'mac', ''), '')
             
             # Generate QR code if available
             qr_code_data = None
@@ -317,16 +326,22 @@ def main():
         
         # Start the driver
         logger.info("Starting HomeKit service...")
-        signal_handler = driver.signal_handler()
-        driver.start()
-        logger.info("HomeKit service started successfully")
-        
+
         try:
-            signal_handler.wait()
+            signal.signal(signal.SIGTERM, driver.signal_handler)
+            signal.signal(signal.SIGINT, driver.signal_handler)
+            logger.debug("Signal handlers registered.")
+        except Exception as e:
+            logger.warning(f"Unable to register signal handlers: {e}")
+
+        try:
+            logger.info("HomeKit service running. Waiting for HomeKit events.")
+            driver.start()
         except KeyboardInterrupt:
-            logger.info("Stopping HomeKit service...")
+            logger.info("Keyboard interrupt received, stopping HomeKit service...")
         finally:
             driver.stop()
+            logger.info("HomeKit service stopped")
             # Remove PID file
             try:
                 if os.path.exists(PID_FILE):
