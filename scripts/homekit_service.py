@@ -369,7 +369,16 @@ class FPPMQTTClient:
         broker = self.config.get('broker', 'localhost')
         port = self.config.get('port', 1883)
         
+        loop_started = False
         try:
+            # Create new client if needed (for reconnection)
+            if self.client:
+                try:
+                    self.client.loop_stop()
+                except:
+                    pass
+                self.client = None
+            
             self.client = mqtt.Client(client_id=f"fpp-homekit-{os.getpid()}")
             
             if self.config.get('username'):
@@ -384,6 +393,7 @@ class FPPMQTTClient:
             logger.info(f"Attempting to connect to MQTT broker at {broker}:{port}...")
             self.client.connect(broker, port, keepalive=60)
             self.client.loop_start()
+            loop_started = True
             
             # Wait for connection (max 5 seconds)
             for i in range(50):
@@ -393,21 +403,32 @@ class FPPMQTTClient:
                 time.sleep(0.1)
             
             # Connection timeout - stop the loop and clean up
-            self.client.loop_stop()
+            if loop_started:
+                self.client.loop_stop()
             logger.warning(f"MQTT connection timeout after 5 seconds to {broker}:{port}")
             logger.warning("  - Check if MQTT broker is running")
             logger.warning("  - Verify broker address and port in FPP settings")
-            logger.warning("  - Falling back to HTTP API for control commands")
+            logger.warning("  - Service will retry connection automatically")
             return False
             
         except ConnectionRefusedError:
+            if loop_started and self.client:
+                try:
+                    self.client.loop_stop()
+                except:
+                    pass
             logger.error(f"MQTT broker refused connection at {broker}:{port}")
             logger.error("  - Broker may not be running or port is incorrect")
-            logger.error("  - Falling back to HTTP API")
+            logger.error("  - Service will retry connection automatically")
             return False
         except Exception as e:
+            if loop_started and self.client:
+                try:
+                    self.client.loop_stop()
+                except:
+                    pass
             logger.error(f"Failed to connect to MQTT broker at {broker}:{port}: {e}")
-            logger.error("  - Falling back to HTTP API for control commands")
+            logger.error("  - Service will retry connection automatically")
             return False
     
     def _on_connect(self, client, userdata, flags, rc):
@@ -502,13 +523,17 @@ class FPPLightAccessory(Accessory):
         
         # Initialize MQTT client (required, no HTTP fallback)
         if not MQTT_AVAILABLE:
+            logger.error("MQTT support required but paho-mqtt not installed. Install with: pip install paho-mqtt")
             raise RuntimeError("MQTT support required but paho-mqtt not installed. Install with: pip install paho-mqtt")
         
         mqtt_config = get_mqtt_config()
         self.mqtt_client = FPPMQTTClient(mqtt_config)
         
-        if not self.mqtt_client.connect():
-            raise RuntimeError("Failed to connect to MQTT broker. Check FPP MQTT settings and ensure broker is running.")
+        # Try to connect to MQTT (will retry in background thread if fails)
+        mqtt_connected = self.mqtt_client.connect()
+        if not mqtt_connected:
+            logger.warning("Initial MQTT connection failed, will retry in background thread")
+            logger.warning("Service will start but control commands may not work until MQTT connects")
         
         # Add Light service with On characteristic
         service = self.add_preload_service('Lightbulb')
@@ -518,14 +543,17 @@ class FPPLightAccessory(Accessory):
         self.is_on = False
         self.fpp_status_polling = True
         
-        # Subscribe to FPP status updates via MQTT
-        self.subscribe_to_status()
+        # Subscribe to FPP status updates via MQTT (if connected)
+        if mqtt_connected:
+            self.subscribe_to_status()
+        else:
+            logger.warning("MQTT not connected, status subscriptions will be set up when connection is established")
         
-        # Start status polling thread (will use MQTT subscriptions)
+        # Start status polling thread (will use MQTT subscriptions and handle reconnections)
         self.poll_thread = threading.Thread(target=self.poll_fpp_status_mqtt, daemon=True)
         self.poll_thread.start()
         
-        logger.info(f"FPP-Controller Accessory initialized with playlist: {self.playlist_name} (MQTT only)")
+        logger.info(f"FPP-Controller Accessory initialized with playlist: {self.playlist_name} (MQTT only, connected={mqtt_connected})")
     
     def load_config(self):
         """Load configuration from JSON file"""
@@ -606,6 +634,11 @@ class FPPLightAccessory(Accessory):
             logger.warning("No playlist configured")
             return
         
+        if not self.mqtt_client.connected:
+            logger.error(f"Cannot start playlist: MQTT not connected. Playlist: {self.playlist_name}")
+            logger.error("Check MQTT broker is running and FPP MQTT settings are correct")
+            return
+        
         logger.info(f"Starting playlist via MQTT: {self.playlist_name}")
         success = self.mqtt_client.publish_command(f"StartPlaylist/{self.playlist_name}")
         if not success:
@@ -613,6 +646,11 @@ class FPPLightAccessory(Accessory):
     
     def stop_playlist(self):
         """Stop FPP playback via MQTT"""
+        if not self.mqtt_client.connected:
+            logger.error("Cannot stop playback: MQTT not connected")
+            logger.error("Check MQTT broker is running and FPP MQTT settings are correct")
+            return
+        
         logger.info("Stopping playback via MQTT")
         success = self.mqtt_client.publish_command("Stop")
         if not success:
@@ -620,19 +658,38 @@ class FPPLightAccessory(Accessory):
     
     def poll_fpp_status_mqtt(self):
         """Keep MQTT connection alive and handle reconnections"""
+        subscriptions_setup = False
+        
         while self.fpp_status_polling:
             try:
                 # MQTT client loop handles messages automatically
-                # Just check connection status periodically
+                # Check connection status periodically and set up subscriptions if needed
                 if not self.mqtt_client.connected:
-                    logger.warning("MQTT disconnected, attempting reconnect...")
-                    if self.mqtt_client.connect():
-                        logger.info("MQTT reconnected successfully")
-                        self.subscribe_to_status()
+                    if subscriptions_setup:
+                        logger.warning("MQTT disconnected, attempting reconnect...")
                     else:
-                        logger.error("MQTT reconnection failed")
+                        logger.info("MQTT not connected, attempting initial connection...")
+                    
+                    if self.mqtt_client.connect():
+                        logger.info("MQTT connected successfully")
+                        if not subscriptions_setup:
+                            self.subscribe_to_status()
+                            subscriptions_setup = True
+                            logger.info("MQTT status subscriptions set up")
+                    else:
+                        if subscriptions_setup:
+                            logger.error("MQTT reconnection failed, will retry...")
+                        else:
+                            logger.warning("MQTT initial connection failed, will retry in 10 seconds...")
+                        time.sleep(10)  # Wait longer before retry if not connected
+                        continue
+                elif not subscriptions_setup:
+                    # Connected but subscriptions not set up yet
+                    self.subscribe_to_status()
+                    subscriptions_setup = True
+                    logger.info("MQTT status subscriptions set up")
                 
-                time.sleep(5)  # Check connection every 5 seconds
+                time.sleep(5)  # Check connection every 5 seconds when connected
             except Exception as e:
                 logger.error(f"Error in MQTT status polling: {e}")
                 time.sleep(5)
