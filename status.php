@@ -130,8 +130,6 @@ if (file_exists($cssPath)) {
     let playlistsLoaded = false;
     let currentPlaylist = '';
     let qrLoaded = false;
-    let currentSetupCode = '';
-    let currentSetupId = '';
     let autoStartAttempted = false;
     
     const playlistSelect = document.getElementById('playlist-select');
@@ -570,10 +568,6 @@ if (file_exists($cssPath)) {
             .then(data => {
                 debugLog('Pairing info response', data);
                 const setupCode = data.setup_code || '123-45-678';
-                const setupId = data.setup_id || 'HOME';
-                
-                currentSetupCode = setupCode;
-                currentSetupId = setupId;
                 
                 document.getElementById('setup-code-text').textContent = setupCode;
                 
