@@ -1,13 +1,32 @@
 #!/bin/bash
 
-# fpp-plugin-Template install script
+# fpp-Homekit install script
 
 # Include common scripts functions and variables
 . ${FPPDIR}/scripts/common
 
-# Add required Apache CSP (Content-Security-Policy allowed domains
-# Possible Keys are: 'default-src', 'connect-src', 'img-src', 'script-src', 'style-src', 'object-src'
-# Examples: 
-# ${FPPDIR}/scripts/ManageApacheContentPolicy.sh add connect-src https://domaintotrust.co.uk
-# ${FPPDIR}/scripts/ManageApacheContentPolicy.sh add img-src https://anotherdomain.com
+# Install Python dependencies
+PLUGIN_DIR="${MEDIADIR}/plugins/fpp-Homekit"
+REQUIREMENTS_FILE="${PLUGIN_DIR}/scripts/requirements.txt"
+
+if [ -f "${REQUIREMENTS_FILE}" ]; then
+    echo "Installing Python dependencies for HomeKit plugin..."
+    pip3 install -r "${REQUIREMENTS_FILE}" --user
+    if [ $? -ne 0 ]; then
+        echo "Warning: Failed to install some Python dependencies. You may need to install them manually."
+    fi
+else
+    echo "Warning: requirements.txt not found at ${REQUIREMENTS_FILE}"
+fi
+
+# Create data directory for storing pairing information
+DATA_DIR="${PLUGIN_DIR}/scripts"
+mkdir -p "${DATA_DIR}"
+
+# Make homekit_service.py executable
+if [ -f "${PLUGIN_DIR}/scripts/homekit_service.py" ]; then
+    chmod +x "${PLUGIN_DIR}/scripts/homekit_service.py"
+fi
+
+echo "FPP HomeKit plugin installation complete."
 
