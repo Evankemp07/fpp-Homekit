@@ -7,6 +7,7 @@
 
 PLUGIN_DIR="${MEDIADIR}/plugins/fpp-Homekit"
 REQUIREMENTS_FILE="${PLUGIN_DIR}/scripts/requirements.txt"
+INSTALL_LOG="${PLUGIN_DIR}/scripts/install.log"
 
 echo "=========================================="
 echo "FPP HomeKit Plugin Installation"
@@ -31,11 +32,11 @@ if [ -f /etc/debian_version ]; then
         echo "These should be installed via pluginInfo.json dependencies, but if installation fails,"
         echo "you may need to run: sudo apt-get update && sudo apt-get install $MISSING_PACKAGES"
     else
-        echo "All required system packages are installed."
+        echo "✓ All required system packages are installed"
     fi
 fi
 
-# Find python3
+# Find python3 (must match the one used at runtime)
 PYTHON3=""
 if command -v python3 >/dev/null 2>&1; then
     PYTHON3="python3"
@@ -55,13 +56,15 @@ fi
 
 echo "Found Python: $PYTHON3"
 $PYTHON3 --version
+PYTHON_PATH=$($PYTHON3 -c "import sys; print(sys.executable)" 2>/dev/null)
+echo "Python executable: $PYTHON_PATH"
 
 # Find pip3 (prefer pip3 associated with python3)
 PIP3=""
-if command -v pip3 >/dev/null 2>&1; then
-    PIP3="pip3"
-elif $PYTHON3 -m pip --version >/dev/null 2>&1; then
+if $PYTHON3 -m pip --version >/dev/null 2>&1; then
     PIP3="$PYTHON3 -m pip"
+elif command -v pip3 >/dev/null 2>&1; then
+    PIP3="pip3"
 elif command -v pip >/dev/null 2>&1; then
     PIP3="pip"
 fi
@@ -76,18 +79,18 @@ fi
 echo "Found pip: $PIP3"
 $PIP3 --version
 
+# Create log file for detailed error output
+echo "Installation log: ${INSTALL_LOG}" > "${INSTALL_LOG}"
+echo "Started: $(date)" >> "${INSTALL_LOG}"
+echo "Python: $PYTHON3 ($PYTHON_PATH)" >> "${INSTALL_LOG}"
+echo "Pip: $PIP3" >> "${INSTALL_LOG}"
+
 # Install Python dependencies
 if [ -f "${REQUIREMENTS_FILE}" ]; then
     echo ""
     echo "Installing Python dependencies from requirements.txt..."
     echo "This may take a few minutes..."
-    
-    # Create log file for detailed error output
-    INSTALL_LOG="${PLUGIN_DIR}/scripts/install.log"
-    echo "Installation log: ${INSTALL_LOG}" > "${INSTALL_LOG}"
-    echo "Started: $(date)" >> "${INSTALL_LOG}"
-    echo "Using pip: $PIP3" >> "${INSTALL_LOG}"
-    echo "Python version: $($PYTHON3 --version 2>&1)" >> "${INSTALL_LOG}"
+    echo "Detailed log: ${INSTALL_LOG}"
     
     INSTALL_SUCCESS=0
     
@@ -124,56 +127,67 @@ if [ -f "${REQUIREMENTS_FILE}" ]; then
             echo "Or ensure all system dependencies are installed first:"
             echo "  sudo apt-get update"
             echo "  sudo apt-get install python3 python3-pip python3-dev libffi-dev libssl-dev build-essential libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev"
-            INSTALL_SUCCESS=0
+            exit 1
         fi
     fi
     
-    # Verify critical dependencies are installed
+    # Verify critical dependencies are installed using the EXACT Python that will run the service
     echo ""
-    echo "Verifying installed dependencies..."
+    echo "Verifying installed dependencies with $PYTHON3..."
     MISSING_DEPS=0
     
-    if ! $PYTHON3 -c "import pyhap" 2>/dev/null; then
-        echo "  ✗ HAP-python not found"
+    # Get Python's site-packages path to verify installation location
+    PYTHON_SITE=$($PYTHON3 -c "import site; print('\\n'.join(site.getsitepackages() + [site.getusersitepackages()]))" 2>/dev/null)
+    echo "Python site-packages locations:" | tee -a "${INSTALL_LOG}"
+    echo "$PYTHON_SITE" | tee -a "${INSTALL_LOG}"
+    
+    if ! $PYTHON3 -c "import pyhap" 2>>"${INSTALL_LOG}"; then
+        echo "  ✗ HAP-python (pyhap) not found" | tee -a "${INSTALL_LOG}"
         MISSING_DEPS=1
+        # Try to find where it might be installed
+        echo "  Searching for pyhap installation..." | tee -a "${INSTALL_LOG}"
+        $PYTHON3 -c "import sys; print('\\n'.join(sys.path))" 2>>"${INSTALL_LOG}" | tee -a "${INSTALL_LOG}"
     else
-        echo "  ✓ HAP-python installed"
+        echo "  ✓ HAP-python installed" | tee -a "${INSTALL_LOG}"
+        # Show version
+        $PYTHON3 -c "import pyhap; print('  HAP-python version:', getattr(pyhap, '__version__', 'unknown'))" 2>/dev/null | tee -a "${INSTALL_LOG}"
     fi
     
-    if ! $PYTHON3 -c "import requests" 2>/dev/null; then
-        echo "  ✗ requests not found"
+    if ! $PYTHON3 -c "import requests" 2>>"${INSTALL_LOG}"; then
+        echo "  ✗ requests not found" | tee -a "${INSTALL_LOG}"
         MISSING_DEPS=1
     else
-        echo "  ✓ requests installed"
+        echo "  ✓ requests installed" | tee -a "${INSTALL_LOG}"
     fi
     
-    if ! $PYTHON3 -c "import qrcode" 2>/dev/null; then
-        echo "  ✗ qrcode not found"
+    if ! $PYTHON3 -c "import qrcode" 2>>"${INSTALL_LOG}"; then
+        echo "  ✗ qrcode not found" | tee -a "${INSTALL_LOG}"
         MISSING_DEPS=1
     else
-        echo "  ✓ qrcode installed"
+        echo "  ✓ qrcode installed" | tee -a "${INSTALL_LOG}"
     fi
     
-    if ! $PYTHON3 -c "from PIL import Image" 2>/dev/null; then
-        echo "  ✗ Pillow not found"
+    # Also verify PIL/Pillow (needed for qrcode[pil])
+    if ! $PYTHON3 -c "from PIL import Image" 2>>"${INSTALL_LOG}"; then
+        echo "  ✗ PIL/Pillow not found (needed for QR code generation)" | tee -a "${INSTALL_LOG}"
         MISSING_DEPS=1
     else
-        echo "  ✓ Pillow installed"
+        echo "  ✓ PIL/Pillow installed" | tee -a "${INSTALL_LOG}"
     fi
     
     if [ $MISSING_DEPS -eq 1 ]; then
         echo ""
-        echo "WARNING: Some dependencies are missing. The plugin may not work correctly."
-        echo "Try installing manually:"
+        echo "ERROR: Some dependencies are missing. The plugin will not work correctly." | tee -a "${INSTALL_LOG}"
+        echo ""
+        echo "Try installing manually with the exact Python that will run the service:"
         echo "  $PIP3 install -r ${REQUIREMENTS_FILE}"
-        echo "Check ${INSTALL_LOG} for detailed installation errors."
+        echo ""
+        echo "Or check the installation log for details:"
+        echo "  cat ${INSTALL_LOG}"
+        exit 1
     else
         echo ""
-        echo "✓ All Python dependencies verified successfully"
-    fi
-    
-    if [ $INSTALL_SUCCESS -eq 0 ]; then
-        echo "Warning: Failed to install some Python dependencies. Check ${INSTALL_LOG} for details."
+        echo "✓ All Python dependencies verified successfully" | tee -a "${INSTALL_LOG}"
     fi
 else
     echo "ERROR: requirements.txt not found at ${REQUIREMENTS_FILE}"
@@ -189,6 +203,14 @@ echo "✓ Created data directory: ${DATA_DIR}"
 if [ -f "${PLUGIN_DIR}/scripts/homekit_service.py" ]; then
     chmod +x "${PLUGIN_DIR}/scripts/homekit_service.py"
     echo "✓ Made homekit_service.py executable"
+    
+    # Verify the shebang line uses the correct Python
+    SHEBANG=$(head -1 "${PLUGIN_DIR}/scripts/homekit_service.py")
+    if [[ "$SHEBANG" == *"python3"* ]] || [[ "$SHEBANG" == *"python"* ]]; then
+        echo "✓ Service script shebang verified: $SHEBANG"
+    else
+        echo "Warning: Service script may not have correct shebang"
+    fi
 else
     echo "WARNING: homekit_service.py not found at ${PLUGIN_DIR}/scripts/homekit_service.py"
 fi
@@ -196,7 +218,7 @@ fi
 # Check if avahi-daemon is running
 if command -v systemctl >/dev/null 2>&1; then
     if systemctl is-active --quiet avahi-daemon; then
-        echo "✓ avahi-daemon is running."
+        echo "✓ avahi-daemon is running"
     else
         echo "WARNING: avahi-daemon is not running. HomeKit discovery may not work."
         echo "Start it with: sudo systemctl start avahi-daemon"
@@ -205,4 +227,14 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 echo ""
-echo "FPP HomeKit plugin installation complete."
+echo "=========================================="
+echo "FPP HomeKit plugin installation complete!"
+echo "=========================================="
+echo ""
+echo "Next steps:"
+echo "1. Go to the plugin Configuration page to select a playlist"
+echo "2. Go to the plugin Status page to view the QR code"
+echo "3. Pair with HomeKit using the Home app on your iOS device"
+echo ""
+echo "Installation log saved to: ${INSTALL_LOG}"
+echo ""

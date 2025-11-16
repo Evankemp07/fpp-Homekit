@@ -6,14 +6,90 @@ Exposes FPP as a HomeKit Light accessory using HAP-python
 
 import os
 import sys
+import site
+
+# Ensure user-installed packages are available
+# This is important when packages are installed with --user flag
+site.ENABLE_USER_SITE = True
+
+# Add user site-packages to path using the proper method
+try:
+    user_site = site.getusersitepackages()
+    if user_site and os.path.exists(user_site):
+        site.addsitedir(user_site)
+except Exception:
+    pass
+
+# Also ensure system site-packages are available
+try:
+    for site_dir in site.getsitepackages():
+        if os.path.exists(site_dir):
+            site.addsitedir(site_dir)
+except Exception:
+    pass
+
+# Force reload site to pick up new paths
+import importlib
+if 'site' in sys.modules:
+    importlib.reload(site)
+
 import json
 import time
 import logging
 import threading
-import requests
-from pyhap.accessory import Accessory, Bridge
-from pyhap.accessory_driver import AccessoryDriver
-from pyhap.const import CATEGORY_LIGHTBULB
+
+# Try importing required modules with helpful error messages
+try:
+    import requests
+except ImportError as e:
+    print(f"ERROR: Failed to import requests: {e}", file=sys.stderr)
+    print(f"Python executable: {sys.executable}", file=sys.stderr)
+    print(f"Python path: {sys.path}", file=sys.stderr)
+    print(f"User site-packages: {site.getusersitepackages()}", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    from pyhap.accessory import Accessory, Bridge
+    from pyhap.accessory_driver import AccessoryDriver
+    from pyhap.const import CATEGORY_LIGHTBULB
+except ImportError as e:
+    print(f"ERROR: Failed to import pyhap (HAP-python): {e}", file=sys.stderr)
+    print(f"Python executable: {sys.executable}", file=sys.stderr)
+    print(f"Python version: {sys.version}", file=sys.stderr)
+    print(f"Python path ({len(sys.path)} entries):", file=sys.stderr)
+    for i, path in enumerate(sys.path[:10]):  # Show first 10 paths
+        print(f"  [{i}] {path}", file=sys.stderr)
+    if len(sys.path) > 10:
+        print(f"  ... and {len(sys.path) - 10} more", file=sys.stderr)
+    
+    try:
+        user_site = site.getusersitepackages()
+        print(f"User site-packages: {user_site}", file=sys.stderr)
+        if user_site and os.path.exists(user_site):
+            print(f"  (exists: {os.path.exists(user_site)})", file=sys.stderr)
+            # Check if pyhap is actually there
+            pyhap_path = os.path.join(user_site, 'pyhap')
+            if os.path.exists(pyhap_path):
+                print(f"  WARNING: pyhap directory found at {pyhap_path} but Python can't import it!", file=sys.stderr)
+        else:
+            print(f"  (does not exist)", file=sys.stderr)
+    except Exception as site_err:
+        print(f"Could not determine user site-packages: {site_err}", file=sys.stderr)
+    
+    print("", file=sys.stderr)
+    print("To fix this, install HAP-python from https://github.com/ikalchev/HAP-python:", file=sys.stderr)
+    print(f"  {sys.executable} -m pip install 'HAP-python[QRCode]>=4.0.0' --user", file=sys.stderr)
+    print("Or system-wide:", file=sys.stderr)
+    print(f"  sudo {sys.executable} -m pip install 'HAP-python[QRCode]>=4.0.0'", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("Also ensure all dependencies are installed:", file=sys.stderr)
+    req_file = os.path.join(os.path.dirname(__file__), 'requirements.txt')
+    print(f"  {sys.executable} -m pip install -r {req_file} --user", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("After installing, verify with:", file=sys.stderr)
+    print(f"  {sys.executable} -c 'import site; site.ENABLE_USER_SITE = True; import pyhap; print(\"Success!\")'", file=sys.stderr)
+    sys.exit(1)
+
 try:
     from pyhap import qr
     QR_AVAILABLE = True

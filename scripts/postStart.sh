@@ -7,7 +7,7 @@ SERVICE_SCRIPT="${PLUGIN_DIR}/scripts/homekit_service.py"
 PID_FILE="${PLUGIN_DIR}/scripts/homekit_service.pid"
 LOG_FILE="${PLUGIN_DIR}/scripts/homekit_service.log"
 
-# Find python3
+# Find python3 (must match the one used during installation)
 PYTHON3=""
 if command -v python3 >/dev/null 2>&1; then
     PYTHON3="python3"
@@ -23,6 +23,39 @@ if [ -z "$PYTHON3" ]; then
     echo "Error: python3 not found. Please install Python 3.6 or newer."
     exit 1
 fi
+
+# Verify Python can import required modules before starting
+echo "Verifying Python dependencies..."
+PYTHON_EXEC=$($PYTHON3 -c 'import sys; print(sys.executable)' 2>/dev/null)
+echo "Using Python: $PYTHON_EXEC"
+
+# Test import with user site-packages enabled
+if ! $PYTHON3 -c "import site; site.ENABLE_USER_SITE = True; import pyhap" 2>/dev/null; then
+    echo "ERROR: pyhap module not found. The plugin dependencies may not be installed correctly."
+    echo ""
+    echo "Python executable: $PYTHON_EXEC"
+    echo "Python version: $($PYTHON3 --version 2>&1)"
+    echo ""
+    echo "Python search path:"
+    $PYTHON3 -c "import sys, site; site.ENABLE_USER_SITE = True; print('\\n'.join(sys.path))" 2>/dev/null || \
+    $PYTHON3 -c "import sys; print('\\n'.join(sys.path))"
+    echo ""
+    echo "User site-packages:"
+    $PYTHON3 -c "import site; print(site.getusersitepackages())" 2>/dev/null || echo "Could not determine"
+    echo ""
+    echo "To fix this, try:"
+    echo "  1. Reinstall plugin dependencies:"
+    echo "     $PYTHON3 -m pip install -r ${PLUGIN_DIR}/scripts/requirements.txt --user --upgrade"
+    echo ""
+    echo "  2. Or install system-wide (may require sudo):"
+    echo "     sudo $PYTHON3 -m pip install -r ${PLUGIN_DIR}/scripts/requirements.txt --upgrade"
+    echo ""
+    echo "  3. Verify installation:"
+    echo "     $PYTHON3 -c 'import pyhap; print(\"HAP-python version:\", pyhap.__version__)'"
+    exit 1
+fi
+
+echo "✓ Python dependencies verified successfully"
 
 if [ ! -f "${SERVICE_SCRIPT}" ]; then
     echo "HomeKit service script not found: ${SERVICE_SCRIPT}"

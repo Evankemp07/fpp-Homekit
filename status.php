@@ -125,6 +125,7 @@ if (file_exists($cssPath)) {
 (function() {
     const API_BASE = '/api/plugin/<?php echo $plugin; ?>';
     let refreshInterval = null;
+    let isUpdating = false;
     
     // Debug logging
     function debugLog(message, data = null) {
@@ -227,6 +228,13 @@ if (file_exists($cssPath)) {
     
     // Load status
     function loadStatus() {
+        // Prevent concurrent updates
+        if (isUpdating) {
+            debugLog('Update already in progress, skipping...');
+            return;
+        }
+        
+        isUpdating = true;
         debugLog('Loading status...');
         fetch(API_BASE + '/status')
             .then(response => {
@@ -238,10 +246,29 @@ if (file_exists($cssPath)) {
             .then(data => {
                 debugLog('Status response', data);
                 updateStatusDisplay(data);
+                // Clear any error messages on successful update
+                const messageContainer = document.getElementById('message-container');
+                if (messageContainer) {
+                    const errorMessages = messageContainer.querySelectorAll('.message.error');
+                    errorMessages.forEach(msg => {
+                        if (msg.textContent.includes('Error loading status')) {
+                            msg.remove();
+                        }
+                    });
+                }
+                isUpdating = false;
             })
             .catch(error => {
                 debugLog('Error loading status', { error: error.message });
-                showMessage('Error loading status: ' + error.message, 'error');
+                // Only show error message if it's not already showing
+                const messageContainer = document.getElementById('message-container');
+                const existingError = messageContainer && 
+                    Array.from(messageContainer.querySelectorAll('.message.error'))
+                        .some(msg => msg.textContent.includes('Error loading status'));
+                if (!existingError) {
+                    showMessage('Error loading status: ' + error.message, 'error');
+                }
+                isUpdating = false;
             });
     }
     
@@ -425,10 +452,32 @@ if (file_exists($cssPath)) {
     
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
+        // Load initial status
         loadStatus();
         
         // Auto-refresh every 30 seconds
-        refreshInterval = setInterval(loadStatus, 30000);
+        // Clear any existing interval first
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+        }
+        refreshInterval = setInterval(function() {
+            loadStatus();
+        }, 30000);
+        
+        // Also refresh when page becomes visible (user switches back to tab)
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                loadStatus();
+            }
+        });
+    });
+    
+    // Clean up interval on page unload
+    window.addEventListener('beforeunload', function() {
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+            refreshInterval = null;
+        }
     });
 })();
 </script>
