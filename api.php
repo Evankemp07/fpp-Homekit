@@ -113,36 +113,60 @@ function fppHomekitBuildApiEndpoints() {
         return $cached;
     }
     
+    $pluginDir = dirname(__FILE__);
+    $apiConfigFile = $pluginDir . '/scripts/fpp_api_config.json';
+    
     $hosts = array();
+    $ports = array();
+    
+    // First priority: Read from detected API config file (created by install script)
+    if (file_exists($apiConfigFile)) {
+        $apiConfig = @json_decode(file_get_contents($apiConfigFile), true);
+        if ($apiConfig && isset($apiConfig['host']) && isset($apiConfig['port'])) {
+            $hosts[] = $apiConfig['host'];
+            $ports[] = (int)$apiConfig['port'];
+        }
+    }
+    
+    // Second priority: Environment variables
     $envHost = getenv('FPP_API_HOST');
-    if (!empty($envHost)) {
+    if (!empty($envHost) && !in_array($envHost, $hosts)) {
         $hosts[] = $envHost;
     }
-    $hosts[] = 'localhost';
-    $hosts[] = '127.0.0.1';
-    $hosts = array_values(array_unique(array_filter($hosts)));
     
-    $ports = array();
     $envPort = getenv('FPP_API_PORT');
     if (!empty($envPort) && is_numeric($envPort)) {
-        $ports[] = (int)$envPort;
+        $port = (int)$envPort;
+        if (!in_array($port, $ports)) {
+            $ports[] = $port;
+        }
     }
+    
+    // Third priority: Read from FPP settings files
     foreach (fppHomekitSettingsCandidates() as $path) {
         $port = fppHomekitReadHttpPort($path);
-        if ($port > 0) {
+        if ($port > 0 && !in_array($port, $ports)) {
             $ports[] = $port;
         }
     }
+    
+    // Add default hosts if none found
+    if (empty($hosts)) {
+        $hosts[] = 'localhost';
+        $hosts[] = '127.0.0.1';
+    }
+    
+    // Add common fallback ports if none found
+    if (empty($ports)) {
+        $ports[] = 32320; // Default FPP port
+        $ports[] = 80;
+        $ports[] = 8080;
+    }
+    
+    $hosts = array_values(array_unique(array_filter($hosts)));
     $ports = array_values(array_unique(array_filter($ports)));
     
-    // Add common fallback ports (HTTP then FPP REST)
-    $fallbackPorts = array(80, 8080, 32320);
-    foreach ($fallbackPorts as $port) {
-        if (!in_array($port, $ports, true)) {
-            $ports[] = $port;
-        }
-    }
-    
+    // Prioritize detected port (first in array)
     $endpoints = array();
     foreach ($hosts as $host) {
         foreach ($ports as $port) {
@@ -175,17 +199,26 @@ function fppHomekitApiRequest($method, $path, $options = array()) {
     $lastHttpCode = 0;
     $lastEndpoint = '';
     $lastResponse = '';
+    $lastUrl = '';
     
     foreach (fppHomekitBuildApiEndpoints() as $endpoint) {
         $url = rtrim($endpoint, '/') . $path;
         $lastEndpoint = $endpoint;
+        $lastUrl = $url;
         
         $ch = curl_init($url);
+        if ($ch === false) {
+            $lastError = 'Failed to initialize curl for ' . $url;
+            continue;
+        }
+        
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $connectTimeout);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
         
         if (!empty($headers)) {
             curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
@@ -198,17 +231,18 @@ function fppHomekitApiRequest($method, $path, $options = array()) {
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
+        $errno = curl_errno($ch);
         curl_close($ch);
         
-        if ($error) {
-            $lastError = $error;
+        if ($errno !== 0 || $error) {
+            $lastError = $error ?: 'Curl error ' . $errno . ' for ' . $url;
             continue;
         }
         
         $lastResponse = $response;
         $lastHttpCode = $httpCode;
         
-        if ($httpCode >= 200 && $httpCode < 300 && $response !== false) {
+        if ($httpCode >= 200 && $httpCode < 300 && $response !== false && $response !== '') {
             return array(
                 'success' => true,
                 'endpoint' => $endpoint,
@@ -221,6 +255,7 @@ function fppHomekitApiRequest($method, $path, $options = array()) {
     return array(
         'success' => false,
         'endpoint' => $lastEndpoint,
+        'url' => $lastUrl,
         'http_code' => $lastHttpCode,
         'body' => $lastResponse,
         'error' => $lastError
@@ -308,6 +343,8 @@ function fppHomekitStatus() {
     $apiEndpointUsed = '';
     
     $candidateEndpoints = fppHomekitBuildApiEndpoints();
+    
+    // Try a simple connectivity test first - check if we can reach any FPP endpoint
     $apiResult = fppHomekitApiRequest('GET', '/status', array('timeout' => 3, 'connect_timeout' => 2));
     if ($apiResult['success'] && $apiResult['http_code'] == 200 && !empty($apiResult['body'])) {
         $statusData = json_decode($apiResult['body'], true);
@@ -397,15 +434,16 @@ function fppHomekitStatus() {
         if ($lastError) {
             $details[] = 'Error: ' . $lastError;
         }
-        if (!empty($apiEndpointUsed)) {
+        if (!empty($apiResult['url'])) {
+            $details[] = 'Last URL attempted: ' . $apiResult['url'];
+        } elseif (!empty($apiEndpointUsed)) {
             $details[] = 'Last endpoint attempted: ' . $apiEndpointUsed;
         }
-        if (!empty($candidateEndpoints)) {
-            $details[] = 'Endpoint candidates: ' . implode(', ', $candidateEndpoints);
-            $details[] = 'Set FPP_API_HOST / FPP_API_PORT environment variables if FPP is reachable via a different host or port.';
+        if (!empty($candidateEndpoints) && count($candidateEndpoints) <= 5) {
+            $details[] = 'Tried endpoints: ' . implode(', ', array_slice($candidateEndpoints, 0, 5));
         }
         if (!empty($details)) {
-            $fppStatus['error_detail'] .= ' ' . implode(' ', $details);
+            $fppStatus['error_detail'] .= ' ' . implode('. ', $details);
         }
     }
     

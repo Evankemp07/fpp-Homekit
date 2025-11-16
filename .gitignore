@@ -6,6 +6,7 @@ scripts/homekit_service.pid
 scripts/install.log
 scripts/.start_attempt
 scripts/restart.log
+scripts/fpp_api_config.json
 
 # Python cache
 __pycache__/

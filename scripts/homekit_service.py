@@ -172,29 +172,50 @@ def _candidate_settings_paths() -> List[str]:
 def build_fpp_api_endpoints() -> List[str]:
     """Create a ordered list of candidate FPP API base URLs."""
     hosts = []
-    env_host = os.environ.get('FPP_API_HOST')
-    if env_host:
-        hosts.append(env_host)
-    hosts.extend(['localhost', '127.0.0.1'])
-    hosts = list(dict.fromkeys([h for h in hosts if h]))
-
     ports = []
+    
+    # First priority: Read from detected API config file (created by install script)
+    plugin_dir = os.path.dirname(os.path.abspath(__file__))
+    api_config_file = os.path.join(plugin_dir, 'fpp_api_config.json')
+    if os.path.exists(api_config_file):
+        try:
+            with open(api_config_file, 'r') as f:
+                api_config = json.load(f)
+                if api_config.get('host'):
+                    hosts.append(api_config['host'])
+                if api_config.get('port'):
+                    ports.append(int(api_config['port']))
+                    logger.info("Using detected FPP API: %s:%s", api_config.get('host', 'localhost'), api_config.get('port'))
+        except Exception as e:
+            logger.warning("Failed to read API config file %s: %s", api_config_file, e)
+    
+    # Second priority: Environment variables
+    env_host = os.environ.get('FPP_API_HOST')
+    if env_host and env_host not in hosts:
+        hosts.append(env_host)
+    
     env_port = os.environ.get('FPP_API_PORT')
     if env_port:
         try:
             port_val = int(env_port)
-            if port_val > 0:
+            if port_val > 0 and port_val not in ports:
                 ports.append(port_val)
         except ValueError:
             logger.debug("Ignoring invalid FPP_API_PORT value: %s", env_port)
-
+    
+    # Third priority: Read from FPP settings files
     for path in _candidate_settings_paths():
         port_from_file = _read_http_port_from_settings(path)
-        if port_from_file > 0:
+        if port_from_file > 0 and port_from_file not in ports:
             ports.append(port_from_file)
-
-    # Default ports (most common first)
-    ports.extend([80, 8080, 32320])
+    
+    # Add default hosts if none found
+    if not hosts:
+        hosts.extend(['localhost', '127.0.0.1'])
+    
+    # Add default ports if none found
+    if not ports:
+        ports.extend([32320, 80, 8080])  # Default FPP port first
 
     # Deduplicate positive values while preserving order
     seen_ports = set()
