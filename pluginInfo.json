@@ -12,11 +12,10 @@
 			"minFPPVersion": "9.0",
 			"maxFPPVersion": "0",
 			"branch": "master",
-			"sha": "c39e74fe07edfd4899d6ecdc534bd5b256268429",
+			"sha": "bf1b03e0b28ef4fb6ad16e4c3cee26f16ed9e75d",
 			"dependencies": {
-			    "plugins": [
-			    ],
-			    "packages": [
+				"plugins": [],
+				"packages": [
 					"python3",
 					"python3-pip",
 					"python3-dev",
@@ -30,8 +29,7 @@
 					"libfreetype6-dev",
 					"liblcms2-dev"
 				],
-				"scripts": [
-				]
+				"scripts": []
 			}
 		}
 	]
