@@ -294,6 +294,8 @@ if (file_exists($cssPath)) {
         let statusText = fppStatus.status_text || fppStatus.status_name || 'Unknown';
         const statusName = (fppStatus.status_name || 'unknown').toLowerCase();
         const errorDetail = fppStatus.error_detail || '';
+        const currentPlaylist = fppStatus.current_playlist || '';
+        const currentSequence = fppStatus.current_sequence || '';
         
         // Determine status indicator class based on status
         let statusClass = 'stopped';
@@ -307,11 +309,24 @@ if (file_exists($cssPath)) {
             statusClass = 'stopped';
         }
         
-        // Add error detail as tooltip or additional info
-        let statusHtml = '<span class="status-indicator ' + statusClass + '"></span>' + escapeHtml(statusText);
-        if (errorDetail && (statusText.includes('Not Running') || statusText.includes('Unavailable') || statusText.includes('Unreachable'))) {
-            statusHtml += '<br><small style="color: var(--text-secondary); font-size: 12px; margin-left: 16px;">' + escapeHtml(errorDetail) + '</small>';
+        // Build status display with better formatting
+        let statusHtml = '<span class="status-indicator ' + statusClass + '"></span><div style="flex: 1; min-width: 0;">';
+        
+        if (playing) {
+            statusHtml += '<strong>Playing</strong>';
+            if (currentPlaylist) {
+                statusHtml += '<div style="color: var(--text-secondary); font-size: 13px; margin-top: 4px;">Playlist: ' + escapeHtml(currentPlaylist) + '</div>';
+            }
+            if (currentSequence) {
+                statusHtml += '<div style="color: var(--text-secondary); font-size: 13px; margin-top: 2px;">Sequence: ' + escapeHtml(currentSequence) + '</div>';
+            }
+        } else {
+            statusHtml += escapeHtml(statusText);
+            if (errorDetail) {
+                statusHtml += '<div style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; line-height: 1.4;">' + escapeHtml(errorDetail) + '</div>';
+            }
         }
+        statusHtml += '</div>';
         
         const fppStatusEl = document.getElementById('fpp-status');
         fppStatusEl.innerHTML = statusHtml;
@@ -410,12 +425,21 @@ if (file_exists($cssPath)) {
         })
         .then(data => {
             debugLog('Restart response', data);
-            showMessage('Service restart initiated. Please wait a few seconds...', 'info');
+            if (data.started) {
+                showMessage('Service restarted successfully', 'success');
+            } else {
+                showMessage(data.message || 'Service restart initiated. Please wait a few seconds...', 'info');
+            }
+            // Refresh status after a short delay
+            setTimeout(() => {
+                loadStatus();
+            }, 2000);
+            // Refresh again after longer delay to ensure status is updated
             setTimeout(() => {
                 loadStatus();
                 btn.disabled = false;
                 btn.textContent = 'Restart Service';
-            }, 3000);
+            }, 5000);
         })
         .catch(error => {
             debugLog('Error restarting service', { error: error.message });

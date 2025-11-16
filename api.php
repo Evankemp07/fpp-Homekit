@@ -396,9 +396,39 @@ function fppHomekitRestart() {
     
     // Start service using postStart.sh script for consistency
     if (file_exists($startScript)) {
-        $cmd = "bash " . escapeshellarg($startScript) . " 2>&1";
-        $output = shell_exec($cmd);
-        $result = array('status' => 'restarted', 'output' => $output);
+        // Use nohup and background execution to ensure it runs
+        $cmd = "cd " . escapeshellarg($pluginDir . '/scripts') . " && nohup bash " . escapeshellarg($startScript) . " >> " . escapeshellarg($pluginDir . '/scripts/restart.log') . " 2>&1 &";
+        shell_exec($cmd);
+        
+        // Wait a moment for service to start
+        sleep(3);
+        
+        // Check if service started successfully
+        $started = false;
+        if (file_exists($pidFile)) {
+            $newPid = trim(file_get_contents($pidFile));
+            if ($newPid) {
+                // Check if process is running
+                if (function_exists('posix_kill')) {
+                    if (posix_kill($newPid, 0)) {
+                        $started = true;
+                    }
+                } else {
+                    $output = array();
+                    $return_var = 0;
+                    @exec("ps -p $newPid 2>&1", $output, $return_var);
+                    if ($return_var === 0 && !empty($output)) {
+                        $started = true;
+                    }
+                }
+            }
+        }
+        
+        $result = array(
+            'status' => $started ? 'restarted' : 'restart_initiated',
+            'started' => $started,
+            'message' => $started ? 'Service restarted successfully' : 'Restart initiated, checking status...'
+        );
     } elseif (file_exists($script)) {
         // Fallback: start directly
         $python3 = trim(shell_exec("which python3 2>/dev/null"));
