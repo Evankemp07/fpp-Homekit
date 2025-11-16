@@ -129,7 +129,11 @@ if [ $FIRST_INSTALL -eq 0 ]; then
     echo "Step 7: Updating plugin SHA..."
     PLUGIN_INFO_FILE="${PLUGIN_DIR}/pluginInfo.json"
     
-    # Get current git SHA if this is a git repository
+    CURRENT_SHA=""
+    CURRENT_BRANCH="master"
+    
+    # Try multiple methods to get the SHA
+    # Method 1: If this is a git repository, get SHA from git
     if [ -d "${PLUGIN_DIR}/.git" ] && command -v git >/dev/null 2>&1; then
         cd "${PLUGIN_DIR}" || exit 1
         
@@ -153,46 +157,109 @@ if [ $FIRST_INSTALL -eq 0 ]; then
         else
             echo "Using local HEAD SHA: ${CURRENT_SHA}" | tee -a "${INSTALL_LOG}"
         fi
-        
-        if [ -n "${CURRENT_SHA}" ] && [ -f "${PLUGIN_INFO_FILE}" ]; then
-            # Update SHA in pluginInfo.json using Python (more reliable than sed for JSON)
-            if command -v python3 >/dev/null 2>&1; then
-                python3 << EOF
+    fi
+    
+    # Method 2: If no git repo, try to get SHA from FPP's plugin update mechanism
+    # FPP stores the remote SHA somewhere - check if we can find it
+    if [ -z "${CURRENT_SHA}" ]; then
+        # Check if FPP has stored the remote SHA somewhere
+        # FPP might pass it as an environment variable or store it
+        if [ -n "${FPP_PLUGIN_SHA}" ]; then
+            CURRENT_SHA="${FPP_PLUGIN_SHA}"
+            echo "Using SHA from FPP environment: ${CURRENT_SHA}" | tee -a "${INSTALL_LOG}"
+        fi
+    fi
+    
+    # Method 3: Try to get SHA from the srcURL by querying GitHub API
+    if [ -z "${CURRENT_SHA}" ] && [ -f "${PLUGIN_INFO_FILE}" ] && command -v curl >/dev/null 2>&1; then
+        # Extract repo info from pluginInfo.json
+        SRC_URL=$(grep -o '"srcURL":\s*"[^"]*"' "${PLUGIN_INFO_FILE}" | cut -d'"' -f4)
+        if [ -n "${SRC_URL}" ]; then
+            # Convert git URL to API URL (e.g., https://github.com/user/repo.git -> https://api.github.com/repos/user/repo/commits/master)
+            if echo "${SRC_URL}" | grep -q "github.com"; then
+                REPO_PATH=$(echo "${SRC_URL}" | sed 's/.*github.com[:/]\([^.]*\)\.git/\1/' | sed 's/.*github.com\/\([^.]*\)\.git/\1/')
+                BRANCH_NAME=$(grep -o '"branch":\s*"[^"]*"' "${PLUGIN_INFO_FILE}" | cut -d'"' -f4 || echo "master")
+                API_URL="https://api.github.com/repos/${REPO_PATH}/commits/${BRANCH_NAME}"
+                
+                echo "Attempting to fetch SHA from GitHub API: ${API_URL}" | tee -a "${INSTALL_LOG}"
+                SHA_RESPONSE=$(curl -s "${API_URL}" 2>/dev/null)
+                if [ $? -eq 0 ] && [ -n "${SHA_RESPONSE}" ]; then
+                    API_SHA=$(echo "${SHA_RESPONSE}" | grep -o '"sha":\s*"[^"]*"' | head -1 | cut -d'"' -f4)
+                    if [ -n "${API_SHA}" ]; then
+                        CURRENT_SHA="${API_SHA}"
+                        CURRENT_BRANCH="${BRANCH_NAME}"
+                        echo "Got SHA from GitHub API: ${CURRENT_SHA}" | tee -a "${INSTALL_LOG}"
+                    fi
+                fi
+            fi
+        fi
+    fi
+    
+    if [ -n "${CURRENT_SHA}" ] && [ -f "${PLUGIN_INFO_FILE}" ]; then
+        # Update SHA in pluginInfo.json using Python (more reliable than sed for JSON)
+        if command -v python3 >/dev/null 2>&1; then
+            python3 << EOF
 import json
 import sys
+import os
 
 try:
     plugin_info_file = '${PLUGIN_INFO_FILE}'
     current_sha = '${CURRENT_SHA}'
     current_branch = '${CURRENT_BRANCH}'
     
+    # Verify file exists
+    if not os.path.exists(plugin_info_file):
+        print(f"Error: pluginInfo.json not found at {plugin_info_file}")
+        sys.exit(1)
+    
+    # Read existing file
     with open(plugin_info_file, 'r') as f:
         data = json.load(f)
     
     # Update SHA in first version entry
     if 'versions' in data and len(data['versions']) > 0:
+        old_sha = data['versions'][0].get('sha', '')
         data['versions'][0]['sha'] = current_sha
         if current_branch and current_branch.strip():
             data['versions'][0]['branch'] = current_branch
-    
-    with open(plugin_info_file, 'w') as f:
-        json.dump(data, f, indent='\t')
-    
-    print(f"✓ Updated plugin SHA to {current_sha}")
-    sys.exit(0)
+        
+        # Write back to file
+        with open(plugin_info_file, 'w') as f:
+            json.dump(data, f, indent='\t')
+        
+        if old_sha != current_sha:
+            print(f"✓ Updated plugin SHA from {old_sha[:8] if old_sha else 'empty'} to {current_sha[:8]}")
+        else:
+            print(f"✓ Plugin SHA already up to date: {current_sha[:8]}")
+        sys.exit(0)
+    else:
+        print("Warning: No versions array found in pluginInfo.json")
+        sys.exit(1)
 except Exception as e:
-    print(f"Warning: Could not update plugin SHA: {e}")
-    sys.exit(0)
+    import traceback
+    print(f"Error: Could not update plugin SHA: {e}")
+    traceback.print_exc()
+    sys.exit(1)
 EOF
+            SHA_UPDATE_RESULT=$?
+            if [ $SHA_UPDATE_RESULT -eq 0 ]; then
                 echo "Plugin SHA updated successfully" >> "${INSTALL_LOG}"
             else
-                echo "Warning: python3 not available, cannot update SHA automatically" | tee -a "${INSTALL_LOG}"
+                echo "ERROR: Failed to update plugin SHA (exit code: $SHA_UPDATE_RESULT)" | tee -a "${INSTALL_LOG}"
             fi
         else
-            echo "Warning: Could not determine git SHA or pluginInfo.json not found" | tee -a "${INSTALL_LOG}"
+            echo "Warning: python3 not available, cannot update SHA automatically" | tee -a "${INSTALL_LOG}"
         fi
     else
-        echo "Note: Plugin directory is not a git repository or git not available" | tee -a "${INSTALL_LOG}"
+        echo "Warning: Could not determine git SHA or pluginInfo.json not found" | tee -a "${INSTALL_LOG}"
+        echo "  CURRENT_SHA: ${CURRENT_SHA}" | tee -a "${INSTALL_LOG}"
+        echo "  PLUGIN_INFO_FILE: ${PLUGIN_INFO_FILE}" | tee -a "${INSTALL_LOG}"
+        if [ -f "${PLUGIN_INFO_FILE}" ]; then
+            echo "  File exists: YES" | tee -a "${INSTALL_LOG}"
+        else
+            echo "  File exists: NO" | tee -a "${INSTALL_LOG}"
+        fi
     fi
     
     # Restart service if it was running
