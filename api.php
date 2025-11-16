@@ -307,6 +307,7 @@ function fppHomekitStatus() {
     $lastError = '';
     $apiEndpointUsed = '';
     
+    $candidateEndpoints = fppHomekitBuildApiEndpoints();
     $apiResult = fppHomekitApiRequest('GET', '/status', array('timeout' => 3, 'connect_timeout' => 2));
     if ($apiResult['success'] && $apiResult['http_code'] == 200 && !empty($apiResult['body'])) {
         $statusData = json_decode($apiResult['body'], true);
@@ -392,14 +393,28 @@ function fppHomekitStatus() {
             $fppStatus['error_detail'] = 'FPP daemon does not appear to be running. Start FPP to enable status monitoring.';
         }
         
+        $details = array();
         if ($lastError) {
-            $fppStatus['error_detail'] .= ' Error: ' . $lastError;
+            $details[] = 'Error: ' . $lastError;
+        }
+        if (!empty($apiEndpointUsed)) {
+            $details[] = 'Last endpoint attempted: ' . $apiEndpointUsed;
+        }
+        if (!empty($candidateEndpoints)) {
+            $details[] = 'Endpoint candidates: ' . implode(', ', $candidateEndpoints);
+            $details[] = 'Set FPP_API_HOST / FPP_API_PORT environment variables if FPP is reachable via a different host or port.';
+        }
+        if (!empty($details)) {
+            $fppStatus['error_detail'] .= ' ' . implode(' ', $details);
         }
     }
     
     $result['fpp_status'] = $fppStatus;
     if (!empty($apiEndpointUsed)) {
         $result['fpp_api_endpoint'] = $apiEndpointUsed;
+    }
+    if (!empty($candidateEndpoints)) {
+        $result['fpp_api_endpoints'] = $candidateEndpoints;
     }
     
     // Get configured playlist

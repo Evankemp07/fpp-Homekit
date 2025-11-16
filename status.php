@@ -60,7 +60,7 @@ if (file_exists($cssPath)) {
                 </div>
             </div>
             
-            <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap;">
+            <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap;">
                 <button class="homekit-button" onclick="restartService()" id="restart-btn">Restart Service</button>
             </div>
         </div>
