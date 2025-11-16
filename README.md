@@ -10,25 +10,6 @@ Integrates Falcon Pixel Player with Apple HomeKit, allowing you to control FPP p
 - Configuration page to select which playlist to start
 - Apple-style UI with dark mode support
 
-## Development
-
-### Running the Development Server
-
-To test the plugin locally without FPP:
-
-```bash
-./dev-start.sh
-```
-
-Or manually:
-```bash
-php -S localhost:8000 dev-server.php
-```
-
-Then open http://localhost:8000 in your browser.
-
-See [DEV.md](DEV.md) for more development details.
-
 ## Installation
 
 1. Install the plugin through FPP's plugin manager
