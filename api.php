@@ -1038,16 +1038,21 @@ password = sys.argv[5] if len(sys.argv) > 5 and sys.argv[5] != 'None' and sys.ar
 connected = False
 test_result = {"success": False, "error": ""}
 
-def on_connect(client, userdata, flags, rc):
+# Callbacks that work with both API v1 and v2
+def on_connect(client, userdata, flags, rc, *args, **kwargs):
     global connected
-    if rc == 0:
+    # In API v2, rc is reason_code; in v1, it's rc
+    reason_code = rc if isinstance(rc, int) else getattr(rc, 'value', 0)
+    if reason_code == 0:
         connected = True
         test_result["success"] = True
         test_result["message"] = f"Connected to MQTT broker at {broker}:{port}"
     else:
-        test_result["error"] = f"Connection failed with code {rc}"
+        test_result["error"] = f"Connection failed with code {reason_code}"
 
-def on_disconnect(client, userdata, rc):
+def on_disconnect(client, userdata, *args, **kwargs):
+    # API v1: (client, userdata, rc)
+    # API v2: (client, userdata, disconnect_flags, reason_code, properties)
     pass
 
 try:
