@@ -83,8 +83,22 @@ function fppHomekitStatus() {
     $running = false;
     if (file_exists($pidFile)) {
         $pid = trim(file_get_contents($pidFile));
-        if ($pid && posix_kill($pid, 0)) {
-            $running = true;
+        if ($pid) {
+            // Check if process is running (works on Unix-like systems)
+            if (function_exists('posix_kill')) {
+                if (posix_kill($pid, 0)) {
+                    $running = true;
+                }
+            } else {
+                // Fallback for systems without posix_kill (Windows, some macOS setups)
+                // Try using ps command
+                $output = array();
+                $return_var = 0;
+                @exec("ps -p $pid 2>&1", $output, $return_var);
+                if ($return_var === 0 && !empty($output)) {
+                    $running = true;
+                }
+            }
         }
     }
     $result['service_running'] = $running;

@@ -61,7 +61,7 @@ class FPPLightAccessory(Accessory):
         self.poll_thread = threading.Thread(target=self.poll_fpp_status, daemon=True)
         self.poll_thread.start()
         
-        logger.info(f"FPP Light Accessory initialized with playlist: {self.playlist_name}")
+        logger.info(f"FPP-Controller Accessory initialized with playlist: {self.playlist_name}")
     
     def load_config(self):
         """Load configuration from JSON file"""
@@ -172,8 +172,8 @@ class FPPLightAccessory(Accessory):
         super().stop()
 
 def get_accessory(driver):
-    """Create and return the FPP Light accessory"""
-    return FPPLightAccessory(driver, 'FPP Light')
+    """Create and return the FPP Controller accessory"""
+    return FPPLightAccessory(driver, 'FPP-Controller')
 
 def main():
     """Main entry point"""

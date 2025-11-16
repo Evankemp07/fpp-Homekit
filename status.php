@@ -55,61 +55,62 @@ if (file_exists($cssPath)) {
                 <button class="homekit-button secondary" onclick="refreshStatus()" id="refresh-btn">Refresh</button>
             </div>
         </div>
-    </div>
-    
-    <div class="homekit-card" id="pairing-card" style="display: none;">
-        <h3>Pair with HomeKit</h3>
-        <p class="info-text">To pair this accessory with HomeKit:</p>
-        <ol class="info-list">
-            <li>Open the Home app on your iPhone or iPad</li>
-            <li>Tap the "+" button to add an accessory</li>
-            <li>Scan the QR code below, or enter the setup code manually</li>
-        </ol>
         
-        <div class="qr-container">
-            <div id="qr-loading" style="display: none;">
-                <p class="info-text">Generating QR code...</p>
-            </div>
-            <div id="qr-content" style="display: none;">
-                <div class="qr-code">
-                    <img id="qr-image" alt="HomeKit QR Code" style="max-width: 280px; display: block;" />
+        <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-color);">
+            <h3>Pair with HomeKit</h3>
+            <div id="pairing-section">
+                <p class="info-text">To pair this accessory with HomeKit:</p>
+                <ol class="info-list">
+                    <li>Open the Home app on your iPhone or iPad</li>
+                    <li>Tap the "+" button to add an accessory</li>
+                    <li>Scan the QR code below, or enter the setup code manually</li>
+                </ol>
+                
+                <div class="qr-container">
+                    <div id="qr-loading" style="display: none;">
+                        <p class="info-text">Generating QR code...</p>
+                    </div>
+                    <div id="qr-content" style="display: none;">
+                        <div class="qr-code">
+                            <img id="qr-image" alt="HomeKit QR Code" style="max-width: 280px; display: block;" />
+                        </div>
+                        <div class="setup-code">
+                            <span id="setup-code-text"></span>
+                            <button class="copy-btn" onclick="copySetupCode()" title="Copy Setup Code" id="copy-btn">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M5.5 2.5H11.5C12.0523 2.5 12.5 2.94772 12.5 3.5V9.5C12.5 10.0523 12.0523 10.5 11.5 10.5H9.5V12.5C9.5 13.0523 9.05228 13.5 8.5 13.5H2.5C1.94772 13.5 1.5 13.0523 1.5 12.5V6.5C1.5 5.94772 1.94772 5.5 2.5 5.5H4.5V3.5C4.5 2.94772 4.94772 2.5 5.5 2.5Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M4.5 5.5H8.5C9.05228 5.5 9.5 5.94772 9.5 6.5V10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="qr-error" style="display: none;">
+                        <p style="color: var(--error-color);">Service is not running. Please start the service to generate QR code.</p>
+                    </div>
                 </div>
-                <div class="setup-code">
-                    <span id="setup-code-text"></span>
-                    <button class="copy-btn" onclick="copySetupCode()" title="Copy Setup Code" id="copy-btn">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M5.5 2.5H11.5C12.0523 2.5 12.5 2.94772 12.5 3.5V9.5C12.5 10.0523 12.0523 10.5 11.5 10.5H9.5V12.5C9.5 13.0523 9.05228 13.5 8.5 13.5H2.5C1.94772 13.5 1.5 13.0523 1.5 12.5V6.5C1.5 5.94772 1.94772 5.5 2.5 5.5H4.5V3.5C4.5 2.94772 4.94772 2.5 5.5 2.5Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                            <path d="M4.5 5.5H8.5C9.05228 5.5 9.5 5.94772 9.5 6.5V10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
-                </div>
             </div>
-            <div id="qr-error" style="display: none;">
-                <p style="color: var(--error-color);">Service is not running. Please start the service to generate QR code.</p>
+            
+            <div id="paired-section" style="display: none;">
+                <p class="success-message">✓ Successfully paired with HomeKit</p>
+                <p class="info-text">You can now control FPP from the Home app on your iOS devices.</p>
             </div>
         </div>
-    </div>
-    
-    <div class="homekit-card" id="paired-card" style="display: none;">
-        <h3>Pairing Status</h3>
-        <p class="success-message">✓ Successfully paired with HomeKit</p>
-        <p class="info-text">You can now control FPP from the Home app on your iOS devices.</p>
-    </div>
-    
-    <div class="homekit-card">
-        <h3>Information</h3>
-        <p class="info-text"><strong>Accessory Name:</strong> FPP Light</p>
-        <p class="info-text"><strong>Accessory Type:</strong> Light</p>
-        <p class="info-text"><strong>Control:</strong> Turning the light ON will start the configured playlist. Turning it OFF will stop playback.</p>
-    </div>
-    
-    <div class="homekit-card debug-container">
-        <h4 class="debug-header" onclick="toggleDebug()">
-            <span class="debug-toggle-icon" id="debug-toggle-icon">▼</span>
-            Debug Messages
-        </h4>
-        <div class="debug-messages" id="debug-messages">
-            <div>No debug messages yet...</div>
+        
+        <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-color);">
+            <h3>Information</h3>
+            <p class="info-text"><strong>Accessory Name:</strong> FPP-Controller</p>
+            <p class="info-text"><strong>Accessory Type:</strong> Light</p>
+            <p class="info-text"><strong>Control:</strong> Turning the light ON will start the configured playlist. Turning it OFF will stop playback.</p>
+        </div>
+        
+        <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-color);">
+            <h4 class="debug-header" onclick="toggleDebug()" style="margin: 0 0 16px 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-weight: 600;">
+                <span class="debug-toggle-icon" id="debug-toggle-icon" style="display: inline-block; transition: transform 0.2s; transform: rotate(-90deg);">▼</span>
+                Debug Messages
+            </h4>
+            <div class="debug-messages" id="debug-messages" style="display: none; color: var(--text-secondary); line-height: 1.6; max-height: 300px; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace; font-size: 12px;">
+                <div>No debug messages yet...</div>
+            </div>
         </div>
     </div>
 </div>
@@ -153,13 +154,19 @@ if (file_exists($cssPath)) {
         const toggleIcon = document.getElementById('debug-toggle-icon');
         if (!debugMessages || !toggleIcon) return;
         
-        const isOpen = debugMessages.classList.contains('open');
-        if (isOpen) {
-            debugMessages.classList.remove('open');
-            toggleIcon.classList.remove('open');
-        } else {
+        const isHidden = debugMessages.style.display === 'none' || 
+                        (debugMessages.style.display === '' && !debugMessages.classList.contains('open'));
+        
+        if (isHidden) {
+            debugMessages.style.display = 'block';
             debugMessages.classList.add('open');
+            toggleIcon.style.transform = 'rotate(0deg)';
             toggleIcon.classList.add('open');
+        } else {
+            debugMessages.style.display = 'none';
+            debugMessages.classList.remove('open');
+            toggleIcon.style.transform = 'rotate(-90deg)';
+            toggleIcon.classList.remove('open');
         }
     };
     
@@ -216,7 +223,12 @@ if (file_exists($cssPath)) {
     function loadStatus() {
         debugLog('Loading status...');
         fetch(API_BASE + '/status')
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
             .then(data => {
                 debugLog('Status response', data);
                 updateStatusDisplay(data);
@@ -259,16 +271,16 @@ if (file_exists($cssPath)) {
             playlistEl.innerHTML = '<span style="color: var(--warning-color);">Not configured - <a href="plugin.php?plugin=<?php echo $plugin; ?>&page=content.php" class="link">Configure now</a></span>';
         }
         
-        // Show/hide pairing card
-        const pairingCard = document.getElementById('pairing-card');
-        const pairedCard = document.getElementById('paired-card');
+        // Show/hide pairing sections
+        const pairingSection = document.getElementById('pairing-section');
+        const pairedSection = document.getElementById('paired-section');
         
         if (paired) {
-            pairingCard.style.display = 'none';
-            pairedCard.style.display = 'block';
+            pairingSection.style.display = 'none';
+            pairedSection.style.display = 'block';
         } else {
-            pairingCard.style.display = 'block';
-            pairedCard.style.display = 'none';
+            pairingSection.style.display = 'block';
+            pairedSection.style.display = 'none';
             
             if (serviceRunning) {
                 loadQRCode();
@@ -287,7 +299,12 @@ if (file_exists($cssPath)) {
         document.getElementById('qr-error').style.display = 'none';
         
         fetch(API_BASE + '/pairing-info')
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
             .then(data => {
                 debugLog('Pairing info response', data);
                 const setupCode = data.setup_code || '123-45-678';
@@ -326,7 +343,12 @@ if (file_exists($cssPath)) {
         fetch(API_BASE + '/restart', {
             method: 'POST'
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+            return response.json();
+        })
         .then(data => {
             debugLog('Restart response', data);
             showMessage('Service restart initiated. Please wait a few seconds...', 'info');
