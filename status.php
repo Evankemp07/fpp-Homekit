@@ -843,7 +843,7 @@ if (file_exists($cssPath)) {
                     let errorMsg = data.error || 'Unknown error';
                     // Add helpful guidance for common errors
                     if (errorMsg.includes('Connection refused') && errorMsg.includes('localhost')) {
-                        errorMsg += '. Make sure you\'ve entered the correct MQTT broker IP/hostname (not "localhost" unless broker is on this machine) and clicked "Save MQTT".';
+                        errorMsg += '. The MQTT broker (mosquitto) is not running or not listening on this port. On FPP, run: sudo systemctl status mosquitto to check, or sudo systemctl start mosquitto to start it.';
                     } else if (errorMsg.includes('Connection refused')) {
                         errorMsg += '. Check that: 1) MQTT broker is running, 2) Broker IP/hostname is correct, 3) Port matches your broker configuration, 4) Firewall allows connections.';
                     }
