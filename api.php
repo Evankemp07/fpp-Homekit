@@ -311,24 +311,68 @@ function fppHomekitPlaylists() {
     try {
         $ch = curl_init('http://localhost:32320/api/playlists');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
         curl_close($ch);
         
         if ($httpCode == 200 && $response) {
             $data = json_decode($response, true);
-            if ($data && isset($data['playlists'])) {
-                foreach ($data['playlists'] as $playlist) {
-                    if (isset($playlist['name'])) {
-                        $playlists[] = $playlist['name'];
+            
+            if ($data) {
+                // Handle different FPP API response formats
+                $playlistArray = null;
+                
+                // Format 1: {"playlists": [...]}
+                if (isset($data['playlists']) && is_array($data['playlists'])) {
+                    $playlistArray = $data['playlists'];
+                }
+                // Format 2: Direct array response
+                elseif (is_array($data) && isset($data[0])) {
+                    $playlistArray = $data;
+                }
+                
+                if ($playlistArray) {
+                    foreach ($playlistArray as $playlist) {
+                        // Handle object format: {"name": "PlaylistName"}
+                        if (is_array($playlist) && isset($playlist['name'])) {
+                            $playlists[] = $playlist['name'];
+                        }
+                        // Handle string format: "PlaylistName"
+                        elseif (is_string($playlist)) {
+                            $playlists[] = $playlist;
+                        }
+                        // Handle object with different key: {"playlist": "PlaylistName"} or {"PlaylistName": {...}}
+                        elseif (is_array($playlist)) {
+                            // Try common keys
+                            if (isset($playlist['playlist'])) {
+                                $playlists[] = $playlist['playlist'];
+                            } elseif (isset($playlist['PlaylistName'])) {
+                                $playlists[] = $playlist['PlaylistName'];
+                            } elseif (isset($playlist['playlistName'])) {
+                                $playlists[] = $playlist['playlistName'];
+                            }
+                        }
                     }
                 }
             }
+        } else {
+            // Log error for debugging (only in dev mode)
+            if (defined('DEBUG') && DEBUG) {
+                error_log("FPP API Error: HTTP $httpCode" . ($curlError ? " - $curlError" : ""));
+            }
         }
     } catch (Exception $e) {
-        // Ignore errors
+        // Log error for debugging (only in dev mode)
+        if (defined('DEBUG') && DEBUG) {
+            error_log("FPP API Exception: " . $e->getMessage());
+        }
     }
+    
+    // Sort playlists alphabetically
+    sort($playlists);
     
     $result = array('playlists' => $playlists);
     return json($result);
