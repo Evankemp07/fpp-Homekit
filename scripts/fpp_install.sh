@@ -153,4 +153,3 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 echo "FPP HomeKit plugin installation complete."
-
