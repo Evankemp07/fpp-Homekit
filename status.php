@@ -696,12 +696,19 @@ if (file_exists($cssPath)) {
             })
             .then(data => {
                 if (data.mqtt) {
-                    if (data.mqtt.broker) {
+                    if (data.mqtt.broker && data.mqtt.broker !== 'localhost') {
                         mqttBrokerInput.value = data.mqtt.broker;
+                    } else if (data.mqtt.broker === 'localhost') {
+                        // Keep localhost but add a note
+                        mqttBrokerInput.value = data.mqtt.broker;
+                        mqttBrokerInput.placeholder = 'localhost (check FPP MQTT settings)';
                     }
                     if (data.mqtt.port) {
                         mqttPortInput.value = data.mqtt.port;
                     }
+                } else {
+                    // No MQTT config found - show placeholder hint
+                    mqttBrokerInput.placeholder = 'Enter broker IP/hostname';
                 }
             })
             .catch(error => {
@@ -792,7 +799,14 @@ if (file_exists($cssPath)) {
                 if (data.success) {
                     showMessage('✓ ' + (data.message || 'MQTT connection successful!'), 'success');
                 } else {
-                    showMessage('✗ MQTT test failed: ' + (data.error || 'Unknown error'), 'error');
+                    let errorMsg = data.error || 'Unknown error';
+                    // Add helpful guidance for common errors
+                    if (errorMsg.includes('Connection refused') && errorMsg.includes('localhost')) {
+                        errorMsg += '. Make sure you\'ve entered the correct MQTT broker IP/hostname (not "localhost" unless broker is on this machine) and clicked "Save MQTT".';
+                    } else if (errorMsg.includes('Connection refused')) {
+                        errorMsg += '. Check that: 1) MQTT broker is running, 2) Broker IP/hostname is correct, 3) Port matches your broker configuration, 4) Firewall allows connections.';
+                    }
+                    showMessage('✗ MQTT test failed: ' + errorMsg, 'error');
                 }
             })
             .catch(error => {
