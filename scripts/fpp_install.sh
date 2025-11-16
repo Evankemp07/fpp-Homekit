@@ -123,6 +123,41 @@ if command -v systemctl >/dev/null 2>&1; then
     fi
 fi
 
+# Check and start mosquitto for MQTT
+echo ""
+echo "Step 6a: Checking MQTT broker (mosquitto)..."
+if command -v systemctl >/dev/null 2>&1; then
+    if systemctl is-active --quiet mosquitto 2>/dev/null; then
+        echo "✓ mosquitto is running"
+    else
+        echo "mosquitto is not running, attempting to start it..."
+        # Try to start mosquitto (may require sudo, but plugin manager usually runs with privileges)
+        if systemctl start mosquitto 2>/dev/null; then
+            echo "✓ Started mosquitto"
+            # Enable it to start on boot
+            systemctl enable mosquitto 2>/dev/null || true
+        elif sudo systemctl start mosquitto 2>/dev/null; then
+            echo "✓ Started mosquitto (with sudo)"
+            sudo systemctl enable mosquitto 2>/dev/null || true
+        else
+            echo "WARNING: Could not start mosquitto. MQTT control will not work."
+            echo "You may need to manually run: sudo systemctl start mosquitto"
+            echo "Or check if mosquitto is installed: sudo apt-get install mosquitto"
+        fi
+    fi
+    
+    # Verify it's listening on the expected port
+    if command -v netstat >/dev/null 2>&1; then
+        if netstat -tuln 2>/dev/null | grep -q ":1883 "; then
+            echo "✓ mosquitto listening on port 1883"
+        fi
+    elif command -v ss >/dev/null 2>&1; then
+        if ss -tuln 2>/dev/null | grep -q ":1883 "; then
+            echo "✓ mosquitto listening on port 1883"
+        fi
+    fi
+fi
+
 # Update pluginInfo.json SHA after update (so FPP knows plugin is up to date)
 if [ $FIRST_INSTALL -eq 0 ]; then
     echo ""

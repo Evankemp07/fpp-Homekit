@@ -24,6 +24,20 @@ if [ -z "$PYTHON3" ]; then
     exit 1
 fi
 
+# Check if mosquitto is running, try to start it if not
+if command -v systemctl >/dev/null 2>&1; then
+    if ! systemctl is-active --quiet mosquitto 2>/dev/null; then
+        echo "mosquitto not running, attempting to start it..."
+        if systemctl start mosquitto 2>/dev/null || sudo systemctl start mosquitto 2>/dev/null; then
+            echo "✓ Started mosquitto"
+            sleep 1
+        else
+            echo "WARNING: Could not start mosquitto. MQTT control may not work."
+            echo "Run: sudo systemctl start mosquitto"
+        fi
+    fi
+fi
+
 # Verify Python can import required modules before starting
 echo "Verifying Python dependencies..."
 PYTHON_EXEC=$($PYTHON3 -c 'import sys; print(sys.executable)' 2>/dev/null)
