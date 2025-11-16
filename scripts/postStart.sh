@@ -7,7 +7,7 @@ SERVICE_SCRIPT="${PLUGIN_DIR}/scripts/homekit_service.py"
 PID_FILE="${PLUGIN_DIR}/scripts/homekit_service.pid"
 LOG_FILE="${PLUGIN_DIR}/scripts/homekit_service.log"
 
-# Find python3
+# Find python3 (must match the one used during installation)
 PYTHON3=""
 if command -v python3 >/dev/null 2>&1; then
     PYTHON3="python3"
@@ -23,6 +23,21 @@ if [ -z "$PYTHON3" ]; then
     echo "Error: python3 not found. Please install Python 3.6 or newer."
     exit 1
 fi
+
+# Verify Python can import required modules before starting
+echo "Verifying Python dependencies..."
+if ! $PYTHON3 -c "import pyhap" 2>/dev/null; then
+    echo "ERROR: pyhap module not found. The plugin dependencies may not be installed correctly."
+    echo "Python executable: $($PYTHON3 -c 'import sys; print(sys.executable)')"
+    echo "Python path:"
+    $PYTHON3 -c "import sys; print('\\n'.join(sys.path))"
+    echo ""
+    echo "Try reinstalling the plugin or manually install dependencies:"
+    echo "  pip3 install -r ${PLUGIN_DIR}/scripts/requirements.txt"
+    exit 1
+fi
+
+echo "Python dependencies verified successfully"
 
 if [ ! -f "${SERVICE_SCRIPT}" ]; then
     echo "HomeKit service script not found: ${SERVICE_SCRIPT}"
