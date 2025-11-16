@@ -1,15 +1,15 @@
 #!/bin/bash
 
 # Install Python dependencies for fpp-Homekit plugin
-# This script is called from fpp_install.sh
+# Simplified workflow that always uses python -m pip
 
 PLUGIN_DIR="${1}"
 PYTHON3="${2}"
-PIP3="${3}"
+PIP_CMD="$PYTHON3 -m pip"
 REQUIREMENTS_FILE="${PLUGIN_DIR}/scripts/requirements.txt"
 INSTALL_LOG="${PLUGIN_DIR}/scripts/install.log"
 
-if [ -z "$PLUGIN_DIR" ] || [ -z "$PYTHON3" ] || [ -z "$PIP3" ]; then
+if [ -z "$PLUGIN_DIR" ] || [ -z "$PYTHON3" ]; then
     echo "ERROR: Missing required parameters for install_python_deps.sh"
     exit 1
 fi
@@ -20,98 +20,88 @@ if [ ! -f "${REQUIREMENTS_FILE}" ]; then
 fi
 
 echo ""
-echo "Installing Python dependencies from requirements.txt..."
+echo "Installing Python dependencies from requirements.txt using python -m pip..."
 echo "This may take a few minutes..."
 echo "Detailed log: ${INSTALL_LOG}"
 
+echo "Using pip command: $PIP_CMD" | tee -a "${INSTALL_LOG}"
+$PIP_CMD --version >> "${INSTALL_LOG}" 2>&1 || true
+
+# Best-effort pip upgrade so we have modern flags (ignore failures)
+echo "Upgrading pip (best effort)..." | tee -a "${INSTALL_LOG}"
+if ! $PIP_CMD install --upgrade pip --break-system-packages >> "${INSTALL_LOG}" 2>&1; then
+    $PIP_CMD install --upgrade pip >> "${INSTALL_LOG}" 2>&1 || \
+        echo "Warning: Could not upgrade pip, continuing..." | tee -a "${INSTALL_LOG}"
+fi
+
+install_with() {
+    # Split the incoming string of extra args into an array (if provided)
+    local args=()
+    if [ -n "$1" ]; then
+        # shellcheck disable=SC2206
+        args=($1)
+    fi
+
+    if $PYTHON3 -m pip install -r "${REQUIREMENTS_FILE}" "${args[@]}" >> "${INSTALL_LOG}" 2>&1; then
+        echo "✓ Dependencies installed (${1:-default flags})" | tee -a "${INSTALL_LOG}"
+        return 0
+    fi
+
+    return 1
+}
+
 INSTALL_SUCCESS=0
 
-# Upgrade pip first to ensure it can handle the requirements
-echo "Upgrading pip..." | tee -a "${INSTALL_LOG}"
-$PIP3 install --upgrade pip --user >> "${INSTALL_LOG}" 2>&1 || \
-$PIP3 install --upgrade pip >> "${INSTALL_LOG}" 2>&1 || \
-echo "Warning: Could not upgrade pip, continuing anyway..." | tee -a "${INSTALL_LOG}"
-
-# Try with --user first (recommended, doesn't require root)
-echo "Attempting installation with --user flag..." | tee -a "${INSTALL_LOG}"
-if $PIP3 install -r "${REQUIREMENTS_FILE}" --user --upgrade >> "${INSTALL_LOG}" 2>&1; then
+echo "Trying installation with --break-system-packages..." | tee -a "${INSTALL_LOG}"
+if install_with "--upgrade --break-system-packages"; then
     INSTALL_SUCCESS=1
-    echo "✓ Dependencies installed successfully with --user flag" | tee -a "${INSTALL_LOG}"
 else
-    echo "Warning: --user install failed, checking error..." | tee -a "${INSTALL_LOG}"
-    
-    # Check if it's a PEP 668 error (externally-managed-environment)
-    if grep -q "externally-managed-environment\|PEP 668" "${INSTALL_LOG}"; then
-        echo "Detected PEP 668 (externally-managed-environment) restriction" | tee -a "${INSTALL_LOG}"
-        echo "Retrying with --user --break-system-packages flag..." | tee -a "${INSTALL_LOG}"
-        
-        # Try with --user --break-system-packages
-        if $PIP3 install -r "${REQUIREMENTS_FILE}" --user --upgrade --break-system-packages >> "${INSTALL_LOG}" 2>&1; then
-            INSTALL_SUCCESS=1
-            echo "✓ Dependencies installed successfully with --user --break-system-packages flag" | tee -a "${INSTALL_LOG}"
-        else
-            # Try system-wide with --break-system-packages
-            echo "Trying system-wide installation with --break-system-packages..." | tee -a "${INSTALL_LOG}"
-            if $PIP3 install -r "${REQUIREMENTS_FILE}" --upgrade --break-system-packages >> "${INSTALL_LOG}" 2>&1; then
-                INSTALL_SUCCESS=1
-                echo "✓ Dependencies installed successfully system-wide with --break-system-packages" | tee -a "${INSTALL_LOG}"
-            else
-                INSTALL_SUCCESS=0
-            fi
-        fi
+    echo "Retrying installation with --user..." | tee -a "${INSTALL_LOG}"
+    if install_with "--user --upgrade"; then
+        INSTALL_SUCCESS=1
     else
-        # Not a PEP 668 error, try system-wide without --break-system-packages
-        echo "Trying system-wide installation..." | tee -a "${INSTALL_LOG}"
-        if $PIP3 install -r "${REQUIREMENTS_FILE}" --upgrade >> "${INSTALL_LOG}" 2>&1; then
+        echo "Attempting final system-wide installation..." | tee -a "${INSTALL_LOG}"
+        if install_with "--upgrade"; then
             INSTALL_SUCCESS=1
-            echo "✓ Dependencies installed successfully system-wide" | tee -a "${INSTALL_LOG}"
-        else
-            INSTALL_SUCCESS=0
         fi
-    fi
-    
-    if [ $INSTALL_SUCCESS -eq 0 ]; then
-        echo "ERROR: Failed to install Python dependencies." | tee -a "${INSTALL_LOG}"
-        echo "Last 30 lines of error output:" | tee -a "${INSTALL_LOG}"
-        tail -30 "${INSTALL_LOG}"
-        echo ""
-        echo "Full error log saved to: ${INSTALL_LOG}"
-        echo ""
-        echo "To install manually, try:"
-        # Check if PEP 668 was detected
-        if grep -q "externally-managed-environment\|PEP 668" "${INSTALL_LOG}"; then
-            echo "  $PIP3 install -r ${REQUIREMENTS_FILE} --user --break-system-packages"
-            echo "Or system-wide (requires sudo):"
-            echo "  sudo $PIP3 install -r ${REQUIREMENTS_FILE} --break-system-packages"
-        else
-            echo "  sudo $PIP3 install -r ${REQUIREMENTS_FILE}"
-        fi
-        echo ""
-        echo "Or ensure all system dependencies are installed first:"
-        echo "  sudo apt-get install python3 python3-pip python3-dev libffi-dev libssl-dev build-essential libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev"
-        exit 1
     fi
 fi
 
-# Verify critical dependencies are installed using the EXACT Python that will run the service
+if [ $INSTALL_SUCCESS -eq 0 ]; then
+    echo "ERROR: Failed to install Python dependencies." | tee -a "${INSTALL_LOG}"
+    echo "Last 30 lines of error output:" | tee -a "${INSTALL_LOG}"
+    tail -30 "${INSTALL_LOG}" || true
+    echo ""
+    echo "Try manual install with one of:" | tee -a "${INSTALL_LOG}"
+    echo "  $PIP_CMD install -r ${REQUIREMENTS_FILE} --upgrade --break-system-packages"
+    echo "  $PIP_CMD install -r ${REQUIREMENTS_FILE} --user --upgrade"
+    exit 1
+fi
+
+# Verify critical dependencies using the same Python that will run the service
 echo ""
-echo "Verifying installed dependencies with $PYTHON3..."
+echo "Verifying installed dependencies with $PYTHON3..." | tee -a "${INSTALL_LOG}"
 MISSING_DEPS=0
 
-# Get Python's site-packages path to verify installation location
-PYTHON_SITE=$($PYTHON3 -c "import site; print('\\n'.join(site.getsitepackages() + [site.getusersitepackages()]))" 2>/dev/null)
+PYTHON_SITE=$($PYTHON3 - <<'PY'
+import site
+paths = []
+getsite = getattr(site, "getsitepackages", lambda: [])
+paths.extend(getsite())
+user_site = site.getusersitepackages()
+if user_site:
+    paths.append(user_site)
+print("\n".join(paths))
+PY
+)
 echo "Python site-packages locations:" | tee -a "${INSTALL_LOG}"
 echo "$PYTHON_SITE" | tee -a "${INSTALL_LOG}"
 
 if ! $PYTHON3 -c "import pyhap" 2>>"${INSTALL_LOG}"; then
     echo "  ✗ HAP-python (pyhap) not found" | tee -a "${INSTALL_LOG}"
     MISSING_DEPS=1
-    # Try to find where it might be installed
-    echo "  Searching for pyhap installation..." | tee -a "${INSTALL_LOG}"
-    $PYTHON3 -c "import sys; print('\\n'.join(sys.path))" 2>>"${INSTALL_LOG}" | tee -a "${INSTALL_LOG}"
 else
     echo "  ✓ HAP-python installed" | tee -a "${INSTALL_LOG}"
-    # Show version
     $PYTHON3 -c "import pyhap; print('  HAP-python version:', getattr(pyhap, '__version__', 'unknown'))" 2>/dev/null | tee -a "${INSTALL_LOG}"
 fi
 
@@ -129,9 +119,8 @@ else
     echo "  ✓ qrcode installed" | tee -a "${INSTALL_LOG}"
 fi
 
-# Also verify PIL/Pillow (needed for qrcode[pil])
 if ! $PYTHON3 -c "from PIL import Image" 2>>"${INSTALL_LOG}"; then
-    echo "  ✗ PIL/Pillow not found (needed for QR code generation)" | tee -a "${INSTALL_LOG}"
+    echo "  ✗ PIL/Pillow not found (required for QR code generation)" | tee -a "${INSTALL_LOG}"
     MISSING_DEPS=1
 else
     echo "  ✓ PIL/Pillow installed" | tee -a "${INSTALL_LOG}"
@@ -139,18 +128,12 @@ fi
 
 if [ $MISSING_DEPS -eq 1 ]; then
     echo ""
-    echo "ERROR: Some dependencies are missing. The plugin will not work correctly." | tee -a "${INSTALL_LOG}"
-    echo ""
-    echo "Try installing manually with the exact Python that will run the service:"
-    echo "  $PIP3 install -r ${REQUIREMENTS_FILE}"
-    echo ""
-    echo "Or check the installation log for details:"
-    echo "  cat ${INSTALL_LOG}"
+    echo "ERROR: Some dependencies are missing. See ${INSTALL_LOG} for details." | tee -a "${INSTALL_LOG}"
     exit 1
-else
-    echo ""
-    echo "✓ All Python dependencies verified successfully" | tee -a "${INSTALL_LOG}"
 fi
+
+echo ""
+echo "✓ All Python dependencies verified successfully" | tee -a "${INSTALL_LOG}"
 
 exit 0
 

@@ -39,26 +39,20 @@ echo "Found Python: $PYTHON3"
 $PYTHON3 --version | tee -a "${INSTALL_LOG}"
 echo "Python executable: $PYTHON_PATH" | tee -a "${INSTALL_LOG}"
 
-# Find pip
+# Ensure pip is available via python -m pip
 echo ""
-echo "Step 3: Finding pip..."
-# Run find_pip.sh - stdout contains pip command, stderr contains debug messages
-# Capture stderr for display, stdout for the command
-PIP3=$("${SCRIPTS_DIR}/find_pip.sh" "$PYTHON3" 2> >(tee -a "${INSTALL_LOG}" >&2))
-PIP_RESULT=$?
-
-if [ $PIP_RESULT -ne 0 ]; then
-    echo "ERROR: Failed to find or install pip" | tee -a "${INSTALL_LOG}"
-    exit 1
+echo "Step 3: Preparing pip..."
+echo "Ensuring pip is installed via python -m pip..." | tee -a "${INSTALL_LOG}"
+if ! $PYTHON3 -m ensurepip --upgrade >> "${INSTALL_LOG}" 2>&1; then
+    echo "Warning: python -m ensurepip failed or not available, continuing..." | tee -a "${INSTALL_LOG}"
 fi
 
-# Verify we got a valid pip command
-if [ -z "$PIP3" ]; then
-    echo "ERROR: pip command is empty" | tee -a "${INSTALL_LOG}"
+PIP3="$PYTHON3 -m pip"
+if ! $PIP3 --version >> "${INSTALL_LOG}" 2>&1; then
+    echo "ERROR: python -m pip is not available. Please install python3-pip." | tee -a "${INSTALL_LOG}"
     exit 1
 fi
-
-echo "Found pip: $PIP3"
+echo "Using pip command: $PIP3"
 $PIP3 --version | tee -a "${INSTALL_LOG}"
 
 # Update log with Python and pip info
@@ -68,7 +62,7 @@ echo "Pip: $PIP3" >> "${INSTALL_LOG}"
 # Install Python dependencies
 echo ""
 echo "Step 4: Installing Python dependencies..."
-"${SCRIPTS_DIR}/install_python_deps.sh" "${PLUGIN_DIR}" "${PYTHON3}" "${PIP3}"
+"${SCRIPTS_DIR}/install_python_deps.sh" "${PLUGIN_DIR}" "${PYTHON3}"
 if [ $? -ne 0 ]; then
     echo ""
     echo "ERROR: Failed to install Python dependencies"

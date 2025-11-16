@@ -28,10 +28,21 @@ try:
 except Exception:
     pass
 
-# Force reload site to pick up new paths
-import importlib
-if 'site' in sys.modules:
-    importlib.reload(site)
+# Update sys.path directly if necessary (avoid reloading site which can undo addsitedir changes)
+_extra_paths = []
+try:
+    if user_site and user_site not in sys.path:
+        _extra_paths.append(user_site)
+except NameError:
+    pass
+try:
+    for site_dir in site.getsitepackages():
+        if site_dir not in sys.path:
+            _extra_paths.append(site_dir)
+except Exception:
+    pass
+if _extra_paths:
+    sys.path[:0] = _extra_paths
 
 import json
 import time
@@ -49,7 +60,7 @@ except ImportError as e:
     sys.exit(1)
 
 try:
-    from pyhap.accessory import Accessory, Bridge
+    from pyhap.accessory import Accessory
     from pyhap.accessory_driver import AccessoryDriver
     from pyhap.const import CATEGORY_LIGHTBULB
 except ImportError as e:
