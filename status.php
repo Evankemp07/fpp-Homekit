@@ -750,21 +750,30 @@ if (file_exists($cssPath)) {
         })
             .then(response => {
                 if (!response.ok) {
-                    throw new Error('HTTP ' + response.status);
+                    return response.text().then(text => {
+                        throw new Error('HTTP ' + response.status + ': ' + text.substring(0, 200));
+                    });
                 }
-                return response.json();
+                return response.text().then(text => {
+                    try {
+                        return JSON.parse(text);
+                    } catch (e) {
+                        debugLog('Failed to parse JSON response', { text: text.substring(0, 500) });
+                        throw new Error('Invalid JSON response: ' + text.substring(0, 200));
+                    }
+                });
             })
             .then(data => {
                 debugLog('Save MQTT response', data);
-                if (data.status === 'saved') {
+                if (data && data.status === 'saved') {
                     showMessage('MQTT configuration saved. Restart service to apply changes.', 'success');
                     setTimeout(() => loadStatus(), 300);
                 } else {
-                    throw new Error(data.message || 'Failed to save configuration');
+                    throw new Error(data && data.message ? data.message : 'Failed to save configuration');
                 }
             })
             .catch(error => {
-                debugLog('Error saving MQTT config', { error: error.message });
+                debugLog('Error saving MQTT config', { error: error.message, stack: error.stack });
                 showMessage('Error saving MQTT configuration: ' + error.message, 'error');
             })
             .finally(() => {

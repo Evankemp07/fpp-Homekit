@@ -801,14 +801,25 @@ PYCODE;
 // POST /api/plugin/fpp-Homekit/config
 function fppHomekitSaveConfig() {
     $pluginDir = dirname(__FILE__);
-    $configFile = $pluginDir . '/scripts/homekit_config.json';
+    $scriptsDir = $pluginDir . '/scripts';
+    $configFile = $scriptsDir . '/homekit_config.json';
+    
+    // Ensure scripts directory exists
+    if (!is_dir($scriptsDir)) {
+        if (!@mkdir($scriptsDir, 0755, true)) {
+            return json(array('status' => 'error', 'message' => 'Cannot create scripts directory: ' . $scriptsDir));
+        }
+    }
     
     // Load existing config
     $config = array('playlist_name' => '');
     if (file_exists($configFile)) {
-        $existing = @json_decode(file_get_contents($configFile), true);
-        if ($existing && is_array($existing)) {
-            $config = $existing;
+        $existingContent = @file_get_contents($configFile);
+        if ($existingContent !== false) {
+            $existing = @json_decode($existingContent, true);
+            if ($existing && is_array($existing)) {
+                $config = $existing;
+            }
         }
     }
     
@@ -834,15 +845,34 @@ function fppHomekitSaveConfig() {
         if (!isset($config['mqtt'])) {
             $config['mqtt'] = array();
         }
-        $config['mqtt']['broker'] = trim($_POST['mqtt_broker']);
+        $broker = trim($_POST['mqtt_broker']);
+        if ($broker !== '') {
+            $config['mqtt']['broker'] = $broker;
+        }
     }
     
-    if (file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT)) !== false) {
-        $result = array('status' => 'saved', 'config' => $config);
-    } else {
-        $result = array('status' => 'error', 'message' => 'Failed to save config');
+    // Write config file
+    $jsonData = json_encode($config, JSON_PRETTY_PRINT);
+    if ($jsonData === false) {
+        return json(array('status' => 'error', 'message' => 'Failed to encode config as JSON: ' . json_last_error_msg()));
     }
     
+    $written = @file_put_contents($configFile, $jsonData);
+    if ($written === false) {
+        $error = error_get_last();
+        $errorMsg = 'Failed to save config file';
+        if ($error && isset($error['message'])) {
+            $errorMsg .= ': ' . $error['message'];
+        }
+        if (!is_writable($scriptsDir)) {
+            $errorMsg .= ' (directory not writable)';
+        } elseif (!is_writable($configFile) && file_exists($configFile)) {
+            $errorMsg .= ' (file not writable)';
+        }
+        return json(array('status' => 'error', 'message' => $errorMsg));
+    }
+    
+    $result = array('status' => 'saved', 'config' => $config);
     return json($result);
 }
 
