@@ -177,69 +177,85 @@ def get_accessory(driver):
 
 def main():
     """Main entry point"""
-    # Write PID file
     try:
-        with open(PID_FILE, 'w') as f:
-            f.write(str(os.getpid()))
-    except Exception as e:
-        logger.error(f"Error writing PID file: {e}")
-    
-    # Create driver
-    state_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_accessory.state')
-    driver = AccessoryDriver(port=51826, persist_file=state_file)
-    
-    # Add accessory
-    accessory = get_accessory(driver)
-    driver.add_accessory(accessory=accessory)
-    
-    # Save setup code and setup ID for QR code generation
-    try:
-        setup_code = driver.state.pincode.decode()
-        setup_id = driver.state.setup_id.decode() if hasattr(driver.state, 'setup_id') and driver.state.setup_id else 'HOME'
-        mac = driver.state.mac.decode() if hasattr(driver.state, 'mac') and driver.state.mac else ''
+        # Create driver first
+        state_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_accessory.state')
+        logger.info(f"Creating HomeKit driver (state file: {state_file})")
+        driver = AccessoryDriver(port=51826, persist_file=state_file)
         
-        # Generate QR code if available
-        qr_code_data = None
-        if QR_AVAILABLE:
+        # Add accessory
+        logger.info("Adding FPP-Controller accessory...")
+        accessory = get_accessory(driver)
+        driver.add_accessory(accessory=accessory)
+        
+        # Save setup code and setup ID for QR code generation
+        try:
+            setup_code = driver.state.pincode.decode()
+            setup_id = driver.state.setup_id.decode() if hasattr(driver.state, 'setup_id') and driver.state.setup_id else 'HOME'
+            mac = driver.state.mac.decode() if hasattr(driver.state, 'mac') and driver.state.mac else ''
+            
+            # Generate QR code if available
+            qr_code_data = None
+            if QR_AVAILABLE:
+                try:
+                    qr_code_data = qr.get_qr_code(setup_code, setup_id)
+                except Exception as e:
+                    logger.warning(f"Could not generate QR code: {e}")
+            
+            # Save to a JSON file for PHP to read
+            info_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_pairing_info.json')
+            info_data = {
+                'setup_code': setup_code,
+                'setup_id': setup_id,
+                'mac': mac
+            }
+            if qr_code_data:
+                info_data['qr_data'] = qr_code_data
+            
+            with open(info_file, 'w') as f:
+                json.dump(info_data, f, indent=2)
+            
+            logger.info(f"Setup code: {setup_code}, Setup ID: {setup_id}")
+        except Exception as e:
+            logger.warning(f"Could not save setup info: {e}")
+        
+        # Write PID file only after successful initialization
+        try:
+            with open(PID_FILE, 'w') as f:
+                f.write(str(os.getpid()))
+            logger.info(f"PID file written: {PID_FILE}")
+        except Exception as e:
+            logger.error(f"Error writing PID file: {e}")
+            raise
+        
+        # Start the driver
+        logger.info("Starting HomeKit service...")
+        signal_handler = driver.signal_handler()
+        driver.start()
+        logger.info("HomeKit service started successfully")
+        
+        try:
+            signal_handler.wait()
+        except KeyboardInterrupt:
+            logger.info("Stopping HomeKit service...")
+        finally:
+            driver.stop()
+            # Remove PID file
             try:
-                qr_code_data = qr.get_qr_code(setup_code, setup_id)
+                if os.path.exists(PID_FILE):
+                    os.remove(PID_FILE)
+                    logger.info("PID file removed")
             except Exception as e:
-                logger.warning(f"Could not generate QR code: {e}")
-        
-        # Save to a JSON file for PHP to read
-        info_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_pairing_info.json')
-        info_data = {
-            'setup_code': setup_code,
-            'setup_id': setup_id,
-            'mac': mac
-        }
-        if qr_code_data:
-            info_data['qr_data'] = qr_code_data
-        
-        with open(info_file, 'w') as f:
-            json.dump(info_data, f, indent=2)
-        
-        logger.info(f"Setup code: {setup_code}, Setup ID: {setup_id}")
+                logger.error(f"Error removing PID file: {e}")
     except Exception as e:
-        logger.warning(f"Could not save setup info: {e}")
-    
-    # Start the driver
-    logger.info("Starting HomeKit service...")
-    signal_handler = driver.signal_handler()
-    driver.start()
-    
-    try:
-        signal_handler.wait()
-    except KeyboardInterrupt:
-        logger.info("Stopping HomeKit service...")
-    finally:
-        driver.stop()
-        # Remove PID file
+        logger.error(f"Fatal error starting HomeKit service: {e}", exc_info=True)
+        # Remove PID file if it exists
         try:
             if os.path.exists(PID_FILE):
                 os.remove(PID_FILE)
-        except Exception as e:
-            logger.error(f"Error removing PID file: {e}")
+        except:
+            pass
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
