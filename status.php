@@ -125,6 +125,7 @@ if (file_exists($cssPath)) {
 (function() {
     const API_BASE = '/api/plugin/<?php echo $plugin; ?>';
     let refreshInterval = null;
+    let isUpdating = false;
     
     // Debug logging
     function debugLog(message, data = null) {
