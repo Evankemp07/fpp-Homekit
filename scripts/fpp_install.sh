@@ -110,68 +110,9 @@ else
     echo "WARNING: homekit_service.py not found at ${PLUGIN_DIR}/scripts/homekit_service.py"
 fi
 
-# Detect FPP API port
-echo ""
-echo "Step 6: Detecting FPP API port..."
-FPP_API_PORT=""
-FPP_API_HOST="localhost"
-
-# Try to read from FPP settings file
-SETTINGS_PATHS=(
-    "${FPPDIR}/media/settings"
-    "/home/fpp/media/settings"
-    "/opt/fpp/media/settings"
-    "${MEDIADIR}/settings"
-)
-
-for settings_file in "${SETTINGS_PATHS[@]}"; do
-    if [ -f "${settings_file}" ] && [ -r "${settings_file}" ]; then
-        HTTP_PORT=$(grep -E "^HTTPPort\s*=" "${settings_file}" 2>/dev/null | head -1 | sed 's/.*=\s*\([0-9]*\).*/\1/')
-        if [ -n "${HTTP_PORT}" ] && [ "${HTTP_PORT}" -gt 0 ] 2>/dev/null; then
-            FPP_API_PORT="${HTTP_PORT}"
-            echo "Found HTTP port ${FPP_API_PORT} in ${settings_file}" | tee -a "${INSTALL_LOG}"
-            break
-        fi
-    fi
-done
-
-# If not found in config, test common ports
-if [ -z "${FPP_API_PORT}" ]; then
-    echo "Testing common FPP API ports..." | tee -a "${INSTALL_LOG}"
-    TEST_PORTS=(32320 80 8080)
-    
-    for port in "${TEST_PORTS[@]}"; do
-        # Try to connect to /api/status endpoint
-        if command -v curl >/dev/null 2>&1; then
-            response=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 "http://localhost:${port}/api/status" 2>/dev/null)
-            if [ "${response}" = "200" ]; then
-                FPP_API_PORT="${port}"
-                echo "✓ Found FPP API on port ${port}" | tee -a "${INSTALL_LOG}"
-                break
-            fi
-        elif command -v wget >/dev/null 2>&1; then
-            if wget -q --spider --timeout=2 "http://localhost:${port}/api/status" 2>/dev/null; then
-                FPP_API_PORT="${port}"
-                echo "✓ Found FPP API on port ${port}" | tee -a "${INSTALL_LOG}"
-                break
-            fi
-        fi
-    done
-fi
-
-# Save detected port to config file for PHP to read
-API_CONFIG_FILE="${SCRIPTS_DIR}/fpp_api_config.json"
-if [ -n "${FPP_API_PORT}" ]; then
-    echo "{\"host\": \"${FPP_API_HOST}\", \"port\": ${FPP_API_PORT}}" > "${API_CONFIG_FILE}"
-    echo "✓ Saved API configuration: ${FPP_API_HOST}:${FPP_API_PORT}" | tee -a "${INSTALL_LOG}"
-else
-    echo "WARNING: Could not detect FPP API port. Using default 32320." | tee -a "${INSTALL_LOG}"
-    echo "{\"host\": \"${FPP_API_HOST}\", \"port\": 32320}" > "${API_CONFIG_FILE}"
-fi
-
 # Check if avahi-daemon is running
 echo ""
-echo "Step 7: Checking avahi-daemon..."
+echo "Step 6: Checking avahi-daemon..."
 if command -v systemctl >/dev/null 2>&1; then
     if systemctl is-active --quiet avahi-daemon; then
         echo "✓ avahi-daemon is running"

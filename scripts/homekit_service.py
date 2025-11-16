@@ -300,16 +300,60 @@ def _read_mqtt_settings(settings_path: str) -> dict:
 
 
 def get_mqtt_config() -> dict:
-    """Get MQTT configuration from FPP settings or environment."""
-    # Check environment variables first
+    """Get MQTT configuration from plugin config, FPP settings, or environment."""
+    # Default config
     mqtt_config = {
-        'enabled': os.environ.get('FPP_MQTT_ENABLED', '').lower() in ('1', 'true', 'yes'),
-        'broker': os.environ.get('FPP_MQTT_BROKER', 'localhost'),
-        'port': int(os.environ.get('FPP_MQTT_PORT', '1883')),
-        'username': os.environ.get('FPP_MQTT_USERNAME'),
-        'password': os.environ.get('FPP_MQTT_PASSWORD'),
-        'topic_prefix': os.environ.get('FPP_MQTT_PREFIX', 'FPP')
+        'enabled': True,
+        'broker': 'localhost',
+        'port': 1883,
+        'username': None,
+        'password': None,
+        'topic_prefix': 'FPP'
     }
+    
+    # First priority: Plugin config file (highest priority)
+    plugin_config_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_config.json')
+    if os.path.exists(plugin_config_file):
+        try:
+            with open(plugin_config_file, 'r') as f:
+                plugin_config = json.load(f)
+                if 'mqtt' in plugin_config and isinstance(plugin_config['mqtt'], dict):
+                    mqtt_overrides = plugin_config['mqtt']
+                    if 'broker' in mqtt_overrides:
+                        mqtt_config['broker'] = mqtt_overrides['broker']
+                    if 'port' in mqtt_overrides:
+                        try:
+                            mqtt_config['port'] = int(mqtt_overrides['port'])
+                        except (ValueError, TypeError):
+                            pass
+                    if 'username' in mqtt_overrides:
+                        mqtt_config['username'] = mqtt_overrides['username']
+                    if 'password' in mqtt_overrides:
+                        mqtt_config['password'] = mqtt_overrides['password']
+                    if 'topic_prefix' in mqtt_overrides:
+                        mqtt_config['topic_prefix'] = mqtt_overrides['topic_prefix']
+                    if 'enabled' in mqtt_overrides:
+                        mqtt_config['enabled'] = bool(mqtt_overrides['enabled'])
+                    logger.info(f"Loaded MQTT config from plugin config file")
+        except Exception as e:
+            logger.debug(f"Could not read MQTT config from plugin config: {e}")
+    
+    # Second priority: Environment variables
+    if os.environ.get('FPP_MQTT_ENABLED'):
+        mqtt_config['enabled'] = os.environ.get('FPP_MQTT_ENABLED', '').lower() in ('1', 'true', 'yes')
+    if os.environ.get('FPP_MQTT_BROKER'):
+        mqtt_config['broker'] = os.environ.get('FPP_MQTT_BROKER', 'localhost')
+    if os.environ.get('FPP_MQTT_PORT'):
+        try:
+            mqtt_config['port'] = int(os.environ.get('FPP_MQTT_PORT', '1883'))
+        except ValueError:
+            pass
+    if os.environ.get('FPP_MQTT_USERNAME'):
+        mqtt_config['username'] = os.environ.get('FPP_MQTT_USERNAME')
+    if os.environ.get('FPP_MQTT_PASSWORD'):
+        mqtt_config['password'] = os.environ.get('FPP_MQTT_PASSWORD')
+    if os.environ.get('FPP_MQTT_PREFIX'):
+        mqtt_config['topic_prefix'] = os.environ.get('FPP_MQTT_PREFIX', 'FPP')
     
     # Check FPP settings files for MQTT configuration
     for path in _candidate_settings_paths():

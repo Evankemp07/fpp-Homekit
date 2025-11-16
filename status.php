@@ -60,6 +60,21 @@ if (file_exists($cssPath)) {
                 </div>
             </div>
             
+            <div class="playlist-config" style="margin-top: 24px;">
+                <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">MQTT Configuration</h3>
+                <div class="playlist-config-controls" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <label for="mqtt-broker" style="font-weight: 500; color: var(--text-secondary);">Broker:</label>
+                        <input type="text" class="form-select" id="mqtt-broker" placeholder="localhost" style="width: 120px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <label for="mqtt-port" style="font-weight: 500; color: var(--text-secondary);">Port:</label>
+                        <input type="number" class="form-select" id="mqtt-port" placeholder="1883" min="1" max="65535" style="width: 100px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
+                    </div>
+                    <button class="homekit-button" type="button" id="save-mqtt-btn">Save MQTT</button>
+                </div>
+            </div>
+            
             <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap;">
                 <button class="homekit-button" onclick="restartService()" id="restart-btn">Restart Service</button>
             </div>
@@ -658,6 +673,93 @@ if (file_exists($cssPath)) {
         return str.charAt(0).toUpperCase() + str.slice(1);
     }
     
+    function loadMQTTConfig() {
+        const mqttBrokerInput = document.getElementById('mqtt-broker');
+        const mqttPortInput = document.getElementById('mqtt-port');
+        
+        if (!mqttBrokerInput || !mqttPortInput) {
+            return;
+        }
+        
+        fetch(API_BASE + '/config')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.mqtt) {
+                    if (data.mqtt.broker) {
+                        mqttBrokerInput.value = data.mqtt.broker;
+                    }
+                    if (data.mqtt.port) {
+                        mqttPortInput.value = data.mqtt.port;
+                    }
+                }
+            })
+            .catch(error => {
+                debugLog('Error loading MQTT config', { error: error.message });
+            });
+    }
+    
+    function saveMQTTConfig() {
+        const mqttBrokerInput = document.getElementById('mqtt-broker');
+        const mqttPortInput = document.getElementById('mqtt-port');
+        const saveMqttBtn = document.getElementById('save-mqtt-btn');
+        
+        if (!mqttBrokerInput || !mqttPortInput || !saveMqttBtn) {
+            return;
+        }
+        
+        const broker = mqttBrokerInput.value.trim();
+        const port = parseInt(mqttPortInput.value);
+        
+        if (!port || port < 1 || port > 65535) {
+            showMessage('Please enter a valid port number (1-65535).', 'warning');
+            return;
+        }
+        
+        saveMqttBtn.disabled = true;
+        const originalLabel = saveMqttBtn.textContent;
+        saveMqttBtn.innerHTML = '<span class="spinner"></span> Saving...';
+        
+        const formData = new FormData();
+        if (broker) {
+            formData.append('mqtt_broker', broker);
+        }
+        formData.append('mqtt_port', port);
+        
+        debugLog('Saving MQTT configuration', { broker: broker, port: port });
+        fetch(API_BASE + '/config', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                debugLog('Save MQTT response', data);
+                if (data.status === 'saved') {
+                    showMessage('MQTT configuration saved. Restart service to apply changes.', 'success');
+                    setTimeout(() => loadStatus(), 300);
+                } else {
+                    throw new Error(data.message || 'Failed to save configuration');
+                }
+            })
+            .catch(error => {
+                debugLog('Error saving MQTT config', { error: error.message });
+                showMessage('Error saving MQTT configuration: ' + error.message, 'error');
+            })
+            .finally(() => {
+                saveMqttBtn.disabled = false;
+                saveMqttBtn.textContent = originalLabel;
+            });
+    }
+    
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
         if (savePlaylistBtn) {
@@ -668,8 +770,14 @@ if (file_exists($cssPath)) {
             playlistSelect.addEventListener('change', updateSaveButtonState);
         }
         
+        const saveMqttBtn = document.getElementById('save-mqtt-btn');
+        if (saveMqttBtn) {
+            saveMqttBtn.addEventListener('click', saveMQTTConfig);
+        }
+        
         loadPlaylists(true);
         loadStatus();
+        loadMQTTConfig();
         
         if (refreshInterval) {
             clearInterval(refreshInterval);
