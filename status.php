@@ -57,13 +57,11 @@ if (file_exists($cssPath)) {
                         <option value="">-- Loading playlists... --</option>
                     </select>
                     <button class="homekit-button" type="button" id="save-playlist-btn">Save Playlist</button>
-                    <button class="homekit-button secondary" type="button" id="refresh-playlists-btn">Refresh</button>
                 </div>
             </div>
             
             <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap;">
                 <button class="homekit-button" onclick="restartService()" id="restart-btn">Restart Service</button>
-                <button class="homekit-button secondary" onclick="refreshStatus()" id="refresh-btn">Refresh</button>
             </div>
         </div>
         
@@ -131,10 +129,10 @@ if (file_exists($cssPath)) {
     let currentPlaylist = '';
     let qrLoaded = false;
     let autoStartAttempted = false;
+    let playlistFetchInProgress = false;
     
     const playlistSelect = document.getElementById('playlist-select');
     const savePlaylistBtn = document.getElementById('save-playlist-btn');
-    const refreshPlaylistsBtn = document.getElementById('refresh-playlists-btn');
     
     // Debug logging
     function debugLog(message, data = null) {
@@ -225,12 +223,9 @@ if (file_exists($cssPath)) {
     }
     
     function setPlaylistLoadingState(isLoading) {
+        playlistFetchInProgress = isLoading;
         if (playlistSelect) {
             playlistSelect.disabled = isLoading;
-        }
-        if (refreshPlaylistsBtn) {
-            refreshPlaylistsBtn.disabled = isLoading;
-            refreshPlaylistsBtn.innerHTML = isLoading ? '<span class="spinner"></span> Refreshing...' : 'Refresh';
         }
         if (!isLoading) {
             updateSaveButtonState();
@@ -246,12 +241,22 @@ if (file_exists($cssPath)) {
         savePlaylistBtn.disabled = shouldDisable;
     }
     
-    function loadPlaylists(forceMessage = false) {
+    function loadPlaylists(force = false) {
         if (!playlistSelect) {
             return;
         }
+        if (playlistFetchInProgress) {
+            return;
+        }
+        if (!force && document.activeElement === playlistSelect) {
+            return;
+        }
         
-        setPlaylistLoadingState(true);
+        if (force) {
+            setPlaylistLoadingState(true);
+        } else {
+            playlistFetchInProgress = true;
+        }
         debugLog('Loading playlists...');
         
         fetch(API_BASE + '/playlists')
@@ -272,7 +277,7 @@ if (file_exists($cssPath)) {
                     });
                 } else {
                     playlistSelect.appendChild(new Option('No playlists available', ''));
-                    if (forceMessage) {
+                    if (force) {
                         showMessage('No playlists found. Create playlists in FPP first.', 'warning');
                     }
                 }
@@ -286,7 +291,12 @@ if (file_exists($cssPath)) {
                 showMessage('Error loading playlists: ' + error.message, 'error');
             })
             .finally(() => {
-                setPlaylistLoadingState(false);
+                if (force) {
+                    setPlaylistLoadingState(false);
+                } else {
+                    playlistFetchInProgress = false;
+                    updateSaveButtonState();
+                }
             });
     }
     
@@ -326,6 +336,11 @@ if (file_exists($cssPath)) {
                     updatePlaylistStatusText(currentPlaylist);
                     showMessage('Configuration saved.', 'success');
                     setTimeout(() => loadStatus(), 300);
+                    setTimeout(() => {
+                        if (!playlistFetchInProgress) {
+                            loadPlaylists();
+                        }
+                    }, 500);
                 } else {
                     throw new Error(data.message || 'Failed to save configuration');
                 }
@@ -639,27 +654,12 @@ if (file_exists($cssPath)) {
         });
     };
     
-    // Refresh status
-    window.refreshStatus = function() {
-        const btn = document.getElementById('refresh-btn');
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner"></span> Refreshing...';
-        loadStatus();
-        setTimeout(() => {
-            btn.disabled = false;
-            btn.textContent = 'Refresh';
-        }, 1000);
-    };
-    
     function capitalize(str) {
         return str.charAt(0).toUpperCase() + str.slice(1);
     }
     
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
-        if (refreshPlaylistsBtn) {
-            refreshPlaylistsBtn.addEventListener('click', () => loadPlaylists(true));
-        }
         if (savePlaylistBtn) {
             savePlaylistBtn.addEventListener('click', savePlaylist);
             savePlaylistBtn.disabled = true;
@@ -676,11 +676,23 @@ if (file_exists($cssPath)) {
         }
         refreshInterval = setInterval(function() {
             loadStatus();
-        }, 30000);
+            if (!playlistFetchInProgress) {
+                loadPlaylists();
+            }
+        }, 10000);
+        
+        document.addEventListener('click', function(evt) {
+            if (evt.target.closest('button')) {
+                setTimeout(() => loadStatus(), 500);
+            }
+        });
         
         document.addEventListener('visibilitychange', function() {
             if (!document.hidden) {
                 loadStatus();
+                if (!playlistFetchInProgress) {
+                    loadPlaylists();
+                }
             }
         });
     });
