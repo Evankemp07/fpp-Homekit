@@ -5,10 +5,10 @@
 # Include common scripts functions and variables
 . ${FPPDIR}/scripts/common
 
-# Install Python dependencies
 PLUGIN_DIR="${MEDIADIR}/plugins/fpp-Homekit"
 REQUIREMENTS_FILE="${PLUGIN_DIR}/scripts/requirements.txt"
 
+<<<<<<< Updated upstream
 # Check if running on a Debian-based system (Raspberry Pi, etc.)
 if [ -f /etc/debian_version ]; then
     echo "Checking for required system packages..."
@@ -33,14 +33,56 @@ if [ -f /etc/debian_version ]; then
 fi
 
 # Find pip3
+=======
+echo "=========================================="
+echo "FPP HomeKit Plugin Installation"
+echo "=========================================="
+
+# Find python3
+PYTHON3=""
+if command -v python3 >/dev/null 2>&1; then
+    PYTHON3="python3"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON_VERSION=$(python --version 2>&1 | sed -n 's/.*\([0-9]\+\.[0-9]\+\).*/\1/p' | cut -d. -f1)
+    if [ -n "$PYTHON_VERSION" ] && [ "$PYTHON_VERSION" -ge 3 ]; then
+        PYTHON3="python"
+    fi
+fi
+
+if [ -z "$PYTHON3" ]; then
+    echo "ERROR: python3 not found. Please install Python 3.6 or newer."
+    echo "On Debian/Ubuntu: sudo apt-get install python3 python3-pip"
+    echo "On macOS: brew install python3"
+    exit 1
+fi
+
+echo "Found Python: $PYTHON3"
+$PYTHON3 --version
+
+# Find pip3 (prefer pip3 associated with python3)
+>>>>>>> Stashed changes
 PIP3=""
 if command -v pip3 >/dev/null 2>&1; then
     PIP3="pip3"
+elif $PYTHON3 -m pip --version >/dev/null 2>&1; then
+    PIP3="$PYTHON3 -m pip"
 elif command -v pip >/dev/null 2>&1; then
     PIP3="pip"
 fi
 
+if [ -z "$PIP3" ]; then
+    echo "ERROR: pip3 not found. Please install pip3."
+    echo "On Debian/Ubuntu: sudo apt-get install python3-pip"
+    echo "On macOS: python3 -m ensurepip --upgrade"
+    exit 1
+fi
+
+echo "Found pip: $PIP3"
+$PIP3 --version
+
+# Install Python dependencies
 if [ -f "${REQUIREMENTS_FILE}" ]; then
+<<<<<<< Updated upstream
     echo "Installing Python dependencies for HomeKit plugin..."
     
     # Create log file for detailed error output
@@ -99,10 +141,72 @@ if [ -f "${REQUIREMENTS_FILE}" ]; then
         echo "On Debian/Ubuntu: sudo apt-get install python3-pip" | tee -a "${INSTALL_LOG}"
         echo "On macOS: brew install python3" | tee -a "${INSTALL_LOG}"
         exit 1
+=======
+    echo ""
+    echo "Installing Python dependencies from requirements.txt..."
+    echo "This may take a few minutes..."
+    
+    INSTALL_SUCCESS=0
+    
+    # Try with --user first (recommended, doesn't require root)
+    echo "Attempting installation with --user flag..."
+    if $PIP3 install -r "${REQUIREMENTS_FILE}" --user --upgrade 2>&1; then
+        INSTALL_SUCCESS=1
+        echo "✓ Dependencies installed successfully with --user flag"
+    else
+        echo "Warning: --user install failed, trying system-wide installation..."
+        # Try without --user (may require sudo)
+        if $PIP3 install -r "${REQUIREMENTS_FILE}" --upgrade 2>&1; then
+            INSTALL_SUCCESS=1
+            echo "✓ Dependencies installed successfully system-wide"
+        else
+            echo "ERROR: Failed to install Python dependencies."
+            echo "You may need to run this manually with sudo:"
+            echo "  sudo $PIP3 install -r ${REQUIREMENTS_FILE}"
+            exit 1
+        fi
+    fi
+    
+    # Verify critical dependencies are installed
+    echo ""
+    echo "Verifying installed dependencies..."
+    MISSING_DEPS=0
+    
+    if ! $PYTHON3 -c "import pyhap" 2>/dev/null; then
+        echo "  ✗ HAP-python not found"
+        MISSING_DEPS=1
+    else
+        echo "  ✓ HAP-python installed"
+    fi
+    
+    if ! $PYTHON3 -c "import requests" 2>/dev/null; then
+        echo "  ✗ requests not found"
+        MISSING_DEPS=1
+    else
+        echo "  ✓ requests installed"
+    fi
+    
+    if ! $PYTHON3 -c "import qrcode" 2>/dev/null; then
+        echo "  ✗ qrcode not found"
+        MISSING_DEPS=1
+    else
+        echo "  ✓ qrcode installed"
+    fi
+    
+    if [ $MISSING_DEPS -eq 1 ]; then
+        echo ""
+        echo "WARNING: Some dependencies are missing. The plugin may not work correctly."
+        echo "Try installing manually:"
+        echo "  $PIP3 install -r ${REQUIREMENTS_FILE}"
+    else
+        echo ""
+        echo "✓ All Python dependencies verified successfully"
+>>>>>>> Stashed changes
     fi
 else
     echo "ERROR: requirements.txt not found at ${REQUIREMENTS_FILE}"
     exit 1
+<<<<<<< Updated upstream
 fi
 
 # Verify critical Python packages are installed
@@ -130,17 +234,24 @@ else
         echo "$VERIFY_OUTPUT" >> "${INSTALL_LOG}"
         echo "Check ${INSTALL_LOG} for detailed installation errors."
     fi
+=======
+>>>>>>> Stashed changes
 fi
 
 # Create data directory for storing pairing information
 DATA_DIR="${PLUGIN_DIR}/scripts"
 mkdir -p "${DATA_DIR}"
+echo "✓ Created data directory: ${DATA_DIR}"
 
 # Make homekit_service.py executable
 if [ -f "${PLUGIN_DIR}/scripts/homekit_service.py" ]; then
     chmod +x "${PLUGIN_DIR}/scripts/homekit_service.py"
+    echo "✓ Made homekit_service.py executable"
+else
+    echo "WARNING: homekit_service.py not found at ${PLUGIN_DIR}/scripts/homekit_service.py"
 fi
 
+<<<<<<< Updated upstream
 # Check if avahi-daemon is running
 if command -v systemctl >/dev/null 2>&1; then
     if systemctl is-active --quiet avahi-daemon; then
@@ -153,4 +264,16 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 echo "FPP HomeKit plugin installation complete."
+=======
+echo ""
+echo "=========================================="
+echo "FPP HomeKit plugin installation complete!"
+echo "=========================================="
+echo ""
+echo "Next steps:"
+echo "1. Go to the plugin Configuration page to select a playlist"
+echo "2. Go to the plugin Status page to view the QR code"
+echo "3. Pair with HomeKit using the Home app on your iOS device"
+echo ""
+>>>>>>> Stashed changes
 
