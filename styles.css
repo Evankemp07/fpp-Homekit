@@ -103,6 +103,8 @@
 .status-indicator.paired { background: var(--success-color); }
 .status-indicator.not-paired { background: var(--warning-color); }
 .status-indicator.playing { background: var(--success-color); }
+.status-indicator.paused { background: var(--warning-color); }
+.status-indicator.testing { background: var(--info-color); }
 
 .homekit-button {
     background: #007aff;
