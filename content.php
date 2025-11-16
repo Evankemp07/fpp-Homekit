@@ -3,289 +3,44 @@
 $pluginDir = dirname(__FILE__);
 $plugin = basename($pluginDir);
 
-// Fetch current configuration
-$configUrl = "http://localhost/api/plugin/{$plugin}/config";
-$currentConfig = array('playlist_name' => '');
-
-try {
-    $ch = curl_init($configUrl);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 2);
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    
-    if ($httpCode == 200 && $response) {
-        $currentConfig = json_decode($response, true);
-    }
-} catch (Exception $e) {
-    // Ignore errors
-}
-
-// Fetch available playlists
-$playlistsUrl = "http://localhost/api/plugin/{$plugin}/playlists";
-$playlists = array();
-
-try {
-    $ch = curl_init($playlistsUrl);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 2);
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    
-    if ($httpCode == 200 && $response) {
-        $data = json_decode($response, true);
-        if ($data && isset($data['playlists'])) {
-            $playlists = $data['playlists'];
-        }
-    }
-} catch (Exception $e) {
-    // Ignore errors
-}
-
-$currentPlaylist = isset($currentConfig['playlist_name']) ? $currentConfig['playlist_name'] : '';
+// Load CSS file
+$cssPath = $pluginDir . '/styles.css';
 ?>
 
 <style>
-:root {
-    --bg-primary: #ffffff;
-    --bg-secondary: #f5f5f7;
-    --text-primary: #1d1d1f;
-    --text-secondary: #86868b;
-    --border-color: #d2d2d7;
-    --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    --success-color: #34c759;
-    --error-color: #ff3b30;
-    --warning-color: #ff9500;
+<?php
+if (file_exists($cssPath)) {
+    readfile($cssPath);
 }
-
-@media (prefers-color-scheme: dark) {
-    :root {
-        --bg-primary: #1d1d1f;
-        --bg-secondary: #2c2c2e;
-        --text-primary: #f5f5f7;
-        --text-secondary: #86868b;
-        --border-color: #38383a;
-        --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    }
-}
-
-.homekit-container {
-    max-width: 680px;
-    margin: 0 auto;
-    padding: 20px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    color: var(--text-primary);
-    background: var(--bg-secondary);
-    min-height: 100vh;
-}
-
-.homekit-card {
-    background: var(--bg-primary);
-    border-radius: 18px;
-    padding: 24px;
-    margin-bottom: 16px;
-    box-shadow: var(--card-shadow);
-    border: 1px solid var(--border-color);
-}
-
-.homekit-card h2 {
-    margin: 0 0 20px 0;
-    font-size: 28px;
-    font-weight: 600;
-    letter-spacing: -0.5px;
-    color: var(--text-primary);
-}
-
-.homekit-card h3 {
-    margin: 0 0 16px 0;
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.form-group {
-    margin-bottom: 20px;
-}
-
-.form-label {
-    display: block;
-    font-weight: 500;
-    color: var(--text-primary);
-    font-size: 15px;
-    margin-bottom: 8px;
-}
-
-.form-select {
-    width: 100%;
-    padding: 12px 16px;
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-size: 15px;
-    font-family: inherit;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    padding-right: 40px;
-    cursor: pointer;
-    transition: border-color 0.2s;
-}
-
-.form-select:hover {
-    border-color: #007aff;
-}
-
-.form-select:focus {
-    outline: none;
-    border-color: #007aff;
-    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
-}
-
-.homekit-button {
-    background: #007aff;
-    color: white;
-    border: none;
-    border-radius: 10px;
-    padding: 10px 20px;
-    font-size: 15px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    margin-right: 10px;
-    font-family: inherit;
-}
-
-.homekit-button:hover {
-    background: #0051d5;
-    transform: translateY(-1px);
-}
-
-.homekit-button:active {
-    transform: translateY(0);
-}
-
-.homekit-button.secondary {
-    background: var(--text-secondary);
-}
-
-.info-text {
-    color: var(--text-secondary);
-    font-size: 15px;
-    line-height: 1.6;
-    margin: 8px 0;
-}
-
-.info-text strong {
-    color: var(--text-primary);
-}
-
-.info-list {
-    color: var(--text-secondary);
-    padding-left: 20px;
-    line-height: 1.8;
-    margin: 12px 0;
-}
-
-.info-list li {
-    margin-bottom: 8px;
-}
-
-.status-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 0;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.status-row:last-child {
-    border-bottom: none;
-}
-
-.status-label {
-    font-weight: 500;
-    color: var(--text-secondary);
-    font-size: 15px;
-}
-
-.status-value {
-    font-weight: 500;
-    font-size: 15px;
-    color: var(--text-primary);
-}
-
-.message {
-    padding: 12px 16px;
-    border-radius: 10px;
-    margin-top: 16px;
-    font-size: 15px;
-}
-
-.message.success {
-    background: rgba(52, 199, 89, 0.1);
-    color: var(--success-color);
-}
-
-.message.error {
-    background: rgba(255, 59, 48, 0.1);
-    color: var(--error-color);
-}
-
-.message.info {
-    background: rgba(0, 122, 255, 0.1);
-    color: #007aff;
-}
-
-.link {
-    color: #007aff;
-    text-decoration: none;
-}
-
-.link:hover {
-    text-decoration: underline;
-}
+?>
 </style>
 
 <div class="homekit-container">
     <div class="homekit-card">
         <h2>Configuration</h2>
         
+        <div id="message-container"></div>
+        
         <div class="form-group">
             <label class="form-label" for="playlist_name">Playlist</label>
             <select class="form-select" name="playlist_name" id="playlist_name">
-                <option value="">-- Select Playlist --</option>
-                <?php foreach ($playlists as $playlist): ?>
-                    <option value="<?php echo htmlspecialchars($playlist); ?>" 
-                        <?php echo ($playlist == $currentPlaylist) ? 'selected' : ''; ?>>
-                        <?php echo htmlspecialchars($playlist); ?>
-                    </option>
-                <?php endforeach; ?>
+                <option value="">-- Loading playlists... --</option>
             </select>
             <p class="info-text" style="margin-top: 8px;">Select which playlist should start when HomeKit turns the light ON.</p>
         </div>
         
         <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color);">
-            <button class="homekit-button" type="button" onclick="saveConfig()">Save Configuration</button>
-            <button class="homekit-button secondary" type="button" onclick="loadPlaylists()">Refresh Playlists</button>
+            <button class="homekit-button" type="button" onclick="saveConfig()" id="save-btn">Save Configuration</button>
+            <button class="homekit-button secondary" type="button" onclick="loadPlaylists()" id="refresh-btn">Refresh Playlists</button>
         </div>
-        
-        <div id="message"></div>
     </div>
     
     <div class="homekit-card">
         <h3>Current Configuration</h3>
         <div class="status-row">
             <span class="status-label">Selected Playlist</span>
-            <span class="status-value">
-                <?php if ($currentPlaylist): ?>
-                    <span style="color: var(--success-color);"><?php echo htmlspecialchars($currentPlaylist); ?></span>
-                <?php else: ?>
-                    <span style="color: var(--warning-color);">No playlist selected</span>
-                <?php endif; ?>
+            <span class="status-value" id="current-playlist">
+                Loading...
             </span>
         </div>
     </div>
@@ -314,40 +69,146 @@ $currentPlaylist = isset($currentConfig['playlist_name']) ? $currentConfig['play
 </div>
 
 <script>
-function saveConfig() {
-    var playlistName = document.getElementById('playlist_name').value;
-    var messageDiv = document.getElementById('message');
+(function() {
+    const API_BASE = '/api/plugin/<?php echo $plugin; ?>';
     
-    messageDiv.className = 'message info';
-    messageDiv.innerHTML = 'Saving...';
-    
-    var formData = new FormData();
-    formData.append('playlist_name', playlistName);
-    
-    fetch('<?php echo "http://localhost/api/plugin/{$plugin}/config"; ?>', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'saved') {
-            messageDiv.className = 'message success';
-            messageDiv.innerHTML = '✓ Configuration saved successfully!';
-            setTimeout(function() {
-                location.reload();
-            }, 1000);
-        } else {
-            messageDiv.className = 'message error';
-            messageDiv.innerHTML = '✗ Error: ' + (data.message || 'Failed to save');
+    // Show message
+    function showMessage(message, type) {
+        const container = document.getElementById('message-container');
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message ' + type;
+        msgDiv.innerHTML = escapeHtml(message);
+        msgDiv.style.opacity = '0';
+        msgDiv.style.transform = 'translateY(-20px)';
+        container.innerHTML = '';
+        container.appendChild(msgDiv);
+        
+        setTimeout(() => {
+            msgDiv.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+            msgDiv.style.opacity = '1';
+            msgDiv.style.transform = 'translateY(0)';
+        }, 10);
+        
+        if (type === 'success') {
+            setTimeout(() => {
+                msgDiv.style.opacity = '0';
+                msgDiv.style.transform = 'translateY(-20px)';
+                setTimeout(() => msgDiv.remove(), 500);
+            }, 5000);
         }
-    })
-    .catch(error => {
-        messageDiv.className = 'message error';
-        messageDiv.innerHTML = '✗ Error: ' + error;
+    }
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // Load playlists
+    function loadPlaylists() {
+        const select = document.getElementById('playlist_name');
+        const refreshBtn = document.getElementById('refresh-btn');
+        
+        refreshBtn.disabled = true;
+        refreshBtn.innerHTML = '<span class="spinner"></span> Loading...';
+        select.disabled = true;
+        
+        fetch(API_BASE + '/playlists')
+            .then(response => response.json())
+            .then(data => {
+                select.innerHTML = '<option value="">-- Select Playlist --</option>';
+                if (data.playlists && data.playlists.length > 0) {
+                    data.playlists.forEach(playlist => {
+                        const option = document.createElement('option');
+                        option.value = playlist;
+                        option.textContent = playlist;
+                        select.appendChild(option);
+                    });
+                    loadCurrentConfig();
+                } else {
+                    select.innerHTML = '<option value="">No playlists available</option>';
+                }
+                select.disabled = false;
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = 'Refresh Playlists';
+            })
+            .catch(error => {
+                showMessage('Error loading playlists: ' + error.message, 'error');
+                select.disabled = false;
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = 'Refresh Playlists';
+            });
+    }
+    
+    // Load current configuration
+    function loadCurrentConfig() {
+        fetch(API_BASE + '/config')
+            .then(response => response.json())
+            .then(data => {
+                const playlist = data.playlist_name || '';
+                const select = document.getElementById('playlist_name');
+                const currentEl = document.getElementById('current-playlist');
+                
+                if (playlist) {
+                    select.value = playlist;
+                    currentEl.innerHTML = '<span style="color: var(--success-color);">' + escapeHtml(playlist) + '</span>';
+                } else {
+                    currentEl.innerHTML = '<span style="color: var(--warning-color);">No playlist selected</span>';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading config:', error);
+            });
+    }
+    
+    // Save configuration
+    window.saveConfig = function() {
+        const playlistName = document.getElementById('playlist_name').value;
+        const saveBtn = document.getElementById('save-btn');
+        const messageDiv = document.getElementById('message-container');
+        
+        if (!playlistName) {
+            showMessage('Please select a playlist', 'warning');
+            return;
+        }
+        
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner"></span> Saving...';
+        
+        const formData = new FormData();
+        formData.append('playlist_name', playlistName);
+        
+        fetch(API_BASE + '/config', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'saved') {
+                showMessage('✓ Configuration saved successfully!', 'success');
+                loadCurrentConfig();
+            } else {
+                showMessage('✗ Error: ' + (data.message || 'Failed to save'), 'error');
+            }
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Configuration';
+        })
+        .catch(error => {
+            showMessage('✗ Error: ' + error.message, 'error');
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Configuration';
+        });
+    };
+    
+    // Refresh playlists
+    window.loadPlaylists = function() {
+        loadPlaylists();
+    };
+    
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        loadPlaylists();
+        loadCurrentConfig();
     });
-}
-
-function loadPlaylists() {
-    location.reload();
-}
+})();
 </script>
