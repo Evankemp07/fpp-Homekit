@@ -73,6 +73,12 @@ function getEndpointsfppHomekit() {
         'callback' => 'fppHomekitTestMQTT');
     array_push($result, $ep);
 
+    $ep = array(
+        'method' => 'GET',
+        'endpoint' => 'mqtt-diagnostics',
+        'callback' => 'fppHomekitMQTTDiagnostics');
+    array_push($result, $ep);
+
     return $result;
 }
 
@@ -680,14 +686,112 @@ function fppHomekitPlaylists() {
 // GET /api/plugin/fpp-Homekit/config
 function fppHomekitGetConfig() {
     $pluginDir = dirname(__FILE__);
-    $configFile = $pluginDir . '/scripts/homekit_config.json';
+    $scriptsDir = $pluginDir . '/scripts';
+    $configFile = $scriptsDir . '/homekit_config.json';
     
     $result = array('playlist_name' => '');
     
+    // Load plugin config
     if (file_exists($configFile)) {
         $config = @json_decode(file_get_contents($configFile), true);
         if ($config) {
             $result = $config;
+        }
+    }
+    
+    // If MQTT settings not in plugin config, read from FPP settings as defaults
+    if (!isset($result['mqtt']) || empty($result['mqtt']['broker'])) {
+        // Use Python to read MQTT config (same logic as homekit_service.py)
+        $pythonGetConfigScript = <<<PYCODE
+import sys
+import os
+import json
+
+plugin_dir = sys.argv[1]
+config_file = os.path.join(plugin_dir, 'homekit_config.json')
+
+mqtt_config = {
+    'broker': 'localhost',
+    'port': 1883,
+    'topic_prefix': 'FPP',
+    'username': None,
+    'password': None
+}
+
+# Read plugin config
+if os.path.exists(config_file):
+    try:
+        with open(config_file, 'r') as f:
+            plugin_config = json.load(f)
+            if 'mqtt' in plugin_config:
+                mqtt_config.update(plugin_config['mqtt'])
+    except:
+        pass
+
+# Read FPP settings files
+settings_paths = [
+    '/home/fpp/media/settings',
+    '/opt/fpp/media/settings'
+]
+
+for path in settings_paths:
+    if os.path.exists(path):
+        try:
+            with open(path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('MQTTHost='):
+                        mqtt_config['broker'] = line.split('=', 1)[1].strip()
+                    elif line.startswith('MQTTPort='):
+                        try:
+                            mqtt_config['port'] = int(line.split('=', 1)[1].strip())
+                        except:
+                            pass
+                    elif line.startswith('MQTTUsername='):
+                        mqtt_config['username'] = line.split('=', 1)[1].strip()
+                    elif line.startswith('MQTTPassword='):
+                        mqtt_config['password'] = line.split('=', 1)[1].strip()
+                    elif line.startswith('MQTTPrefix='):
+                        prefix = line.split('=', 1)[1].strip()
+                        if prefix:
+                            mqtt_config['topic_prefix'] = prefix
+        except:
+            pass
+
+print(json.dumps(mqtt_config))
+PYCODE;
+        
+        $getConfigCommand = "python3 -c " . escapeshellarg($pythonGetConfigScript) . " " . escapeshellarg($scriptsDir) . " 2>/dev/null";
+        $configOutput = shell_exec($getConfigCommand);
+        
+        if ($configOutput) {
+            $jsonStart = strpos($configOutput, '{"broker"');
+            if ($jsonStart !== false) {
+                $jsonOutput = substr($configOutput, $jsonStart);
+                $mqttConfig = @json_decode(trim($jsonOutput), true);
+                if ($mqttConfig && is_array($mqttConfig)) {
+                    // Only use FPP settings if plugin config doesn't have MQTT settings
+                    if (!isset($result['mqtt'])) {
+                        $result['mqtt'] = array();
+                    }
+                    // Fill in defaults from FPP settings
+                    if (empty($result['mqtt']['broker']) || $result['mqtt']['broker'] === 'localhost') {
+                        if (!empty($mqttConfig['broker'])) {
+                            $result['mqtt']['broker'] = $mqttConfig['broker'];
+                        }
+                    }
+                    if (empty($result['mqtt']['port']) || $result['mqtt']['port'] == 1883) {
+                        if (!empty($mqttConfig['port'])) {
+                            $result['mqtt']['port'] = $mqttConfig['port'];
+                        }
+                    }
+                    if (empty($result['mqtt']['topic_prefix'])) {
+                        if (!empty($mqttConfig['topic_prefix'])) {
+                            $result['mqtt']['topic_prefix'] = $mqttConfig['topic_prefix'];
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -745,52 +849,119 @@ function fppHomekitSaveConfig() {
 // POST /api/plugin/fpp-Homekit/test-mqtt
 function fppHomekitTestMQTT() {
     $pluginDir = dirname(__FILE__);
-    $configFile = $pluginDir . '/scripts/homekit_config.json';
+    $scriptsDir = $pluginDir . '/scripts';
+    $configFile = $scriptsDir . '/homekit_config.json';
     
-    // Load config
-    $config = array('playlist_name' => '');
-    if (file_exists($configFile)) {
-        $existing = @json_decode(file_get_contents($configFile), true);
-        if ($existing && is_array($existing)) {
-            $config = $existing;
-        }
+    // Use Python to read MQTT config (same logic as homekit_service.py)
+    $pythonGetConfigScript = <<<PYCODE
+import sys
+import os
+import json
+
+# Add scripts directory to path
+sys.path.insert(0, sys.argv[1])
+
+try:
+    # Import the get_mqtt_config function from homekit_service
+    from homekit_service import get_mqtt_config
+    
+    config = get_mqtt_config()
+    result = {
+        'broker': config.get('broker', 'localhost'),
+        'port': config.get('port', 1883),
+        'topic_prefix': config.get('topic_prefix', 'FPP'),
+        'username': config.get('username'),
+        'password': config.get('password')
+    }
+    print(json.dumps(result))
+except Exception as e:
+    # Fallback: read config manually
+    import json
+    
+    plugin_dir = sys.argv[1]
+    config_file = os.path.join(plugin_dir, 'homekit_config.json')
+    
+    mqtt_config = {
+        'broker': 'localhost',
+        'port': 1883,
+        'topic_prefix': 'FPP',
+        'username': None,
+        'password': None
     }
     
-    // Get MQTT settings
+    # Read plugin config
+    if os.path.exists(config_file):
+        try:
+            with open(config_file, 'r') as f:
+                plugin_config = json.load(f)
+                if 'mqtt' in plugin_config:
+                    mqtt_config.update(plugin_config['mqtt'])
+        except:
+            pass
+    
+    # Read FPP settings files
+    settings_paths = [
+        '/home/fpp/media/settings',
+        '/opt/fpp/media/settings'
+    ]
+    
+    for path in settings_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('MQTTHost='):
+                            mqtt_config['broker'] = line.split('=', 1)[1].strip()
+                        elif line.startswith('MQTTPort='):
+                            try:
+                                mqtt_config['port'] = int(line.split('=', 1)[1].strip())
+                            except:
+                                pass
+                        elif line.startswith('MQTTUsername='):
+                            mqtt_config['username'] = line.split('=', 1)[1].strip()
+                        elif line.startswith('MQTTPassword='):
+                            mqtt_config['password'] = line.split('=', 1)[1].strip()
+                        elif line.startswith('MQTTPrefix='):
+                            prefix = line.split('=', 1)[1].strip()
+                            if prefix:
+                                mqtt_config['topic_prefix'] = prefix
+            except:
+                pass
+    
+    print(json.dumps(mqtt_config))
+PYCODE;
+    
+    $getConfigCommand = "python3 -c " . escapeshellarg($pythonGetConfigScript) . " " . escapeshellarg($scriptsDir) . " 2>/dev/null";
+    $configOutput = shell_exec($getConfigCommand);
+    
+    // Parse MQTT config
     $mqttBroker = 'localhost';
     $mqttPort = 1883;
     $mqttTopicPrefix = 'FPP';
+    $mqttUsername = null;
+    $mqttPassword = null;
     
-    if (isset($config['mqtt'])) {
-        if (isset($config['mqtt']['broker'])) {
-            $mqttBroker = $config['mqtt']['broker'];
-        }
-        if (isset($config['mqtt']['port'])) {
-            $mqttPort = intval($config['mqtt']['port']);
-        }
-        if (isset($config['mqtt']['topic_prefix'])) {
-            $mqttTopicPrefix = $config['mqtt']['topic_prefix'];
-        }
-    }
-    
-    // Also check FPP settings files for MQTT config
-    $settingsPaths = array(
-        '/home/fpp/media/settings',
-        '/opt/fpp/media/settings'
-    );
-    
-    foreach ($settingsPaths as $path) {
-        if (file_exists($path) && is_readable($path)) {
-            $content = @file_get_contents($path);
-            if ($content) {
-                if (preg_match('/^MQTTHost\s*=\s*(.+)$/m', $content, $matches)) {
-                    $mqttBroker = trim($matches[1]);
+    if ($configOutput) {
+        $jsonStart = strpos($configOutput, '{"broker"');
+        if ($jsonStart !== false) {
+            $jsonOutput = substr($configOutput, $jsonStart);
+            $mqttConfig = @json_decode(trim($jsonOutput), true);
+            if ($mqttConfig && is_array($mqttConfig)) {
+                if (isset($mqttConfig['broker'])) {
+                    $mqttBroker = $mqttConfig['broker'];
                 }
-                if (preg_match('/^MQTTPort\s*=\s*(\d+)$/m', $content, $matches)) {
-                    $mqttPort = intval($matches[1]);
+                if (isset($mqttConfig['port'])) {
+                    $mqttPort = intval($mqttConfig['port']);
                 }
-                if (preg_match('/^MQTTPrefix\s*=\s*(.+)$/m', $content, $matches)) {
-                    $mqttTopicPrefix = trim($matches[1]);
+                if (isset($mqttConfig['topic_prefix'])) {
+                    $mqttTopicPrefix = $mqttConfig['topic_prefix'];
+                }
+                if (isset($mqttConfig['username'])) {
+                    $mqttUsername = $mqttConfig['username'];
+                }
+                if (isset($mqttConfig['password'])) {
+                    $mqttPassword = $mqttConfig['password'];
                 }
             }
         }
@@ -815,6 +986,8 @@ except ImportError:
 broker = sys.argv[1]
 port = int(sys.argv[2])
 topic_prefix = sys.argv[3]
+username = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] != 'None' and sys.argv[4] != '' else None
+password = sys.argv[5] if len(sys.argv) > 5 and sys.argv[5] != 'None' and sys.argv[5] != '' else None
 
 connected = False
 test_result = {"success": False, "error": ""}
@@ -840,6 +1013,10 @@ try:
         client = mqtt.Client(client_id="fpp-homekit-test")
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
+    
+    # Set username and password if provided
+    if username:
+        client.username_pw_set(username, password)
     
     client.connect(broker, port, keepalive=5)
     client.loop_start()
@@ -876,7 +1053,9 @@ PYCODE;
     $command = "python3 -W ignore::DeprecationWarning -c " . escapeshellarg($pythonScript) . " " . 
                escapeshellarg($mqttBroker) . " " . 
                escapeshellarg($mqttPort) . " " . 
-               escapeshellarg($mqttTopicPrefix) . " 2>/dev/null";
+               escapeshellarg($mqttTopicPrefix) . " " .
+               escapeshellarg($mqttUsername !== null ? $mqttUsername : 'None') . " " .
+               escapeshellarg($mqttPassword !== null ? $mqttPassword : 'None') . " 2>/dev/null";
     
     $output = shell_exec($command);
     $result = array('success' => false, 'error' => 'Unknown error');
@@ -904,6 +1083,145 @@ PYCODE;
         $result['error'] = 'No output from MQTT test script';
     }
 
+    return json($result);
+}
+
+// GET /api/plugin/fpp-Homekit/mqtt-diagnostics
+function fppHomekitMQTTDiagnostics() {
+    $pluginDir = dirname(__FILE__);
+    $scriptsDir = $pluginDir . '/scripts';
+    
+    // Use Python to read MQTT config (same logic as homekit_service.py)
+    $pythonDiagnosticsScript = <<<PYCODE
+import sys
+import os
+import json
+
+plugin_dir = sys.argv[1]
+config_file = os.path.join(plugin_dir, 'homekit_config.json')
+
+diagnostics = {
+    'settings_source': 'unknown',
+    'mqtt_config': {
+        'broker': 'localhost',
+        'port': 1883,
+        'topic_prefix': 'FPP',
+        'username': None,
+        'password': None,
+        'enabled': True
+    },
+    'topics': {
+        'start_playlist': '',
+        'stop': '',
+        'status': '',
+        'playlist_status': ''
+    },
+    'fpp_settings_files': [],
+    'plugin_config_file': config_file,
+    'plugin_config_exists': os.path.exists(config_file)
+}
+
+# Read plugin config
+plugin_config = {}
+if os.path.exists(config_file):
+    try:
+        with open(config_file, 'r') as f:
+            plugin_config = json.load(f)
+            if 'mqtt' in plugin_config:
+                diagnostics['mqtt_config'].update(plugin_config['mqtt'])
+                diagnostics['settings_source'] = 'plugin_config'
+    except Exception as e:
+        diagnostics['error'] = f"Error reading plugin config: {str(e)}"
+
+# Read FPP settings files
+settings_paths = [
+    '/home/fpp/media/settings',
+    '/opt/fpp/media/settings'
+]
+
+fpp_settings_found = []
+for path in settings_paths:
+    if os.path.exists(path):
+        fpp_settings_found.append(path)
+        try:
+            with open(path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('MQTTEnabled='):
+                        enabled = line.split('=', 1)[1].strip().lower() in ('1', 'true', 'yes')
+                        if not diagnostics['settings_source'] or diagnostics['settings_source'] == 'unknown':
+                            diagnostics['mqtt_config']['enabled'] = enabled
+                            diagnostics['settings_source'] = f'fpp_settings ({path})'
+                    elif line.startswith('MQTTHost='):
+                        broker = line.split('=', 1)[1].strip()
+                        if not diagnostics['settings_source'] or diagnostics['settings_source'] == 'unknown' or diagnostics['mqtt_config']['broker'] == 'localhost':
+                            diagnostics['mqtt_config']['broker'] = broker
+                            if diagnostics['settings_source'] == 'unknown':
+                                diagnostics['settings_source'] = f'fpp_settings ({path})'
+                    elif line.startswith('MQTTPort='):
+                        try:
+                            port = int(line.split('=', 1)[1].strip())
+                            if not diagnostics['settings_source'] or diagnostics['settings_source'] == 'unknown' or diagnostics['mqtt_config']['port'] == 1883:
+                                diagnostics['mqtt_config']['port'] = port
+                                if diagnostics['settings_source'] == 'unknown':
+                                    diagnostics['settings_source'] = f'fpp_settings ({path})'
+                        except:
+                            pass
+                    elif line.startswith('MQTTUsername='):
+                        username = line.split('=', 1)[1].strip()
+                        if not diagnostics['settings_source'] or diagnostics['settings_source'] == 'unknown' or not diagnostics['mqtt_config']['username']:
+                            diagnostics['mqtt_config']['username'] = username
+                            if diagnostics['settings_source'] == 'unknown':
+                                diagnostics['settings_source'] = f'fpp_settings ({path})'
+                    elif line.startswith('MQTTPassword='):
+                        password = line.split('=', 1)[1].strip()
+                        if not diagnostics['settings_source'] or diagnostics['settings_source'] == 'unknown' or not diagnostics['mqtt_config']['password']:
+                            diagnostics['mqtt_config']['password'] = password
+                            if diagnostics['settings_source'] == 'unknown':
+                                diagnostics['settings_source'] = f'fpp_settings ({path})'
+                    elif line.startswith('MQTTPrefix='):
+                        prefix = line.split('=', 1)[1].strip()
+                        if prefix:
+                            if not diagnostics['settings_source'] or diagnostics['settings_source'] == 'unknown' or diagnostics['mqtt_config']['topic_prefix'] == 'FPP':
+                                diagnostics['mqtt_config']['topic_prefix'] = prefix
+                                if diagnostics['settings_source'] == 'unknown':
+                                    diagnostics['settings_source'] = f'fpp_settings ({path})'
+        except Exception as e:
+            pass
+
+diagnostics['fpp_settings_files'] = fpp_settings_found
+
+# Calculate topics that will be used
+prefix = diagnostics['mqtt_config']['topic_prefix']
+diagnostics['topics']['start_playlist'] = f"{prefix}/command/StartPlaylist/{{playlist_name}}"
+diagnostics['topics']['stop'] = f"{prefix}/command/Stop"
+diagnostics['topics']['status'] = f"{prefix}/status"
+diagnostics['topics']['playlist_status'] = f"{prefix}/playlist/status"
+
+# Get playlist name if configured
+if 'playlist_name' in plugin_config:
+    diagnostics['configured_playlist'] = plugin_config['playlist_name']
+    diagnostics['topics']['start_playlist'] = f"{prefix}/command/StartPlaylist/{plugin_config['playlist_name']}"
+
+print(json.dumps(diagnostics, indent=2))
+PYCODE;
+    
+    $command = "python3 -c " . escapeshellarg($pythonDiagnosticsScript) . " " . escapeshellarg($scriptsDir) . " 2>/dev/null";
+    $output = shell_exec($command);
+    
+    $result = array('error' => 'Failed to read diagnostics');
+    
+    if ($output) {
+        $jsonStart = strpos($output, '{');
+        if ($jsonStart !== false) {
+            $jsonOutput = substr($output, $jsonStart);
+            $decoded = @json_decode(trim($jsonOutput), true);
+            if ($decoded && is_array($decoded)) {
+                $result = $decoded;
+            }
+        }
+    }
+    
     return json($result);
 }
 
