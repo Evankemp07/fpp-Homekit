@@ -53,6 +53,12 @@ if (file_exists($cssPath)) {
             <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
                 <button class="homekit-button" onclick="restartService()" id="restart-btn">Restart Service</button>
                 <button class="homekit-button secondary" onclick="refreshStatus()" id="refresh-btn">Refresh</button>
+                <button class="homekit-button secondary" onclick="viewLogs()" id="view-logs-btn" style="display: none;">View Logs</button>
+            </div>
+            
+            <div id="service-log-section" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                <h4 style="margin: 0 0 12px 0; font-size: 16px; font-weight: 600;">Service Log</h4>
+                <pre id="service-log-content" style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; font-family: 'SF Mono', Monaco, monospace; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto; color: var(--text-secondary); margin: 0;">Loading log...</pre>
             </div>
         </div>
         
@@ -271,6 +277,12 @@ if (file_exists($cssPath)) {
             playlistEl.innerHTML = '<span style="color: var(--warning-color);">Not configured - <a href="plugin.php?plugin=<?php echo $plugin; ?>&page=content.php" class="link">Configure now</a></span>';
         }
         
+        // Show/hide view logs button based on service status
+        const viewLogsBtn = document.getElementById('view-logs-btn');
+        if (viewLogsBtn) {
+            viewLogsBtn.style.display = serviceRunning ? 'none' : 'inline-block';
+        }
+        
         // Show/hide pairing sections
         const pairingSection = document.getElementById('pairing-section');
         const pairedSection = document.getElementById('paired-section');
@@ -381,6 +393,35 @@ if (file_exists($cssPath)) {
     function capitalize(str) {
         return str.charAt(0).toUpperCase() + str.slice(1);
     }
+    
+    // View service logs
+    window.viewLogs = function() {
+        const logSection = document.getElementById('service-log-section');
+        const logContent = document.getElementById('service-log-content');
+        const viewLogsBtn = document.getElementById('view-logs-btn');
+        
+        if (logSection.style.display === 'none') {
+            logSection.style.display = 'block';
+            viewLogsBtn.textContent = 'Hide Logs';
+            logContent.textContent = 'Loading log...';
+            
+            fetch(API_BASE + '/log')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.log_exists && data.log_content) {
+                        logContent.textContent = data.log_content || '(Log file is empty)';
+                    } else {
+                        logContent.textContent = '(No log file found. Service may not have started yet.)';
+                    }
+                })
+                .catch(error => {
+                    logContent.textContent = 'Error loading log: ' + error.message;
+                });
+        } else {
+            logSection.style.display = 'none';
+            viewLogsBtn.textContent = 'View Logs';
+        }
+    };
     
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {

@@ -67,6 +67,12 @@ function getEndpointsfppHomekit() {
         'callback' => 'fppHomekitSaveConfig');
     array_push($result, $ep);
 
+    $ep = array(
+        'method' => 'GET',
+        'endpoint' => 'log',
+        'callback' => 'fppHomekitLog');
+    array_push($result, $ep);
+
     return $result;
 }
 
@@ -234,29 +240,51 @@ function fppHomekitQRCode() {
 function fppHomekitRestart() {
     $pluginDir = dirname(__FILE__);
     $pidFile = $pluginDir . '/scripts/homekit_service.pid';
+    $script = $pluginDir . '/scripts/homekit_service.py';
+    $startScript = $pluginDir . '/scripts/postStart.sh';
     
     // Stop service
     if (file_exists($pidFile)) {
         $pid = trim(file_get_contents($pidFile));
-        if ($pid && posix_kill($pid, 0)) {
-            posix_kill($pid, SIGTERM);
-            sleep(1);
-            if (posix_kill($pid, 0)) {
-                posix_kill($pid, SIGKILL);
+        if ($pid) {
+            // Try posix_kill if available
+            if (function_exists('posix_kill')) {
+                if (posix_kill($pid, 0)) {
+                    posix_kill($pid, SIGTERM);
+                    sleep(1);
+                    if (posix_kill($pid, 0)) {
+                        posix_kill($pid, SIGKILL);
+                    }
+                }
+            } else {
+                // Fallback: use kill command
+                @exec("kill $pid 2>&1", $output, $return_var);
+                sleep(1);
+                @exec("kill -9 $pid 2>&1", $output, $return_var);
             }
         }
         @unlink($pidFile);
     }
     
-    // Start service
-    $script = $pluginDir . '/scripts/homekit_service.py';
-    if (file_exists($script)) {
-        $cmd = "cd " . escapeshellarg($pluginDir . '/scripts') . " && nohup python3 " . escapeshellarg($script) . " > /dev/null 2>&1 &";
+    // Start service using postStart.sh script for consistency
+    if (file_exists($startScript)) {
+        $cmd = "bash " . escapeshellarg($startScript) . " 2>&1";
+        $output = shell_exec($cmd);
+        $result = array('status' => 'restarted', 'output' => $output);
+    } elseif (file_exists($script)) {
+        // Fallback: start directly
+        $python3 = trim(shell_exec("which python3 2>/dev/null"));
+        if (empty($python3)) {
+            $python3 = 'python3';
+        }
+        $cmd = "cd " . escapeshellarg($pluginDir . '/scripts') . " && nohup " . escapeshellarg($python3) . " " . escapeshellarg($script) . " >> " . escapeshellarg($pluginDir . '/scripts/homekit_service.log') . " 2>&1 &";
         shell_exec($cmd);
-        sleep(2);
+        sleep(3);
+        $result = array('status' => 'restarted');
+    } else {
+        $result = array('status' => 'error', 'message' => 'Service script not found');
     }
     
-    $result = array('status' => 'restarted');
     return json($result);
 }
 
@@ -443,6 +471,31 @@ function fppHomekitSaveConfig() {
         $result = array('status' => 'saved', 'config' => $config);
     } else {
         $result = array('status' => 'error', 'message' => 'Failed to save config');
+    }
+    
+    return json($result);
+}
+
+// GET /api/plugin/fpp-Homekit/log
+function fppHomekitLog() {
+    $pluginDir = dirname(__FILE__);
+    $logFile = $pluginDir . '/scripts/homekit_service.log';
+    
+    $result = array(
+        'log_exists' => false,
+        'log_content' => '',
+        'log_size' => 0
+    );
+    
+    if (file_exists($logFile)) {
+        $result['log_exists'] = true;
+        $result['log_size'] = filesize($logFile);
+        // Read last 50 lines
+        $lines = file($logFile);
+        if ($lines) {
+            $lastLines = array_slice($lines, -50);
+            $result['log_content'] = implode('', $lastLines);
+        }
     }
     
     return json($result);

@@ -14,6 +14,14 @@ ini_set('display_errors', 1);
 $plugin = 'fpp-Homekit';
 $pluginDir = __DIR__;
 
+// Provide json() helper function if not available (FPP compatibility)
+if (!function_exists('json')) {
+    function json($data) {
+        header('Content-Type: application/json');
+        return json_encode($data);
+    }
+}
+
 // Simple router
 $requestUri = $_SERVER['REQUEST_URI'];
 $requestMethod = $_SERVER['REQUEST_METHOD'];
@@ -62,6 +70,13 @@ if (strpos($path, '/api/plugin/' . $plugin) === 0) {
             if ($requestMethod === 'POST') {
                 header('Content-Type: application/json');
                 echo fppHomekitRestart();
+            }
+            exit;
+            
+        case 'log':
+            if ($requestMethod === 'GET') {
+                header('Content-Type: application/json');
+                echo fppHomekitLog();
             }
             exit;
     }
