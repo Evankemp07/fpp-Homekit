@@ -26,18 +26,36 @@ fi
 
 # Verify Python can import required modules before starting
 echo "Verifying Python dependencies..."
-if ! $PYTHON3 -c "import pyhap" 2>/dev/null; then
+PYTHON_EXEC=$($PYTHON3 -c 'import sys; print(sys.executable)' 2>/dev/null)
+echo "Using Python: $PYTHON_EXEC"
+
+# Test import with user site-packages enabled
+if ! $PYTHON3 -c "import site; site.ENABLE_USER_SITE = True; import pyhap" 2>/dev/null; then
     echo "ERROR: pyhap module not found. The plugin dependencies may not be installed correctly."
-    echo "Python executable: $($PYTHON3 -c 'import sys; print(sys.executable)')"
-    echo "Python path:"
+    echo ""
+    echo "Python executable: $PYTHON_EXEC"
+    echo "Python version: $($PYTHON3 --version 2>&1)"
+    echo ""
+    echo "Python search path:"
+    $PYTHON3 -c "import sys, site; site.ENABLE_USER_SITE = True; print('\\n'.join(sys.path))" 2>/dev/null || \
     $PYTHON3 -c "import sys; print('\\n'.join(sys.path))"
     echo ""
-    echo "Try reinstalling the plugin or manually install dependencies:"
-    echo "  pip3 install -r ${PLUGIN_DIR}/scripts/requirements.txt"
+    echo "User site-packages:"
+    $PYTHON3 -c "import site; print(site.getusersitepackages())" 2>/dev/null || echo "Could not determine"
+    echo ""
+    echo "To fix this, try:"
+    echo "  1. Reinstall plugin dependencies:"
+    echo "     $PYTHON3 -m pip install -r ${PLUGIN_DIR}/scripts/requirements.txt --user --upgrade"
+    echo ""
+    echo "  2. Or install system-wide (may require sudo):"
+    echo "     sudo $PYTHON3 -m pip install -r ${PLUGIN_DIR}/scripts/requirements.txt --upgrade"
+    echo ""
+    echo "  3. Verify installation:"
+    echo "     $PYTHON3 -c 'import pyhap; print(\"HAP-python version:\", pyhap.__version__)'"
     exit 1
 fi
 
-echo "Python dependencies verified successfully"
+echo "✓ Python dependencies verified successfully"
 
 if [ ! -f "${SERVICE_SCRIPT}" ]; then
     echo "HomeKit service script not found: ${SERVICE_SCRIPT}"

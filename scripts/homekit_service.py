@@ -6,14 +6,55 @@ Exposes FPP as a HomeKit Light accessory using HAP-python
 
 import os
 import sys
+import site
+
+# Ensure user-installed packages are available
+# This is important when packages are installed with --user flag
+site.ENABLE_USER_SITE = True
+# Add user site-packages to path if not already there
+user_site = site.getusersitepackages()
+if user_site and user_site not in sys.path:
+    sys.path.insert(0, user_site)
+
+# Also add site-packages directories
+for site_dir in site.getsitepackages():
+    if site_dir not in sys.path:
+        sys.path.insert(0, site_dir)
+
 import json
 import time
 import logging
 import threading
-import requests
-from pyhap.accessory import Accessory, Bridge
-from pyhap.accessory_driver import AccessoryDriver
-from pyhap.const import CATEGORY_LIGHTBULB
+
+# Try importing required modules with helpful error messages
+try:
+    import requests
+except ImportError as e:
+    print(f"ERROR: Failed to import requests: {e}", file=sys.stderr)
+    print(f"Python executable: {sys.executable}", file=sys.stderr)
+    print(f"Python path: {sys.path}", file=sys.stderr)
+    print(f"User site-packages: {site.getusersitepackages()}", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    from pyhap.accessory import Accessory, Bridge
+    from pyhap.accessory_driver import AccessoryDriver
+    from pyhap.const import CATEGORY_LIGHTBULB
+except ImportError as e:
+    print(f"ERROR: Failed to import pyhap (HAP-python): {e}", file=sys.stderr)
+    print(f"Python executable: {sys.executable}", file=sys.stderr)
+    print(f"Python path: {sys.path}", file=sys.stderr)
+    print(f"User site-packages: {site.getusersitepackages()}", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("To fix this, install HAP-python from https://github.com/ikalchev/HAP-python:", file=sys.stderr)
+    print(f"  {sys.executable} -m pip install 'HAP-python[QRCode]>=4.0.0' --user", file=sys.stderr)
+    print("Or system-wide:", file=sys.stderr)
+    print(f"  sudo {sys.executable} -m pip install 'HAP-python[QRCode]>=4.0.0'", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("Also ensure all dependencies are installed:", file=sys.stderr)
+    print(f"  {sys.executable} -m pip install -r {os.path.join(os.path.dirname(__file__), 'requirements.txt')} --user", file=sys.stderr)
+    sys.exit(1)
+
 try:
     from pyhap import qr
     QR_AVAILABLE = True
