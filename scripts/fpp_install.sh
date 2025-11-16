@@ -112,7 +112,7 @@ if [ -z "$PIP3" ]; then
         fi
         
         if [ -f "$GET_PIP_SCRIPT" ]; then
-            echo "Running get-pip.py..."
+            echo "Running get-pip.py with --user flag..."
             GETPIP_OUTPUT=$($PYTHON3 "$GET_PIP_SCRIPT" --user 2>&1)
             GETPIP_RESULT=$?
             
@@ -124,8 +124,24 @@ if [ -z "$PIP3" ]; then
                     PIP_CHECK_OUTPUT=$($PYTHON3 -m pip --version 2>&1)
                 fi
             else
-                echo "get-pip.py failed (exit code: $GETPIP_RESULT)"
-                echo "Output: $GETPIP_OUTPUT"
+                echo "get-pip.py with --user failed (exit code: $GETPIP_RESULT)"
+                echo "This is likely due to PEP 668 (externally-managed-environment)"
+                echo ""
+                echo "Trying with --break-system-packages flag (use with caution)..."
+                GETPIP_OUTPUT=$($PYTHON3 "$GET_PIP_SCRIPT" --user --break-system-packages 2>&1)
+                GETPIP_RESULT=$?
+                
+                if [ $GETPIP_RESULT -eq 0 ]; then
+                    echo "✓ Successfully installed pip using get-pip.py"
+                    # Try again after installing
+                    if $PYTHON3 -m pip --version >/dev/null 2>&1; then
+                        PIP3="$PYTHON3 -m pip"
+                        PIP_CHECK_OUTPUT=$($PYTHON3 -m pip --version 2>&1)
+                    fi
+                else
+                    echo "get-pip.py failed even with --break-system-packages"
+                    echo "Output: $GETPIP_OUTPUT"
+                fi
             fi
             rm -f "$GET_PIP_SCRIPT"
         else
@@ -137,14 +153,21 @@ if [ -z "$PIP3" ]; then
         echo ""
         echo "ERROR: pip is still not available after attempting to bootstrap."
         echo ""
-        echo "The python3-pip package must be installed via the system package manager."
-        echo "This should happen automatically via pluginInfo.json dependencies, but"
-        echo "if it didn't, please install it manually:"
+        echo "This system uses Debian/Ubuntu's externally-managed Python environment (PEP 668),"
+        echo "which prevents installing pip without the system package."
+        echo ""
+        echo "The python3-pip package MUST be installed via the system package manager."
+        echo "This should happen automatically via pluginInfo.json dependencies during plugin"
+        echo "installation, but if it didn't, you need to install it manually:"
         echo ""
         echo "  sudo apt-get update"
         echo "  sudo apt-get install python3-pip"
         echo ""
-        echo "After installing python3-pip, the plugin installation should work."
+        echo "After installing python3-pip, re-run the plugin installation."
+        echo ""
+        echo "Note: If python3-pip is listed in pluginInfo.json dependencies but wasn't"
+        echo "installed automatically, this may be an FPP plugin installer issue. You can"
+        echo "install the dependencies manually and then reinstall the plugin."
         exit 1
     fi
 fi
