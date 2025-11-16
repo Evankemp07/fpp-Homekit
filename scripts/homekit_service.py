@@ -754,6 +754,23 @@ def main():
         # Create driver first
         state_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_accessory.state')
         logger.info(f"Creating HomeKit driver (state file: {state_file})")
+        
+        # Validate existing state file if it exists
+        if os.path.exists(state_file):
+            try:
+                with open(state_file, 'r') as f:
+                    state_data = json.load(f)
+                    pincode = state_data.get('pincode', '')
+                    if pincode:
+                        pincode_str = pincode.decode() if isinstance(pincode, bytes) else str(pincode)
+                        pincode_clean = pincode_str.replace('-', '')
+                        if len(pincode_clean) != 8 or not pincode_clean.isdigit():
+                            logger.warning(f"Invalid setup code in state file: {pincode_str}, regenerating state file")
+                            os.rename(state_file, state_file + '.backup')
+                            logger.info("Backed up invalid state file, will create new one")
+            except Exception as e:
+                logger.warning(f"Could not validate state file: {e}")
+        
         driver = AccessoryDriver(port=51826, persist_file=state_file)
         
         # Add accessory
@@ -775,13 +792,31 @@ def main():
             setup_id = _as_str(getattr(driver.state, 'setup_id', ''), 'HOME')
             mac = _as_str(getattr(driver.state, 'mac', ''), '')
             
+            # Validate setup code format (should be XXX-XX-XXX = 8 digits)
+            setup_code_clean = setup_code.replace('-', '')
+            if len(setup_code_clean) != 8 or not setup_code_clean.isdigit():
+                logger.error(f"Invalid setup code format: {setup_code} (expected XXX-XX-XXX)")
+                setup_code = '123-45-678'  # Fallback
+                setup_code_clean = '12345678'
+            
+            # Ensure setup ID is valid (should be 4 hex chars)
+            if not setup_id or len(setup_id) != 4:
+                logger.warning(f"Invalid setup ID format: {setup_id}, generating from MAC")
+                if mac and len(mac) >= 4:
+                    # Use last 4 chars of MAC as setup ID
+                    setup_id = mac[-4:].upper()
+                else:
+                    setup_id = 'HOME'
+            
             # Generate QR code if available
             qr_code_data = None
             if QR_AVAILABLE:
                 try:
                     qr_code_data = qr.get_qr_code(setup_code, setup_id)
+                    logger.info(f"Generated QR code data: {qr_code_data[:50]}...")
                 except Exception as e:
                     logger.warning(f"Could not generate QR code: {e}")
+                    logger.warning(f"Setup code: {setup_code}, Setup ID: {setup_id}")
             
             # Save to a JSON file for PHP to read
             info_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_pairing_info.json')

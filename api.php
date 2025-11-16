@@ -67,6 +67,12 @@ function getEndpointsfppHomekit() {
         'callback' => 'fppHomekitSaveConfig');
     array_push($result, $ep);
 
+    $ep = array(
+        'method' => 'POST',
+        'endpoint' => 'test-mqtt',
+        'callback' => 'fppHomekitTestMQTT');
+    array_push($result, $ep);
+
     return $result;
 }
 
@@ -434,12 +440,28 @@ function fppHomekitQRCode() {
     // If not available, generate QR code data
     if (!$qrData) {
         // Format: X-HM://[8-char hex setup ID][setup code without dashes]
+        // Setup code should be 8 digits: XXX-XX-XXX -> XXXXXXXX
         $setupCodeClean = str_replace('-', '', $setupCode);
-        $setupIDHex = bin2hex($setupID);
-        if (strlen($setupIDHex) < 8) {
-            $setupIDHex = str_pad($setupIDHex, 8, '0', STR_PAD_LEFT);
+        if (strlen($setupCodeClean) !== 8) {
+            // Invalid setup code format
+            header('HTTP/1.1 500 Internal Server Error');
+            return json(array('error' => 'Invalid setup code format'));
         }
-        $qrData = "X-HM://" . substr($setupIDHex, 0, 8) . $setupCodeClean;
+        
+        // Setup ID should already be hex (4 chars), pad to 8 if needed
+        $setupIDHex = strtoupper($setupID);
+        if (strlen($setupIDHex) < 8) {
+            // If setup ID is shorter, pad with zeros or use MAC address
+            if (strlen($setupIDHex) === 4) {
+                // Common case: 4-char setup ID, duplicate it
+                $setupIDHex = $setupIDHex . $setupIDHex;
+            } else {
+                $setupIDHex = str_pad($setupIDHex, 8, '0', STR_PAD_LEFT);
+            }
+        }
+        $setupIDHex = substr($setupIDHex, 0, 8);
+        
+        $qrData = "X-HM://" . $setupIDHex . $setupCodeClean;
     }
     
     // Use Python to generate QR code image
@@ -717,6 +739,150 @@ function fppHomekitSaveConfig() {
         $result = array('status' => 'error', 'message' => 'Failed to save config');
     }
     
+    return json($result);
+}
+
+// POST /api/plugin/fpp-Homekit/test-mqtt
+function fppHomekitTestMQTT() {
+    $pluginDir = dirname(__FILE__);
+    $configFile = $pluginDir . '/scripts/homekit_config.json';
+    
+    // Load config
+    $config = array('playlist_name' => '');
+    if (file_exists($configFile)) {
+        $existing = @json_decode(file_get_contents($configFile), true);
+        if ($existing && is_array($existing)) {
+            $config = $existing;
+        }
+    }
+    
+    // Get MQTT settings
+    $mqttBroker = 'localhost';
+    $mqttPort = 1883;
+    $mqttTopicPrefix = 'FPP';
+    
+    if (isset($config['mqtt'])) {
+        if (isset($config['mqtt']['broker'])) {
+            $mqttBroker = $config['mqtt']['broker'];
+        }
+        if (isset($config['mqtt']['port'])) {
+            $mqttPort = intval($config['mqtt']['port']);
+        }
+        if (isset($config['mqtt']['topic_prefix'])) {
+            $mqttTopicPrefix = $config['mqtt']['topic_prefix'];
+        }
+    }
+    
+    // Also check FPP settings files for MQTT config
+    $settingsPaths = array(
+        '/home/fpp/media/settings',
+        '/opt/fpp/media/settings'
+    );
+    
+    foreach ($settingsPaths as $path) {
+        if (file_exists($path) && is_readable($path)) {
+            $content = @file_get_contents($path);
+            if ($content) {
+                if (preg_match('/^MQTTHost\s*=\s*(.+)$/m', $content, $matches)) {
+                    $mqttBroker = trim($matches[1]);
+                }
+                if (preg_match('/^MQTTPort\s*=\s*(\d+)$/m', $content, $matches)) {
+                    $mqttPort = intval($matches[1]);
+                }
+                if (preg_match('/^MQTTPrefix\s*=\s*(.+)$/m', $content, $matches)) {
+                    $mqttTopicPrefix = trim($matches[1]);
+                }
+            }
+        }
+    }
+    
+    // Test MQTT connection using Python
+    $pythonScript = <<<PYCODE
+import sys
+import time
+import json
+
+try:
+    import paho.mqtt.client as mqtt
+except ImportError:
+    print(json.dumps({"success": False, "error": "paho-mqtt not installed"}))
+    sys.exit(1)
+
+broker = sys.argv[1]
+port = int(sys.argv[2])
+topic_prefix = sys.argv[3]
+
+connected = False
+test_result = {"success": False, "error": ""}
+
+def on_connect(client, userdata, flags, rc):
+    global connected
+    if rc == 0:
+        connected = True
+        test_result["success"] = True
+        test_result["message"] = f"Connected to MQTT broker at {broker}:{port}"
+    else:
+        test_result["error"] = f"Connection failed with code {rc}"
+
+def on_disconnect(client, userdata, rc):
+    pass
+
+try:
+    client = mqtt.Client(client_id="fpp-homekit-test")
+    client.on_connect = on_connect
+    client.on_disconnect = on_disconnect
+    
+    client.connect(broker, port, keepalive=5)
+    client.loop_start()
+    
+    # Wait for connection (max 3 seconds)
+    for _ in range(30):
+        if connected:
+            break
+        time.sleep(0.1)
+    
+    if connected:
+        # Try to publish a test message to see if FPP responds
+        test_topic = f"{topic_prefix}/command/GetStatus"
+        try:
+            result = client.publish(test_topic, "", qos=1)
+            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                test_result["message"] += f" - Test message published to {test_topic}"
+            else:
+                test_result["message"] += f" - Warning: Could not publish test message (rc={result.rc})"
+        except Exception as e:
+            test_result["message"] += f" - Warning: {str(e)}"
+    
+    client.loop_stop()
+    client.disconnect()
+    
+    print(json.dumps(test_result))
+    
+except ConnectionRefusedError:
+    print(json.dumps({"success": False, "error": f"Connection refused to {broker}:{port}. Check if MQTT broker is running."}))
+except Exception as e:
+    print(json.dumps({"success": False, "error": str(e)}))
+PYCODE;
+
+    $command = "python3 -c " . escapeshellarg($pythonScript) . " " . 
+               escapeshellarg($mqttBroker) . " " . 
+               escapeshellarg($mqttPort) . " " . 
+               escapeshellarg($mqttTopicPrefix) . " 2>&1";
+    
+    $output = shell_exec($command);
+    $result = array('success' => false, 'error' => 'Unknown error');
+    
+    if ($output) {
+        $decoded = @json_decode(trim($output), true);
+        if ($decoded && is_array($decoded)) {
+            $result = $decoded;
+        } else {
+            $result['error'] = 'Failed to parse test result: ' . htmlspecialchars(substr($output, 0, 200));
+        }
+    } else {
+        $result['error'] = 'No output from MQTT test script';
+    }
+
     return json($result);
 }
 

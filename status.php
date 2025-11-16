@@ -72,6 +72,7 @@ if (file_exists($cssPath)) {
                         <input type="number" class="form-select" id="mqtt-port" placeholder="1883" min="1" max="65535" style="width: 100px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
                     </div>
                     <button class="homekit-button" type="button" id="save-mqtt-btn">Save MQTT</button>
+                    <button class="homekit-button secondary" type="button" id="test-mqtt-btn">Test MQTT</button>
                 </div>
             </div>
             
@@ -477,12 +478,15 @@ if (file_exists($cssPath)) {
             statusClass = 'paused';
         } else if (statusName === 'testing') {
             statusClass = 'testing';
+        } else if (statusText.includes('Running') && !statusText.includes('Not Running') && !statusText.includes('Unreachable')) {
+            // FPP is running (green indicator)
+            statusClass = 'running';
         } else if (statusText.includes('Not Running') || statusText.includes('Unavailable') || statusText.includes('Unreachable')) {
             statusClass = 'stopped';
         }
         
-        // Build status display with better formatting
-        let statusHtml = '<span class="status-indicator ' + statusClass + '"></span><div style="flex: 1; min-width: 0;">';
+        // Build status display with better formatting - indicator on right side
+        let statusHtml = '<div style="flex: 1; min-width: 0; text-align: right;">';
         
         if (playing) {
             statusHtml += '<strong>Playing</strong>';
@@ -497,7 +501,7 @@ if (file_exists($cssPath)) {
             if (errorDetail) {
                 // Format error detail with better styling - split into readable lines
                 const errorParts = errorDetail.split('. ').filter(part => part.trim());
-                statusHtml += '<div style="color: var(--text-secondary); font-size: 12px; margin-top: 6px; line-height: 1.5; text-align: left;">';
+                statusHtml += '<div style="color: var(--text-secondary); font-size: 12px; margin-top: 6px; line-height: 1.5; text-align: right;">';
                 errorParts.forEach((part, index) => {
                     if (part.trim()) {
                         const trimmedPart = part.trim();
@@ -513,7 +517,7 @@ if (file_exists($cssPath)) {
                 statusHtml += '</div>';
             }
         }
-        statusHtml += '</div>';
+        statusHtml += '</div><span class="status-indicator ' + statusClass + '"></span>';
         
         const fppStatusEl = document.getElementById('fpp-status');
         fppStatusEl.innerHTML = statusHtml;
@@ -760,6 +764,45 @@ if (file_exists($cssPath)) {
             });
     }
     
+    function testMQTT() {
+        const testMqttBtn = document.getElementById('test-mqtt-btn');
+        
+        if (!testMqttBtn) {
+            return;
+        }
+        
+        testMqttBtn.disabled = true;
+        const originalLabel = testMqttBtn.textContent;
+        testMqttBtn.innerHTML = '<span class="spinner"></span> Testing...';
+        
+        debugLog('Testing MQTT connection...');
+        fetch(API_BASE + '/test-mqtt', {
+            method: 'POST'
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                debugLog('MQTT test response', data);
+                if (data.success) {
+                    showMessage('✓ ' + (data.message || 'MQTT connection successful!'), 'success');
+                } else {
+                    showMessage('✗ MQTT test failed: ' + (data.error || 'Unknown error'), 'error');
+                }
+            })
+            .catch(error => {
+                debugLog('Error testing MQTT', { error: error.message });
+                showMessage('Error testing MQTT: ' + error.message, 'error');
+            })
+            .finally(() => {
+                testMqttBtn.disabled = false;
+                testMqttBtn.textContent = originalLabel;
+            });
+    }
+    
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
         if (savePlaylistBtn) {
@@ -773,6 +816,11 @@ if (file_exists($cssPath)) {
         const saveMqttBtn = document.getElementById('save-mqtt-btn');
         if (saveMqttBtn) {
             saveMqttBtn.addEventListener('click', saveMQTTConfig);
+        }
+        
+        const testMqttBtn = document.getElementById('test-mqtt-btn');
+        if (testMqttBtn) {
+            testMqttBtn.addEventListener('click', testMQTT);
         }
         
         loadPlaylists(true);

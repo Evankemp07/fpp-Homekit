@@ -132,8 +132,27 @@ if [ $FIRST_INSTALL -eq 0 ]; then
     # Get current git SHA if this is a git repository
     if [ -d "${PLUGIN_DIR}/.git" ] && command -v git >/dev/null 2>&1; then
         cd "${PLUGIN_DIR}" || exit 1
-        CURRENT_SHA=$(git rev-parse HEAD 2>/dev/null)
+        
+        # Get the branch name
         CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
+        
+        # Fetch latest from remote to ensure we have current refs (quiet, no output)
+        git fetch origin "${CURRENT_BRANCH}" >/dev/null 2>&1 || true
+        
+        # Try to get SHA from remote branch first (what FPP checks against)
+        REMOTE_SHA=""
+        if git rev-parse --verify "origin/${CURRENT_BRANCH}" >/dev/null 2>&1; then
+            REMOTE_SHA=$(git rev-parse "origin/${CURRENT_BRANCH}" 2>/dev/null)
+        fi
+        
+        # Use remote SHA if available, otherwise use local HEAD (should match after pull)
+        CURRENT_SHA="${REMOTE_SHA:-$(git rev-parse HEAD 2>/dev/null)}"
+        
+        if [ -n "${REMOTE_SHA}" ]; then
+            echo "Using remote SHA: ${REMOTE_SHA}" | tee -a "${INSTALL_LOG}"
+        else
+            echo "Using local HEAD SHA: ${CURRENT_SHA}" | tee -a "${INSTALL_LOG}"
+        fi
         
         if [ -n "${CURRENT_SHA}" ] && [ -f "${PLUGIN_INFO_FILE}" ]; then
             # Update SHA in pluginInfo.json using Python (more reliable than sed for JSON)
