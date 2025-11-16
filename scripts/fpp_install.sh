@@ -61,23 +61,51 @@ echo "Python executable: $PYTHON_PATH"
 
 # Find pip3 (prefer pip3 associated with python3)
 PIP3=""
+PIP_CHECK_OUTPUT=""
+
+# Try python3 -m pip first (most reliable)
 if $PYTHON3 -m pip --version >/dev/null 2>&1; then
     PIP3="$PYTHON3 -m pip"
+    PIP_CHECK_OUTPUT=$($PYTHON3 -m pip --version 2>&1)
+elif $PYTHON3 -c "import pip" >/dev/null 2>&1; then
+    # pip module exists but might not work as -m pip, try direct import
+    PIP3="$PYTHON3 -m pip"
+    PIP_CHECK_OUTPUT=$($PYTHON3 -m pip --version 2>&1)
 elif command -v pip3 >/dev/null 2>&1; then
     PIP3="pip3"
+    PIP_CHECK_OUTPUT=$(pip3 --version 2>&1)
 elif command -v pip >/dev/null 2>&1; then
     PIP3="pip"
+    PIP_CHECK_OUTPUT=$(pip --version 2>&1)
 fi
 
 if [ -z "$PIP3" ]; then
-    echo "ERROR: pip3 not found. Please install pip3."
-    echo "On Debian/Ubuntu: sudo apt-get install python3-pip"
-    echo "On macOS: python3 -m ensurepip --upgrade"
-    exit 1
+    echo "ERROR: pip3 not found."
+    echo ""
+    echo "Attempting to bootstrap pip using ensurepip..."
+    if $PYTHON3 -m ensurepip --upgrade >/dev/null 2>&1; then
+        echo "✓ Successfully bootstrapped pip"
+        # Try again after bootstrapping
+        if $PYTHON3 -m pip --version >/dev/null 2>&1; then
+            PIP3="$PYTHON3 -m pip"
+            PIP_CHECK_OUTPUT=$($PYTHON3 -m pip --version 2>&1)
+        fi
+    fi
+    
+    if [ -z "$PIP3" ]; then
+        echo ""
+        echo "pip is still not available. Please install it manually:"
+        echo "On Debian/Ubuntu: sudo apt-get install python3-pip"
+        echo "On macOS: python3 -m ensurepip --upgrade"
+        echo ""
+        echo "Or try manually:"
+        echo "  $PYTHON3 -m ensurepip --upgrade"
+        exit 1
+    fi
 fi
 
 echo "Found pip: $PIP3"
-$PIP3 --version
+echo "$PIP_CHECK_OUTPUT"
 
 # Create log file for detailed error output
 echo "Installation log: ${INSTALL_LOG}" > "${INSTALL_LOG}"
