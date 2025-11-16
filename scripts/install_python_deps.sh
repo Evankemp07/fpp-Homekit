@@ -38,15 +38,39 @@ if $PIP3 install -r "${REQUIREMENTS_FILE}" --user --upgrade >> "${INSTALL_LOG}" 
     INSTALL_SUCCESS=1
     echo "✓ Dependencies installed successfully with --user flag" | tee -a "${INSTALL_LOG}"
 else
-    echo "Warning: --user install failed, trying system-wide installation..." | tee -a "${INSTALL_LOG}"
-    echo "Last 20 lines of install log:" | tee -a "${INSTALL_LOG}"
-    tail -20 "${INSTALL_LOG}" | tee -a "${INSTALL_LOG}"
+    echo "Warning: --user install failed, checking error..." | tee -a "${INSTALL_LOG}"
     
-    # Try without --user (may require sudo)
-    if $PIP3 install -r "${REQUIREMENTS_FILE}" --upgrade >> "${INSTALL_LOG}" 2>&1; then
-        INSTALL_SUCCESS=1
-        echo "✓ Dependencies installed successfully system-wide" | tee -a "${INSTALL_LOG}"
+    # Check if it's a PEP 668 error (externally-managed-environment)
+    if grep -q "externally-managed-environment\|PEP 668" "${INSTALL_LOG}"; then
+        echo "Detected PEP 668 (externally-managed-environment) restriction" | tee -a "${INSTALL_LOG}"
+        echo "Retrying with --user --break-system-packages flag..." | tee -a "${INSTALL_LOG}"
+        
+        # Try with --user --break-system-packages
+        if $PIP3 install -r "${REQUIREMENTS_FILE}" --user --upgrade --break-system-packages >> "${INSTALL_LOG}" 2>&1; then
+            INSTALL_SUCCESS=1
+            echo "✓ Dependencies installed successfully with --user --break-system-packages flag" | tee -a "${INSTALL_LOG}"
+        else
+            # Try system-wide with --break-system-packages
+            echo "Trying system-wide installation with --break-system-packages..." | tee -a "${INSTALL_LOG}"
+            if $PIP3 install -r "${REQUIREMENTS_FILE}" --upgrade --break-system-packages >> "${INSTALL_LOG}" 2>&1; then
+                INSTALL_SUCCESS=1
+                echo "✓ Dependencies installed successfully system-wide with --break-system-packages" | tee -a "${INSTALL_LOG}"
+            else
+                INSTALL_SUCCESS=0
+            fi
+        fi
     else
+        # Not a PEP 668 error, try system-wide without --break-system-packages
+        echo "Trying system-wide installation..." | tee -a "${INSTALL_LOG}"
+        if $PIP3 install -r "${REQUIREMENTS_FILE}" --upgrade >> "${INSTALL_LOG}" 2>&1; then
+            INSTALL_SUCCESS=1
+            echo "✓ Dependencies installed successfully system-wide" | tee -a "${INSTALL_LOG}"
+        else
+            INSTALL_SUCCESS=0
+        fi
+    fi
+    
+    if [ $INSTALL_SUCCESS -eq 0 ]; then
         echo "ERROR: Failed to install Python dependencies." | tee -a "${INSTALL_LOG}"
         echo "Last 30 lines of error output:" | tee -a "${INSTALL_LOG}"
         tail -30 "${INSTALL_LOG}"
@@ -54,7 +78,14 @@ else
         echo "Full error log saved to: ${INSTALL_LOG}"
         echo ""
         echo "To install manually, try:"
-        echo "  sudo $PIP3 install -r ${REQUIREMENTS_FILE}"
+        # Check if PEP 668 was detected
+        if grep -q "externally-managed-environment\|PEP 668" "${INSTALL_LOG}"; then
+            echo "  $PIP3 install -r ${REQUIREMENTS_FILE} --user --break-system-packages"
+            echo "Or system-wide (requires sudo):"
+            echo "  sudo $PIP3 install -r ${REQUIREMENTS_FILE} --break-system-packages"
+        else
+            echo "  sudo $PIP3 install -r ${REQUIREMENTS_FILE}"
+        fi
         echo ""
         echo "Or ensure all system dependencies are installed first:"
         echo "  sudo apt-get install python3 python3-pip python3-dev libffi-dev libssl-dev build-essential libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev"
