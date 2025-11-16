@@ -645,16 +645,25 @@ if (file_exists($cssPath)) {
         })
         .then(response => {
             if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
+                return response.text().then(text => {
+                    throw new Error('HTTP ' + response.status + ': ' + text.substring(0, 200));
+                });
             }
-            return response.json();
+            return response.text().then(text => {
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    debugLog('Failed to parse JSON response', { text: text.substring(0, 500) });
+                    throw new Error('Invalid JSON response: ' + text.substring(0, 200));
+                }
+            });
         })
         .then(data => {
             debugLog('Restart response', data);
-            if (data.started) {
+            if (data && data.started) {
                 showMessage('Service restarted successfully', 'success');
             } else {
-                showMessage(data.message || 'Service restart initiated. Please wait a few seconds...', 'info');
+                showMessage(data && data.message ? data.message : 'Service restart initiated. Please wait a few seconds...', 'info');
             }
             // Refresh status after a short delay
             setTimeout(() => {
@@ -668,7 +677,7 @@ if (file_exists($cssPath)) {
             }, 5000);
         })
         .catch(error => {
-            debugLog('Error restarting service', { error: error.message });
+            debugLog('Error restarting service', { error: error.message, stack: error.stack });
             showMessage('Error restarting service: ' + error.message, 'error');
             btn.disabled = false;
             btn.textContent = 'Restart Service';
