@@ -521,19 +521,20 @@ class FPPLightAccessory(Accessory):
         self.config = self.load_config()
         self.playlist_name = self.config.get('playlist_name', '')
         
-        # Initialize MQTT client (required, no HTTP fallback)
+        # Initialize MQTT client (MQTT only, no HTTP fallback)
         if not MQTT_AVAILABLE:
             logger.error("MQTT support required but paho-mqtt not installed. Install with: pip install paho-mqtt")
-            raise RuntimeError("MQTT support required but paho-mqtt not installed. Install with: pip install paho-mqtt")
+            raise RuntimeError("MQTT support required but paho-mqtt not installed")
         
         mqtt_config = get_mqtt_config()
         self.mqtt_client = FPPMQTTClient(mqtt_config)
+        self.use_mqtt = True
         
         # Try to connect to MQTT (will retry in background thread if fails)
         mqtt_connected = self.mqtt_client.connect()
         if not mqtt_connected:
             logger.warning("Initial MQTT connection failed, will retry in background thread")
-            logger.warning("Service will start but control commands may not work until MQTT connects")
+            logger.warning("Service will start but control commands won't work until MQTT connects")
         
         # Add Light service with On characteristic
         service = self.add_preload_service('Lightbulb')
@@ -546,10 +547,8 @@ class FPPLightAccessory(Accessory):
         # Subscribe to FPP status updates via MQTT (if connected)
         if mqtt_connected:
             self.subscribe_to_status()
-        else:
-            logger.warning("MQTT not connected, status subscriptions will be set up when connection is established")
         
-        # Start status polling thread (will use MQTT subscriptions and handle reconnections)
+        # Start MQTT polling thread (handles reconnections and subscriptions)
         self.poll_thread = threading.Thread(target=self.poll_fpp_status_mqtt, daemon=True)
         self.poll_thread.start()
         
@@ -636,7 +635,7 @@ class FPPLightAccessory(Accessory):
         
         if not self.mqtt_client.connected:
             logger.error(f"Cannot start playlist: MQTT not connected. Playlist: {self.playlist_name}")
-            logger.error("Check MQTT broker is running and FPP MQTT settings are correct")
+            logger.error("MQTT connection will be retried automatically")
             return
         
         logger.info(f"Starting playlist via MQTT: {self.playlist_name}")
@@ -648,7 +647,7 @@ class FPPLightAccessory(Accessory):
         """Stop FPP playback via MQTT"""
         if not self.mqtt_client.connected:
             logger.error("Cannot stop playback: MQTT not connected")
-            logger.error("Check MQTT broker is running and FPP MQTT settings are correct")
+            logger.error("MQTT connection will be retried automatically")
             return
         
         logger.info("Stopping playback via MQTT")
@@ -678,10 +677,10 @@ class FPPLightAccessory(Accessory):
                             logger.info("MQTT status subscriptions set up")
                     else:
                         if subscriptions_setup:
-                            logger.error("MQTT reconnection failed, will retry...")
+                            logger.warning("MQTT reconnection failed, will retry in 10 seconds...")
                         else:
                             logger.warning("MQTT initial connection failed, will retry in 10 seconds...")
-                        time.sleep(10)  # Wait longer before retry if not connected
+                        time.sleep(10)  # Wait before retry if not connected
                         continue
                 elif not subscriptions_setup:
                     # Connected but subscriptions not set up yet

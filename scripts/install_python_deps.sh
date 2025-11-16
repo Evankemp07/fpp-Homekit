@@ -126,6 +126,14 @@ else
     echo "  ✓ PIL/Pillow installed" | tee -a "${INSTALL_LOG}"
 fi
 
+if ! $PYTHON3 -c "import paho.mqtt.client" 2>>"${INSTALL_LOG}"; then
+    echo "  ✗ paho-mqtt not found (required for MQTT control)" | tee -a "${INSTALL_LOG}"
+    MISSING_DEPS=1
+else
+    echo "  ✓ paho-mqtt installed" | tee -a "${INSTALL_LOG}"
+    $PYTHON3 -c "import paho.mqtt.client as mqtt; print('  paho-mqtt version:', getattr(mqtt, '__version__', 'unknown'))" 2>/dev/null | tee -a "${INSTALL_LOG}" || true
+fi
+
 if [ $MISSING_DEPS -eq 1 ]; then
     echo ""
     echo "ERROR: Some dependencies are missing. See ${INSTALL_LOG} for details." | tee -a "${INSTALL_LOG}"

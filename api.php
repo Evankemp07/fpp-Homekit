@@ -326,8 +326,7 @@ function fppHomekitStatus() {
     }
     $result['paired'] = $paired;
     
-    // FPP status is now handled via MQTT by the Python service
-    // PHP status page just shows that MQTT is being used
+    // Get FPP status via HTTP API (MQTT is used by Python service for control)
     $fppStatus = array(
         'playing' => false, 
         'status_name' => 'unknown',
@@ -336,35 +335,109 @@ function fppHomekitStatus() {
         'seconds_elapsed' => 0,
         'seconds_remaining' => 0,
         'volume' => 0,
-        'status_text' => 'Status via MQTT',
-        'error_detail' => 'FPP status is monitored via MQTT by the HomeKit service. Check service logs for details.'
+        'status_text' => 'Unknown'
     );
     
-    // Check if FPPD process is running (just for info)
-    $fppdRunning = false;
-    if (function_exists('exec')) {
-        $output = array();
-        @exec('pgrep -f fppd 2>/dev/null', $output);
-        if (!empty($output)) {
-            $fppdRunning = true;
+    $connected = false;
+    $lastError = '';
+    $apiEndpointUsed = '';
+    
+    $candidateEndpoints = fppHomekitBuildApiEndpoints();
+    
+    // Try to get FPP status via HTTP API
+    $apiResult = fppHomekitApiRequest('GET', '/status', array('timeout' => 3, 'connect_timeout' => 2));
+    if ($apiResult['success'] && $apiResult['http_code'] == 200 && !empty($apiResult['body'])) {
+        $statusData = json_decode($apiResult['body'], true);
+        if ($statusData && is_array($statusData)) {
+            $apiEndpointUsed = $apiResult['endpoint'];
+            $fppStatus = array_merge($fppStatus, $statusData);
+            
+            // Determine playing state
+            $playing = false;
+            if (isset($fppStatus['playing'])) {
+                $playing = (bool)$fppStatus['playing'];
+            } elseif (isset($fppStatus['status_name'])) {
+                $statusName = strtolower($fppStatus['status_name']);
+                $playing = ($statusName === 'playing');
+            } elseif (isset($fppStatus['status'])) {
+                $status = strtolower($fppStatus['status']);
+                $playing = ($status === 'playing');
+            }
+            $fppStatus['playing'] = $playing;
+            
+            // Create human-readable status text
+            $statusName = isset($fppStatus['status_name']) ? strtolower($fppStatus['status_name']) : 'unknown';
+            switch ($statusName) {
+                case 'playing':
+                    $fppStatus['status_text'] = 'Playing';
+                    if (!empty($fppStatus['current_sequence'])) {
+                        $fppStatus['status_text'] .= ': ' . $fppStatus['current_sequence'];
+                    } elseif (!empty($fppStatus['current_playlist'])) {
+                        $fppStatus['status_text'] .= ': ' . $fppStatus['current_playlist'];
+                    }
+                    break;
+                case 'paused':
+                    $fppStatus['status_text'] = 'Paused';
+                    break;
+                case 'stopped':
+                    $fppStatus['status_text'] = 'Stopped';
+                    break;
+                case 'idle':
+                    $fppStatus['status_text'] = 'Idle';
+                    break;
+                case 'testing':
+                    $fppStatus['status_text'] = 'Testing';
+                    break;
+                default:
+                    $fppStatus['status_text'] = ucfirst($statusName);
+                    break;
+            }
+            $connected = true;
         } else {
-            @exec('ps aux | grep -i "[f]ppd" 2>/dev/null', $output);
+            $lastError = 'Unable to parse FPP status response.';
+        }
+    } else {
+        $apiEndpointUsed = $apiResult['endpoint'];
+        $lastError = $apiResult['error'] ?: ($apiResult['http_code'] ? "HTTP {$apiResult['http_code']}" : 'No response from FPP API');
+    }
+    
+    if (!$connected) {
+        // FPP API not available
+        $fppStatus['status_text'] = 'FPP Not Running';
+        $fppStatus['error_detail'] = '';
+        
+        // Check if FPPD process is running
+        $fppdRunning = false;
+        if (function_exists('exec')) {
+            $output = array();
+            @exec('pgrep -f fppd 2>/dev/null', $output);
             if (!empty($output)) {
                 $fppdRunning = true;
+            } else {
+                @exec('ps aux | grep -i "[f]ppd" 2>/dev/null', $output);
+                if (!empty($output)) {
+                    $fppdRunning = true;
+                }
             }
+        }
+        
+        if ($fppdRunning) {
+            $fppStatus['status_text'] = 'FPP Running (API Unreachable)';
+            $fppStatus['error_detail'] = "FPP daemon is running but the REST API is not accessible.";
+        } else {
+            $fppStatus['status_text'] = 'FPP Not Running';
+            $fppStatus['error_detail'] = 'FPP daemon does not appear to be running. Start FPP to enable status monitoring.';
+        }
+        
+        if ($lastError) {
+            $fppStatus['error_detail'] .= ' Error: ' . $lastError;
         }
     }
     
-    if ($fppdRunning) {
-        $fppStatus['status_text'] = 'FPP Running (MQTT)';
-        $fppStatus['error_detail'] = 'FPP daemon is running. Status updates are received via MQTT.';
-    } else {
-        $fppStatus['status_text'] = 'FPP Not Running';
-        $fppStatus['error_detail'] = 'FPP daemon does not appear to be running. Start FPP to enable control.';
-    }
-    
     $result['fpp_status'] = $fppStatus;
-    $result['control_method'] = 'MQTT';
+    if (!empty($apiEndpointUsed)) {
+        $result['fpp_api_endpoint'] = $apiEndpointUsed;
+    }
     
     // Get configured playlist
     $playlist = '';
