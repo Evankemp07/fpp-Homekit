@@ -531,11 +531,15 @@ function fppHomekitRestart() {
         if ($pid) {
             // Try posix_kill if available
             if (function_exists('posix_kill')) {
+                // Use numeric signal values (SIGTERM=15, SIGKILL=9) since constants may not be defined
+                $sigterm = defined('SIGTERM') ? SIGTERM : 15;
+                $sigkill = defined('SIGKILL') ? SIGKILL : 9;
+                
                 if (posix_kill($pid, 0)) {
-                    posix_kill($pid, SIGTERM);
+                    posix_kill($pid, $sigterm);
                     sleep(1);
                     if (posix_kill($pid, 0)) {
-                        posix_kill($pid, SIGKILL);
+                        posix_kill($pid, $sigkill);
                     }
                 }
             } else {
@@ -1263,7 +1267,7 @@ PYCODE;
             }
         }
     }
-    
+
     return json($result);
 }
 

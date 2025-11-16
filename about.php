@@ -51,8 +51,8 @@ if (file_exists($cssPath)) {
     <div class="homekit-card">
         <h3>Project Links</h3>
         <p class="info-text">
-            <a href='https://github.com/FalconChristmas/fpp-Homekit' class="link" target="_blank">GitHub Repository</a><br>
-            <a href='https://github.com/FalconChristmas/fpp-Homekit/issues' class="link" target="_blank">Issue Tracker</a>
+            <a href='https://github.com/Evankemp07/fpp-Homekit' class="link" target="_blank">GitHub Repository</a><br>
+            <a href='https://github.com/Evankemp07/fpp-Homekit/issues' class="link" target="_blank">Issue Tracker</a>
         </p>
     </div>
 </div>
