@@ -61,23 +61,96 @@ echo "Python executable: $PYTHON_PATH"
 
 # Find pip3 (prefer pip3 associated with python3)
 PIP3=""
+PIP_CHECK_OUTPUT=""
+
+# Try python3 -m pip first (most reliable)
 if $PYTHON3 -m pip --version >/dev/null 2>&1; then
     PIP3="$PYTHON3 -m pip"
+    PIP_CHECK_OUTPUT=$($PYTHON3 -m pip --version 2>&1)
+elif $PYTHON3 -c "import pip" >/dev/null 2>&1; then
+    # pip module exists but might not work as -m pip, try direct import
+    PIP3="$PYTHON3 -m pip"
+    PIP_CHECK_OUTPUT=$($PYTHON3 -m pip --version 2>&1)
 elif command -v pip3 >/dev/null 2>&1; then
     PIP3="pip3"
+    PIP_CHECK_OUTPUT=$(pip3 --version 2>&1)
 elif command -v pip >/dev/null 2>&1; then
     PIP3="pip"
+    PIP_CHECK_OUTPUT=$(pip --version 2>&1)
 fi
 
 if [ -z "$PIP3" ]; then
-    echo "ERROR: pip3 not found. Please install pip3."
-    echo "On Debian/Ubuntu: sudo apt-get install python3-pip"
-    echo "On macOS: python3 -m ensurepip --upgrade"
-    exit 1
+    echo "ERROR: pip3 not found."
+    echo ""
+    echo "Attempting to bootstrap pip using ensurepip..."
+    
+    # Try ensurepip and capture output
+    ENSUREPIP_OUTPUT=$($PYTHON3 -m ensurepip --upgrade 2>&1)
+    ENSUREPIP_RESULT=$?
+    
+    if [ $ENSUREPIP_RESULT -eq 0 ]; then
+        echo "✓ Successfully bootstrapped pip"
+        # Try again after bootstrapping
+        if $PYTHON3 -m pip --version >/dev/null 2>&1; then
+            PIP3="$PYTHON3 -m pip"
+            PIP_CHECK_OUTPUT=$($PYTHON3 -m pip --version 2>&1)
+        fi
+    else
+        echo "ensurepip failed (exit code: $ENSUREPIP_RESULT)"
+        echo "Output: $ENSUREPIP_OUTPUT"
+        echo ""
+        echo "Trying alternative: downloading get-pip.py..."
+        
+        # Try downloading get-pip.py as fallback
+        GET_PIP_URL="https://bootstrap.pypa.io/get-pip.py"
+        GET_PIP_SCRIPT="/tmp/get-pip.py"
+        
+        if command -v curl >/dev/null 2>&1; then
+            curl -sSL "$GET_PIP_URL" -o "$GET_PIP_SCRIPT" 2>&1
+        elif command -v wget >/dev/null 2>&1; then
+            wget -q -O "$GET_PIP_SCRIPT" "$GET_PIP_URL" 2>&1
+        fi
+        
+        if [ -f "$GET_PIP_SCRIPT" ]; then
+            echo "Running get-pip.py..."
+            GETPIP_OUTPUT=$($PYTHON3 "$GET_PIP_SCRIPT" --user 2>&1)
+            GETPIP_RESULT=$?
+            
+            if [ $GETPIP_RESULT -eq 0 ]; then
+                echo "✓ Successfully installed pip using get-pip.py"
+                # Try again after installing
+                if $PYTHON3 -m pip --version >/dev/null 2>&1; then
+                    PIP3="$PYTHON3 -m pip"
+                    PIP_CHECK_OUTPUT=$($PYTHON3 -m pip --version 2>&1)
+                fi
+            else
+                echo "get-pip.py failed (exit code: $GETPIP_RESULT)"
+                echo "Output: $GETPIP_OUTPUT"
+            fi
+            rm -f "$GET_PIP_SCRIPT"
+        else
+            echo "Could not download get-pip.py (curl/wget not available)"
+        fi
+    fi
+    
+    if [ -z "$PIP3" ]; then
+        echo ""
+        echo "ERROR: pip is still not available after attempting to bootstrap."
+        echo ""
+        echo "The python3-pip package must be installed via the system package manager."
+        echo "This should happen automatically via pluginInfo.json dependencies, but"
+        echo "if it didn't, please install it manually:"
+        echo ""
+        echo "  sudo apt-get update"
+        echo "  sudo apt-get install python3-pip"
+        echo ""
+        echo "After installing python3-pip, the plugin installation should work."
+        exit 1
+    fi
 fi
 
 echo "Found pip: $PIP3"
-$PIP3 --version
+echo "$PIP_CHECK_OUTPUT"
 
 # Create log file for detailed error output
 echo "Installation log: ${INSTALL_LOG}" > "${INSTALL_LOG}"
