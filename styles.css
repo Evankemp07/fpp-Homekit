@@ -69,9 +69,10 @@
 .status-row {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     padding: 12px 0;
     border-bottom: 1px solid var(--border-color);
+    gap: 16px;
 }
 
 .status-row:last-child {
@@ -94,6 +95,8 @@
     flex-wrap: wrap;
     text-align: right;
     justify-content: flex-end;
+    flex: 1;
+    min-width: 0;
 }
 
 .status-indicator {

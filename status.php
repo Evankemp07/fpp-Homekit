@@ -321,9 +321,24 @@ if (file_exists($cssPath)) {
                 statusHtml += '<div style="color: var(--text-secondary); font-size: 13px; margin-top: 2px;">Sequence: ' + escapeHtml(currentSequence) + '</div>';
             }
         } else {
-            statusHtml += escapeHtml(statusText);
+            statusHtml += '<div>' + escapeHtml(statusText) + '</div>';
             if (errorDetail) {
-                statusHtml += '<div style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; line-height: 1.4;">' + escapeHtml(errorDetail) + '</div>';
+                // Format error detail with better styling - split into readable lines
+                const errorParts = errorDetail.split('. ').filter(part => part.trim());
+                statusHtml += '<div style="color: var(--text-secondary); font-size: 12px; margin-top: 6px; line-height: 1.5; text-align: left;">';
+                errorParts.forEach((part, index) => {
+                    if (part.trim()) {
+                        const trimmedPart = part.trim();
+                        statusHtml += escapeHtml(trimmedPart);
+                        if (!trimmedPart.endsWith('.') && !trimmedPart.endsWith(':')) {
+                            statusHtml += '.';
+                        }
+                        if (index < errorParts.length - 1) {
+                            statusHtml += '<br>';
+                        }
+                    }
+                });
+                statusHtml += '</div>';
             }
         }
         statusHtml += '</div>';
