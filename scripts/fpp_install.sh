@@ -42,9 +42,19 @@ echo "Python executable: $PYTHON_PATH" | tee -a "${INSTALL_LOG}"
 # Find pip
 echo ""
 echo "Step 3: Finding pip..."
-PIP3=$("${SCRIPTS_DIR}/find_pip.sh" "$PYTHON3" 2>&1)
-if [ $? -ne 0 ]; then
-    echo "$PIP3" | tee -a "${INSTALL_LOG}"
+# Run find_pip.sh - stdout contains pip command, stderr contains debug messages
+# Capture stderr for display, stdout for the command
+PIP3=$("${SCRIPTS_DIR}/find_pip.sh" "$PYTHON3" 2> >(tee -a "${INSTALL_LOG}" >&2))
+PIP_RESULT=$?
+
+if [ $PIP_RESULT -ne 0 ]; then
+    echo "ERROR: Failed to find or install pip" | tee -a "${INSTALL_LOG}"
+    exit 1
+fi
+
+# Verify we got a valid pip command
+if [ -z "$PIP3" ]; then
+    echo "ERROR: pip command is empty" | tee -a "${INSTALL_LOG}"
     exit 1
 fi
 

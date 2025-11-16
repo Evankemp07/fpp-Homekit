@@ -25,26 +25,26 @@ fi
 
 # If pip not found, try to install it
 if [ -z "$PIP3" ]; then
-    echo "pip3 not found. Attempting to install pip..."
+    echo "pip3 not found. Attempting to install pip..." >&2
     
     # Try ensurepip first (built-in Python module)
-    echo "Trying ensurepip..."
+    echo "Trying ensurepip..." >&2
     ENSUREPIP_OUTPUT=$($PYTHON3 -m ensurepip --upgrade 2>&1)
     ENSUREPIP_RESULT=$?
     
     if [ $ENSUREPIP_RESULT -eq 0 ]; then
-        echo "✓ Successfully installed pip using ensurepip"
+        echo "✓ Successfully installed pip using ensurepip" >&2
         # Try again after installing
         if $PYTHON3 -m pip --version >/dev/null 2>&1; then
             PIP3="$PYTHON3 -m pip"
         fi
     else
-        echo "ensurepip failed (exit code: $ENSUREPIP_RESULT)"
-        echo "Output: $ENSUREPIP_OUTPUT"
+        echo "ensurepip failed (exit code: $ENSUREPIP_RESULT)" >&2
+        echo "Output: $ENSUREPIP_OUTPUT" >&2
         
         # Try downloading get-pip.py as fallback
-        echo ""
-        echo "Trying alternative: downloading get-pip.py..."
+        echo "" >&2
+        echo "Trying alternative: downloading get-pip.py..." >&2
         GET_PIP_URL="https://bootstrap.pypa.io/get-pip.py"
         GET_PIP_SCRIPT="/tmp/get-pip.py"
         
@@ -60,29 +60,29 @@ if [ -z "$PIP3" ]; then
         fi
         
         if [ $DOWNLOAD_SUCCESS -eq 1 ] && [ -f "$GET_PIP_SCRIPT" ]; then
-            echo "Running get-pip.py with --user flag..."
+            echo "Running get-pip.py with --user flag..." >&2
             GETPIP_OUTPUT=$($PYTHON3 "$GET_PIP_SCRIPT" --user 2>&1)
             GETPIP_RESULT=$?
             
             if [ $GETPIP_RESULT -eq 0 ]; then
-                echo "✓ Successfully installed pip using get-pip.py"
+                echo "✓ Successfully installed pip using get-pip.py" >&2
                 # Try again after installing
                 if $PYTHON3 -m pip --version >/dev/null 2>&1; then
                     PIP3="$PYTHON3 -m pip"
                 fi
             else
-                echo "get-pip.py with --user failed (exit code: $GETPIP_RESULT)"
-                echo "Output: $GETPIP_OUTPUT"
+                echo "get-pip.py with --user failed (exit code: $GETPIP_RESULT)" >&2
+                echo "Output: $GETPIP_OUTPUT" >&2
                 
                 # On some systems, try with --break-system-packages flag
                 if [ -f /etc/debian_version ]; then
-                    echo ""
-                    echo "Trying with --break-system-packages flag..."
+                    echo "" >&2
+                    echo "Trying with --break-system-packages flag..." >&2
                     GETPIP_OUTPUT=$($PYTHON3 "$GET_PIP_SCRIPT" --user --break-system-packages 2>&1)
                     GETPIP_RESULT=$?
                     
                     if [ $GETPIP_RESULT -eq 0 ]; then
-                        echo "✓ Successfully installed pip using get-pip.py"
+                        echo "✓ Successfully installed pip using get-pip.py" >&2
                         if $PYTHON3 -m pip --version >/dev/null 2>&1; then
                             PIP3="$PYTHON3 -m pip"
                         fi
@@ -91,27 +91,27 @@ if [ -z "$PIP3" ]; then
             fi
             rm -f "$GET_PIP_SCRIPT"
         else
-            echo "Could not download get-pip.py (curl/wget not available or download failed)"
+            echo "Could not download get-pip.py (curl/wget not available or download failed)" >&2
         fi
     fi
     
     # Final check - if still no pip, provide helpful error message
     if [ -z "$PIP3" ]; then
-        echo ""
-        echo "ERROR: pip is still not available after attempting to install."
-        echo ""
+        echo "" >&2
+        echo "ERROR: pip is still not available after attempting to install." >&2
+        echo "" >&2
         if [ -f /etc/debian_version ]; then
-            echo "This system uses Debian/Ubuntu's externally-managed Python environment (PEP 668),"
-            echo "which prevents installing pip without the system package."
-            echo ""
-            echo "The python3-pip package MUST be installed via the system package manager:"
-            echo "  sudo apt-get update"
-            echo "  sudo apt-get install python3-pip"
+            echo "This system uses Debian/Ubuntu's externally-managed Python environment (PEP 668)," >&2
+            echo "which prevents installing pip without the system package." >&2
+            echo "" >&2
+            echo "The python3-pip package MUST be installed via the system package manager:" >&2
+            echo "  sudo apt-get update" >&2
+            echo "  sudo apt-get install python3-pip" >&2
         else
-            echo "Please install pip manually:"
-            echo "  $PYTHON3 -m ensurepip --upgrade"
-            echo "Or on macOS:"
-            echo "  python3 -m ensurepip --upgrade"
+            echo "Please install pip manually:" >&2
+            echo "  $PYTHON3 -m ensurepip --upgrade" >&2
+            echo "Or on macOS:" >&2
+            echo "  python3 -m ensurepip --upgrade" >&2
         fi
         exit 1
     fi
