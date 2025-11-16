@@ -62,6 +62,14 @@ except ImportError as e:
     sys.exit(1)
 
 try:
+    import paho.mqtt.client as mqtt
+    MQTT_AVAILABLE = True
+except ImportError as e:
+    print(f"ERROR: Failed to import paho.mqtt: {e}", file=sys.stderr)
+    print(f"Install with: {sys.executable} -m pip install paho-mqtt --user", file=sys.stderr)
+    MQTT_AVAILABLE = False
+
+try:
     from pyhap.accessory import Accessory
     from pyhap.accessory_driver import AccessoryDriver
     from pyhap.const import CATEGORY_LIGHTBULB
@@ -246,6 +254,172 @@ def build_fpp_api_endpoints() -> List[str]:
 FPP_API_ENDPOINTS = build_fpp_api_endpoints()
 
 
+# ---------------------------------------------------------------------------
+# MQTT Configuration and Client
+# ---------------------------------------------------------------------------
+
+def _read_mqtt_settings(settings_path: str) -> dict:
+    """Parse FPP settings file to extract MQTT broker configuration."""
+    mqtt_config = {
+        'enabled': False,
+        'broker': 'localhost',
+        'port': 1883,
+        'username': None,
+        'password': None,
+        'topic_prefix': 'FPP'
+    }
+    
+    if not settings_path or not os.path.isfile(settings_path):
+        return mqtt_config
+    
+    try:
+        with open(settings_path, 'r', encoding='utf-8', errors='ignore') as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith('MQTTEnabled='):
+                    mqtt_config['enabled'] = line.split('=', 1)[1].strip().lower() in ('1', 'true', 'yes')
+                elif line.startswith('MQTTHost='):
+                    mqtt_config['broker'] = line.split('=', 1)[1].strip()
+                elif line.startswith('MQTTPort='):
+                    try:
+                        mqtt_config['port'] = int(line.split('=', 1)[1].strip())
+                    except ValueError:
+                        pass
+                elif line.startswith('MQTTUsername='):
+                    mqtt_config['username'] = line.split('=', 1)[1].strip()
+                elif line.startswith('MQTTPassword='):
+                    mqtt_config['password'] = line.split('=', 1)[1].strip()
+                elif line.startswith('MQTTPrefix='):
+                    prefix = line.split('=', 1)[1].strip()
+                    if prefix:
+                        mqtt_config['topic_prefix'] = prefix
+    except Exception as err:
+        logger.debug("Unable to parse MQTT settings from %s: %s", settings_path, err)
+    
+    return mqtt_config
+
+
+def get_mqtt_config() -> dict:
+    """Get MQTT configuration from FPP settings or environment."""
+    # Check environment variables first
+    mqtt_config = {
+        'enabled': os.environ.get('FPP_MQTT_ENABLED', '').lower() in ('1', 'true', 'yes'),
+        'broker': os.environ.get('FPP_MQTT_BROKER', 'localhost'),
+        'port': int(os.environ.get('FPP_MQTT_PORT', '1883')),
+        'username': os.environ.get('FPP_MQTT_USERNAME'),
+        'password': os.environ.get('FPP_MQTT_PASSWORD'),
+        'topic_prefix': os.environ.get('FPP_MQTT_PREFIX', 'FPP')
+    }
+    
+    # If not enabled via env, check FPP settings files
+    if not mqtt_config['enabled']:
+        for path in _candidate_settings_paths():
+            file_config = _read_mqtt_settings(path)
+            if file_config['enabled']:
+                mqtt_config.update(file_config)
+                break
+    
+    # Default to enabled if broker is set (assume MQTT is available)
+    if not mqtt_config['enabled'] and mqtt_config['broker']:
+        mqtt_config['enabled'] = True
+    
+    return mqtt_config
+
+
+class FPPMQTTClient:
+    """MQTT client for controlling FPP via MQTT."""
+    
+    def __init__(self, config: dict):
+        self.config = config
+        self.client = None
+        self.connected = False
+        self.topic_prefix = config.get('topic_prefix', 'FPP')
+        
+    def connect(self):
+        """Connect to MQTT broker."""
+        if not MQTT_AVAILABLE:
+            logger.error("MQTT not available - paho-mqtt not installed")
+            return False
+        
+        if not self.config.get('enabled'):
+            logger.warning("MQTT not enabled in configuration")
+            return False
+        
+        try:
+            self.client = mqtt.Client(client_id=f"fpp-homekit-{os.getpid()}")
+            
+            if self.config.get('username'):
+                self.client.username_pw_set(
+                    self.config['username'],
+                    self.config.get('password')
+                )
+            
+            self.client.on_connect = self._on_connect
+            self.client.on_disconnect = self._on_disconnect
+            
+            broker = self.config.get('broker', 'localhost')
+            port = self.config.get('port', 1883)
+            
+            logger.info(f"Connecting to MQTT broker at {broker}:{port}")
+            self.client.connect(broker, port, keepalive=60)
+            self.client.loop_start()
+            
+            # Wait for connection (max 5 seconds)
+            for _ in range(50):
+                if self.connected:
+                    logger.info("MQTT connected successfully")
+                    return True
+                time.sleep(0.1)
+            
+            logger.warning("MQTT connection timeout")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Failed to connect to MQTT broker: {e}")
+            return False
+    
+    def _on_connect(self, client, userdata, flags, rc):
+        """MQTT connection callback."""
+        if rc == 0:
+            self.connected = True
+            logger.info("MQTT broker connected")
+        else:
+            logger.error(f"MQTT connection failed with code {rc}")
+            self.connected = False
+    
+    def _on_disconnect(self, client, userdata, rc):
+        """MQTT disconnection callback."""
+        self.connected = False
+        if rc != 0:
+            logger.warning(f"MQTT disconnected unexpectedly (code {rc})")
+    
+    def publish_command(self, command: str, payload: str = ''):
+        """Publish a command to FPP via MQTT."""
+        if not self.connected or not self.client:
+            logger.error("MQTT not connected, cannot publish command")
+            return False
+        
+        topic = f"{self.topic_prefix}/command/{command}"
+        try:
+            result = self.client.publish(topic, payload, qos=1)
+            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                logger.info(f"Published MQTT command: {topic} = {payload}")
+                return True
+            else:
+                logger.error(f"Failed to publish MQTT command: {topic} (rc={result.rc})")
+                return False
+        except Exception as e:
+            logger.error(f"Error publishing MQTT command: {e}")
+            return False
+    
+    def disconnect(self):
+        """Disconnect from MQTT broker."""
+        if self.client:
+            self.client.loop_stop()
+            self.client.disconnect()
+            self.connected = False
+
+
 def _request_with_fallback(method: str, path: str, **kwargs):
     """Attempt an HTTP request against the list of candidate endpoints."""
     last_exception = None
@@ -279,6 +453,18 @@ class FPPLightAccessory(Accessory):
         self.config = self.load_config()
         self.playlist_name = self.config.get('playlist_name', '')
         
+        # Initialize MQTT client
+        mqtt_config = get_mqtt_config()
+        self.mqtt_client = FPPMQTTClient(mqtt_config)
+        self.use_mqtt = mqtt_config.get('enabled', False) and MQTT_AVAILABLE
+        
+        if self.use_mqtt:
+            if not self.mqtt_client.connect():
+                logger.warning("MQTT connection failed, falling back to HTTP API")
+                self.use_mqtt = False
+        else:
+            logger.info("Using HTTP API for FPP control (MQTT not enabled or unavailable)")
+        
         # Add Light service with On characteristic
         service = self.add_preload_service('Lightbulb')
         self.on_char = service.configure_char('On', value=False, setter_callback=self.set_on)
@@ -291,7 +477,7 @@ class FPPLightAccessory(Accessory):
         self.poll_thread = threading.Thread(target=self.poll_fpp_status, daemon=True)
         self.poll_thread.start()
         
-        logger.info(f"FPP-Controller Accessory initialized with playlist: {self.playlist_name}")
+        logger.info(f"FPP-Controller Accessory initialized with playlist: {self.playlist_name} (using {'MQTT' if self.use_mqtt else 'HTTP'})")
     
     def load_config(self):
         """Load configuration from JSON file"""
@@ -339,11 +525,20 @@ class FPPLightAccessory(Accessory):
             logger.warning("No playlist configured")
             return
         
+        if self.use_mqtt and self.mqtt_client.connected:
+            # Use MQTT to start playlist
+            success = self.mqtt_client.publish_command(f"StartPlaylist/{self.playlist_name}")
+            if success:
+                logger.info(f"Started playlist via MQTT: {self.playlist_name}")
+                return
+            else:
+                logger.warning("MQTT command failed, falling back to HTTP")
+        
+        # Fallback to HTTP API
         try:
-            url = f"{FPP_API_BASE}/playlists/{self.playlist_name}/start"
-            response = requests.post(url, timeout=5)
+            response = _request_with_fallback('POST', f'/playlists/{self.playlist_name}/start', timeout=5)
             if response.status_code == 200:
-                logger.info(f"Started playlist: {self.playlist_name}")
+                logger.info(f"Started playlist via HTTP: {self.playlist_name}")
             else:
                 logger.error(f"Failed to start playlist: {response.status_code} - {response.text}")
         except Exception as e:
@@ -351,11 +546,20 @@ class FPPLightAccessory(Accessory):
     
     def stop_playlist(self):
         """Stop FPP playback"""
+        if self.use_mqtt and self.mqtt_client.connected:
+            # Use MQTT to stop playback
+            success = self.mqtt_client.publish_command("Stop")
+            if success:
+                logger.info("Stopped FPP playback via MQTT")
+                return
+            else:
+                logger.warning("MQTT command failed, falling back to HTTP")
+        
+        # Fallback to HTTP API
         try:
-            url = f"{FPP_API_BASE}/command/Stop"
-            response = requests.post(url, timeout=5)
+            response = _request_with_fallback('POST', '/command/Stop', timeout=5)
             if response.status_code == 200:
-                logger.info("Stopped FPP playback")
+                logger.info("Stopped FPP playback via HTTP")
             else:
                 logger.error(f"Failed to stop playback: {response.status_code} - {response.text}")
         except Exception as e:
@@ -364,8 +568,7 @@ class FPPLightAccessory(Accessory):
     def get_fpp_status(self):
         """Get current FPP playback status"""
         try:
-            url = f"{FPP_API_BASE}/status"
-            response = requests.get(url, timeout=5)
+            response = _request_with_fallback('GET', '/status', timeout=5)
             if response.status_code == 200:
                 data = response.json()
                 # Check if FPP is playing
@@ -399,6 +602,8 @@ class FPPLightAccessory(Accessory):
     def stop(self):
         """Stop the accessory"""
         self.fpp_status_polling = False
+        if hasattr(self, 'mqtt_client') and self.mqtt_client:
+            self.mqtt_client.disconnect()
         super().stop()
 
 def get_accessory(driver):

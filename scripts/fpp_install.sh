@@ -182,8 +182,60 @@ if command -v systemctl >/dev/null 2>&1; then
     fi
 fi
 
-# Restart service if it was running (for updates)
+# Update pluginInfo.json SHA after update (so FPP knows plugin is up to date)
 if [ $FIRST_INSTALL -eq 0 ]; then
+    echo ""
+    echo "Step 7: Updating plugin SHA..."
+    PLUGIN_INFO_FILE="${PLUGIN_DIR}/pluginInfo.json"
+    
+    # Get current git SHA if this is a git repository
+    if [ -d "${PLUGIN_DIR}/.git" ] && command -v git >/dev/null 2>&1; then
+        cd "${PLUGIN_DIR}" || exit 1
+        CURRENT_SHA=$(git rev-parse HEAD 2>/dev/null)
+        CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
+        
+        if [ -n "${CURRENT_SHA}" ] && [ -f "${PLUGIN_INFO_FILE}" ]; then
+            # Update SHA in pluginInfo.json using Python (more reliable than sed for JSON)
+            if command -v python3 >/dev/null 2>&1; then
+                python3 << EOF
+import json
+import sys
+
+try:
+    plugin_info_file = '${PLUGIN_INFO_FILE}'
+    current_sha = '${CURRENT_SHA}'
+    current_branch = '${CURRENT_BRANCH}'
+    
+    with open(plugin_info_file, 'r') as f:
+        data = json.load(f)
+    
+    # Update SHA in first version entry
+    if 'versions' in data and len(data['versions']) > 0:
+        data['versions'][0]['sha'] = current_sha
+        if current_branch and current_branch.strip():
+            data['versions'][0]['branch'] = current_branch
+    
+    with open(plugin_info_file, 'w') as f:
+        json.dump(data, f, indent='\t')
+    
+    print(f"✓ Updated plugin SHA to {current_sha}")
+    sys.exit(0)
+except Exception as e:
+    print(f"Warning: Could not update plugin SHA: {e}")
+    sys.exit(0)
+EOF
+                echo "Plugin SHA updated successfully" >> "${INSTALL_LOG}"
+            else
+                echo "Warning: python3 not available, cannot update SHA automatically" | tee -a "${INSTALL_LOG}"
+            fi
+        else
+            echo "Warning: Could not determine git SHA or pluginInfo.json not found" | tee -a "${INSTALL_LOG}"
+        fi
+    else
+        echo "Note: Plugin directory is not a git repository or git not available" | tee -a "${INSTALL_LOG}"
+    fi
+    
+    # Restart service if it was running
     PID_FILE="${SCRIPTS_DIR}/homekit_service.pid"
     SERVICE_WAS_RUNNING=0
     
