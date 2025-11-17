@@ -124,6 +124,53 @@ function fppHomekitReadHttpPort($settingsPath) {
     return 0;
 }
 
+function fppHomekitDetectHttpPortsFromSystem() {
+    $ports = array();
+    if (!function_exists('shell_exec')) {
+        return $ports;
+    }
+    
+    $commands = array(
+        'ss -tlnp | grep fppd',
+        'netstat -tulpn | grep fppd'
+    );
+    
+    foreach ($commands as $cmd) {
+        $output = @shell_exec($cmd . ' 2>/dev/null');
+        if (!$output) {
+            continue;
+        }
+        
+        $lines = explode("\n", trim($output));
+        foreach ($lines as $line) {
+            if (!$line) {
+                continue;
+            }
+            
+            if (preg_match_all('/:(\d+)\s+/', $line, $matches)) {
+                foreach ($matches[1] as $portStr) {
+                    $port = (int)$portStr;
+                    if ($port > 0 && !in_array($port, $ports)) {
+                        $ports[] = $port;
+                    }
+                }
+            } elseif (preg_match('/\[(\d+)\]/', $line, $matches)) {
+                // IPv6 format like [::]:32320
+                $port = (int)$matches[1];
+                if ($port > 0 && !in_array($port, $ports)) {
+                    $ports[] = $port;
+                }
+            }
+        }
+        
+        if (!empty($ports)) {
+            break; // Ports found; no need to run other commands
+        }
+    }
+    
+    return $ports;
+}
+
 function fppHomekitBuildApiEndpoints() {
     // Disable caching temporarily to ensure fresh endpoint order after updates
     // This ensures 32320 is always tried first
@@ -169,6 +216,13 @@ function fppHomekitBuildApiEndpoints() {
             $ports[] = $port;
         }
     }
+
+    // Fourth priority: Detect from system sockets (ss/netstat)
+    foreach (fppHomekitDetectHttpPortsFromSystem() as $detectedPort) {
+        if ($detectedPort > 0 && !in_array($detectedPort, $ports)) {
+            $ports[] = $detectedPort;
+        }
+    }
     
     // Add default hosts if none found
     if (empty($hosts)) {
@@ -184,7 +238,7 @@ function fppHomekitBuildApiEndpoints() {
     
     // Add common fallback ports if none found or if we want to scan
     // Common FPP ports to try
-    $commonPorts = array(32320, 80, 8080, 8000, 8888, 32321);
+    $commonPorts = array(32320, 32321, 32322, 80, 8080, 8000, 8888);
     foreach ($commonPorts as $commonPort) {
         if (!in_array($commonPort, $ports)) {
             $ports[] = $commonPort;
