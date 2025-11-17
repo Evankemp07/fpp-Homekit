@@ -41,20 +41,39 @@ def main() -> None:
 
     def on_connect(client, userdata, flags, rc, *args, **kwargs):  # type: ignore
         if rc == 0:
-            topics = [
-                f"{prefix}/status",
-                f"{prefix.lower()}/status",
-            ]
-            for topic in topics:
+            prefixes = {prefix, prefix.lower()}
+
+            expanded_topics = set()
+            for base in prefixes:
+                if not base:
+                    continue
+                normalized = base.rstrip('/')
+                repeated = f"{normalized}/{normalized}"
+                for candidate in {normalized, repeated}:
+                    expanded_topics.update(
+                        {
+                            f"{candidate}/status",
+                            f"{candidate}/fppd_status",
+                            f"{candidate}/playlist_details",
+                            f"{candidate}/port_status",
+                        }
+                    )
+
+            for topic in expanded_topics:
                 client.subscribe(topic)
 
-            # Request status updates explicitly in case FPP isn't broadcasting yet
-            request_topics = [
-                f"{prefix}/command/GetStatus",
-                f"{prefix}/command/GetPlaylistStatus",
-                f"{prefix.lower()}/command/GetStatus",
-                f"{prefix.lower()}/command/GetPlaylistStatus",
-            ]
+            request_topics = set()
+            for base in prefixes:
+                if not base:
+                    continue
+                normalized = base.rstrip('/')
+                request_topics.update(
+                    {
+                        f"{normalized}/command/GetStatus",
+                        f"{normalized}/command/GetPlaylistStatus",
+                    }
+                )
+
             for topic in request_topics:
                 client.publish(topic, "", qos=1)
 
