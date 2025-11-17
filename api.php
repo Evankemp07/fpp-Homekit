@@ -605,74 +605,16 @@ function fppHomekitStatus() {
         }
     }
 
-    // Python script to check FPP status via MQTT
-    $pythonStatusScript = <<<'PYCODE'
-import sys, json, time
-try:
-    import paho.mqtt.client as mqtt
-except ImportError:
-    error_msg = "paho-mqtt not installed. Install with: python3 -m pip install paho-mqtt --user"
-    print(json.dumps({"error": error_msg, "available": False, "install_command": "python3 -m pip install paho-mqtt --user"}))
-    sys.exit(0)
-
-broker = sys.argv[1] if len(sys.argv) > 1 else 'localhost'
-port = int(sys.argv[2]) if len(sys.argv) > 2 else 1883
-prefix = sys.argv[3] if len(sys.argv) > 3 else 'FPP'
-
-status_data = {"available": False, "timeout": True}
-
-def on_connect(client, userdata, flags, rc, *args, **kwargs):
-    if rc == 0:
-        client.subscribe(f"{prefix}/status")
-
-def on_message(client, userdata, msg):
-    global status_data
-    try:
-        data = json.loads(msg.payload.decode('utf-8'))
-        status_data = {
-            "available": True,
-            "timeout": False,
-            "status_name": data.get("status_name", "unknown"),
-            "status": data.get("status", 0),
-            "current_playlist": data.get("current_playlist", {}).get("playlist", "") if isinstance(data.get("current_playlist"), dict) else data.get("current_playlist", ""),
-            "current_sequence": data.get("current_sequence", ""),
-            "seconds_played": data.get("seconds_played", 0),
-            "seconds_remaining": data.get("seconds_remaining", 0)
-        }
-    except:
-        pass
-
-try:
-    try:
-        client = mqtt.Client(client_id="fpp-hk-status", callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
-    except:
-        client = mqtt.Client(client_id="fpp-hk-status")
-
-    client.on_connect = on_connect
-    client.on_message = on_message
-    client.connect(broker, port, keepalive=5)
-    client.loop_start()
-
-    for _ in range(30):  # Wait up to 3 seconds
-        if status_data.get("available"):
-            break
-        time.sleep(0.1)
-
-    client.loop_stop()
-    client.disconnect()
-    print(json.dumps(status_data))
-except Exception as e:
-    print(json.dumps({"error": str(e), "available": False}))
-PYCODE;
-
     // Try with timeout
     $hasTimeout = @shell_exec('which timeout 2>/dev/null');
+
+    $checkScriptPath = $pluginDir . '/scripts/check_mqtt_status.py';
+    $checkScriptArg = escapeshellarg($checkScriptPath);
 
     // Try multiple Python commands in case python3 isn't in PATH
     $pythonExecutables = array(
         'sudo -u fpp -H python3',
         'sudo -u fpp -H /usr/bin/python3',
-        'sudo -u fpp -H python3',
         'sudo -u fpp -H python',
         'python3',
         '/usr/bin/python3',
@@ -683,8 +625,9 @@ PYCODE;
     $triedCommands = array();
 
     foreach ($pythonExecutables as $pythonExe) {
-        $baseCommand = $pythonExe . " -W ignore -c " . escapeshellarg($pythonStatusScript) . " " .
-                       escapeshellarg($mqttBroker) . " " . escapeshellarg($mqttPort) . " " .
+        $baseCommand = $pythonExe . ' ' . $checkScriptArg . ' ' .
+                       escapeshellarg($mqttBroker) . ' ' .
+                       escapeshellarg($mqttPort) . ' ' .
                        escapeshellarg($mqttTopicPrefix);
 
         $fullCommand = $hasTimeout ? "timeout 5 " . $baseCommand : $baseCommand;
@@ -813,18 +756,10 @@ PYCODE;
                 if (!empty($listeningPorts)) {
                     $ports = array_filter(array_map('trim', explode("\n", trim($listeningPorts))));
                     if (!empty($ports)) {
-                        $lastError .= ". FPP may be listening on port(s): " . implode(', ', $ports);
-                    } else {
-                        $lastError .= ". Could not detect FPP listening port. Check: netstat -tulpn | grep -i fppd";
+                        $lastError .= ". Detected listening ports: " . implode(', ', $ports);
                     }
-                } else {
-                    $lastError .= ". Could not detect FPP listening port. Check FPP web interface or run: netstat -tulpn | grep -i fppd";
                 }
             }
-        }
-        
-        if (isset($apiResult['endpoint'])) {
-            $lastError .= " (last endpoint: {$apiResult['endpoint']})";
         }
     }
     
@@ -896,84 +831,42 @@ PYCODE;
             }
         }
         
-        // Python script to check FPP status via MQTT
-        $pythonStatusScript = <<<'PYCODE'
-import sys, json, time
-try:
-    import paho.mqtt.client as mqtt
-except ImportError:
-    error_msg = "paho-mqtt not installed. Install with: python3 -m pip install paho-mqtt --user"
-    print(json.dumps({"error": error_msg, "available": False, "install_command": "python3 -m pip install paho-mqtt --user"}))
-    sys.exit(0)
-
-broker = sys.argv[1] if len(sys.argv) > 1 else 'localhost'
-port = int(sys.argv[2]) if len(sys.argv) > 2 else 1883
-prefix = sys.argv[3] if len(sys.argv) > 3 else 'FPP'
-
-status_data = {"available": False, "timeout": True}
-
-def on_connect(client, userdata, flags, rc, *args, **kwargs):
-    if rc == 0:
-        client.subscribe(f"{prefix}/status")
-
-def on_message(client, userdata, msg):
-    global status_data
-    try:
-        data = json.loads(msg.payload.decode('utf-8'))
-        status_data = {
-            "available": True,
-            "timeout": False,
-            "status_name": data.get("status_name", "unknown"),
-            "status": data.get("status", 0),
-            "current_playlist": data.get("current_playlist", {}).get("playlist", ""),
-            "current_sequence": data.get("current_sequence", ""),
-            "seconds_played": data.get("seconds_played", 0),
-            "seconds_remaining": data.get("seconds_remaining", 0)
-        }
-    except:
-        pass
-
-try:
-    try:
-        client = mqtt.Client(client_id="fpp-hk-status", callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
-    except:
-        client = mqtt.Client(client_id="fpp-hk-status")
-    
-    client.on_connect = on_connect
-    client.on_message = on_message
-    client.connect(broker, port, keepalive=5)
-    client.loop_start()
-    
-    for _ in range(20):
-        if status_data.get("available"):
-            break
-        time.sleep(0.1)
-    
-    client.loop_stop()
-    client.disconnect()
-    print(json.dumps(status_data))
-except Exception as e:
-    print(json.dumps({"error": str(e), "available": False}))
-PYCODE;
-        
-        // Try with timeout first, then without if timeout doesn't exist
+        // Try with timeout
         $hasTimeout = @shell_exec('which timeout 2>/dev/null');
-        
-        if ($hasTimeout) {
-            $command = "timeout 3 python3 -W ignore -c " . escapeshellarg($pythonStatusScript) . " " . 
-                       escapeshellarg($mqttBroker) . " " . 
-                       escapeshellarg($mqttPort) . " " . 
-                       escapeshellarg($mqttTopicPrefix) . " 2>&1";
-        } else {
-            // No timeout command, run directly (with Python timeout in script)
-            $command = "python3 -W ignore -c " . escapeshellarg($pythonStatusScript) . " " . 
-                       escapeshellarg($mqttBroker) . " " . 
-                       escapeshellarg($mqttPort) . " " . 
-                       escapeshellarg($mqttTopicPrefix) . " 2>&1";
+
+        $checkScriptPath = $pluginDir . '/scripts/check_mqtt_status.py';
+        $checkScriptArg = escapeshellarg($checkScriptPath);
+
+        // Try multiple Python commands in case python3 isn't in PATH
+        $pythonExecutables = array(
+            'sudo -u fpp -H python3',
+            'sudo -u fpp -H /usr/bin/python3',
+            'sudo -u fpp -H python',
+            'python3',
+            '/usr/bin/python3',
+            'python'
+        );
+
+        $output = '';
+        $triedCommands = array();
+
+        foreach ($pythonExecutables as $pythonExe) {
+            $baseCommand = $pythonExe . ' ' . $checkScriptArg . ' ' .
+                           escapeshellarg($mqttBroker) . ' ' .
+                           escapeshellarg($mqttPort) . ' ' .
+                           escapeshellarg($mqttTopicPrefix);
+
+            $fullCommand = $hasTimeout ? "timeout 5 " . $baseCommand : $baseCommand;
+            $fullCommand .= " 2>&1";
+            $triedCommands[] = $fullCommand;
+
+            $cmdOutput = @shell_exec($fullCommand);
+            if ($cmdOutput) {
+                $output = $cmdOutput;
+                break; // Found a working command
+            }
         }
-        
-        $output = @shell_exec($command);
-    
+
         if ($output) {
             $mqttStatus = @json_decode(trim($output), true);
             if ($mqttStatus && is_array($mqttStatus)) {
