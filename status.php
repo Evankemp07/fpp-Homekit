@@ -321,7 +321,13 @@ if (file_exists($cssPath)) {
                     }
                 }
                 
-                playlistSelect.value = currentPlaylist || '';
+                // Set the selected value - prioritize currentPlaylist if set
+                const valueToSet = currentPlaylist || '';
+                playlistSelect.value = valueToSet;
+                // If value was set, also update currentPlaylist to match
+                if (valueToSet && playlistSelect.value === valueToSet) {
+                    currentPlaylist = valueToSet;
+                }
                 updateSaveButtonState();
             })
             .catch(error => {
@@ -371,13 +377,19 @@ if (file_exists($cssPath)) {
                     debugLog('Playlist saved successfully');
                     currentPlaylist = playlistName;
                     updatePlaylistStatusText(currentPlaylist);
+                    // Update dropdown immediately
+                    if (playlistSelect) {
+                        playlistSelect.value = currentPlaylist;
+                    }
+                    updateSaveButtonState();
                     showMessage('Configuration saved.', 'success');
-                    setTimeout(() => loadStatus(), 300);
+                    // Reload status and playlists to ensure sync
                     setTimeout(() => {
+                        loadStatus();
                         if (!playlistFetchInProgress) {
                             loadPlaylists();
                         }
-                    }, 500);
+                    }, 300);
                 } else {
                     throw new Error(data.message || 'Failed to save configuration');
                 }
@@ -548,9 +560,16 @@ if (file_exists($cssPath)) {
         fppStatusEl.innerHTML = statusHtml;
         
         // Update playlist
-        currentPlaylist = playlist || '';
-        updatePlaylistStatusText(currentPlaylist);
-        if (playlistSelect && playlistsLoaded) {
+        const newPlaylist = playlist || '';
+        if (newPlaylist !== currentPlaylist) {
+            currentPlaylist = newPlaylist;
+            updatePlaylistStatusText(currentPlaylist);
+            // Update dropdown if it's loaded and the value changed
+            if (playlistSelect && playlistsLoaded) {
+                playlistSelect.value = currentPlaylist;
+            }
+        } else if (playlistSelect && playlistsLoaded && playlistSelect.value !== currentPlaylist) {
+            // Ensure dropdown matches currentPlaylist even if playlist didn't change
             playlistSelect.value = currentPlaylist;
         }
         updateSaveButtonState();
