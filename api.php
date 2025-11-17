@@ -181,15 +181,35 @@ function fppHomekitBuildApiEndpoints() {
     // Also prioritize localhost/127.0.0.1 first, and port 32320 first
     $endpoints = array();
     
-    // Sort hosts: localhost/127.0.0.1 first, then others
+    // Sort hosts: localhost first, then 127.0.0.1, then others
     $sortedHosts = array();
+    $hasLocalhost = false;
+    $has127 = false;
+    
+    // First, collect localhost and 127.0.0.1
     foreach ($hosts as $host) {
-        if ($host === 'localhost' || $host === '127.0.0.1') {
-            array_unshift($sortedHosts, $host);
+        if ($host === 'localhost') {
+            $hasLocalhost = true;
+        } elseif ($host === '127.0.0.1') {
+            $has127 = true;
         } else {
             $sortedHosts[] = $host;
         }
     }
+    
+    // Add localhost first, then 127.0.0.1
+    if ($hasLocalhost) {
+        array_unshift($sortedHosts, 'localhost');
+    }
+    if ($has127) {
+        // Insert 127.0.0.1 after localhost
+        if ($hasLocalhost) {
+            array_splice($sortedHosts, 1, 0, '127.0.0.1');
+        } else {
+            array_unshift($sortedHosts, '127.0.0.1');
+        }
+    }
+    
     if (empty($sortedHosts)) {
         $sortedHosts = array('localhost', '127.0.0.1');
     }
