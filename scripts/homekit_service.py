@@ -777,7 +777,39 @@ def main():
             except Exception as e:
                 logger.warning(f"Could not validate state file: {e}")
         
-        driver = AccessoryDriver(port=51826, persist_file=state_file)
+        # Get network configuration
+        homekit_ip = None
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, 'r') as f:
+                    config = json.load(f)
+                    homekit_ip = config.get('homekit_ip', None)
+                    if homekit_ip:
+                        logger.info(f"Using configured HomeKit IP: {homekit_ip}")
+            except Exception as e:
+                logger.warning(f"Could not read HomeKit IP from config: {e}")
+        
+        # If no IP configured, try to auto-detect the primary interface
+        if not homekit_ip:
+            try:
+                import socket
+                # Try to get the IP by connecting to an external address (doesn't actually connect)
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                homekit_ip = s.getsockname()[0]
+                s.close()
+                logger.info(f"Auto-detected HomeKit IP: {homekit_ip}")
+            except Exception as e:
+                logger.warning(f"Could not auto-detect IP, using 0.0.0.0: {e}")
+                homekit_ip = "0.0.0.0"  # Listen on all interfaces
+        
+        logger.info(f"HomeKit will listen on: {homekit_ip}:51826")
+        
+        driver = AccessoryDriver(
+            port=51826, 
+            persist_file=state_file,
+            address=homekit_ip  # Bind to specific IP
+        )
         
         # Add accessory
         logger.info("Adding FPP-Controller accessory...")

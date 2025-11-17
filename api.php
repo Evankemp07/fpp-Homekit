@@ -855,6 +855,13 @@ function fppHomekitSaveConfig() {
         }
     }
     
+    // Update HomeKit IP
+    if (isset($_POST['homekit_ip'])) {
+        $homekitIp = trim($_POST['homekit_ip']);
+        // Empty string means auto-detect
+        $config['homekit_ip'] = $homekitIp;
+    }
+    
     // Write config file
     $jsonData = json_encode($config, JSON_PRETTY_PRINT);
     if ($jsonData === false) {
@@ -1274,6 +1281,77 @@ PYCODE;
     }
 
     return json($result);
+}
+
+// GET /api/plugin/fpp-Homekit/network-interfaces
+function fppHomekitNetworkInterfaces() {
+    $interfaces = array();
+    $currentIp = null;
+    
+    // Read current config
+    $pluginDir = dirname(__FILE__);
+    $scriptsDir = $pluginDir . '/scripts';
+    $configFile = $scriptsDir . '/homekit_config.json';
+    
+    if (file_exists($configFile)) {
+        $configData = @file_get_contents($configFile);
+        if ($configData) {
+            $config = @json_decode($configData, true);
+            if ($config && isset($config['homekit_ip'])) {
+                $currentIp = $config['homekit_ip'];
+            }
+        }
+    }
+    
+    // Get network interfaces using 'ip' command (Linux)
+    if (command_exists('ip')) {
+        $output = shell_exec('ip -o addr show scope global 2>/dev/null | grep -v "inet6" | awk \'{print $2 " " $4}\' | sed \'s|/.*||\'');
+        if ($output) {
+            $lines = explode("\n", trim($output));
+            foreach ($lines as $line) {
+                $parts = preg_split('/\s+/', trim($line));
+                if (count($parts) >= 2 && $parts[1]) {
+                    $interfaces[] = array(
+                        'name' => $parts[0],
+                        'ip' => $parts[1]
+                    );
+                }
+            }
+        }
+    }
+    
+    // Fallback: try ifconfig (macOS/BSD)
+    if (empty($interfaces) && command_exists('ifconfig')) {
+        $output = shell_exec('ifconfig 2>/dev/null | grep "inet " | grep -v "127.0.0.1" | awk \'{print $2}\'');
+        if ($output) {
+            $ips = explode("\n", trim($output));
+            foreach ($ips as $idx => $ip) {
+                if ($ip) {
+                    $interfaces[] = array(
+                        'name' => 'Interface ' . ($idx + 1),
+                        'ip' => $ip
+                    );
+                }
+            }
+        }
+    }
+    
+    // Auto-detect current IP if not set
+    if (!$currentIp && !empty($interfaces)) {
+        $currentIp = $interfaces[0]['ip'];  // Use first interface
+    }
+    
+    $result = array(
+        'interfaces' => $interfaces,
+        'current_ip' => $currentIp
+    );
+    
+    return json($result);
+}
+
+function command_exists($cmd) {
+    $return = shell_exec(sprintf("which %s 2>/dev/null", escapeshellarg($cmd)));
+    return !empty($return);
 }
 
 ?>

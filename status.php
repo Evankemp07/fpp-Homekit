@@ -76,6 +76,24 @@ if (file_exists($cssPath)) {
                 </div>
             </div>
             
+            <div class="playlist-config" style="margin-top: 24px;">
+                <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">HomeKit Network</h3>
+                <div class="playlist-config-controls" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <label for="homekit-ip" style="font-weight: 500; color: var(--text-secondary);">Listen Address:</label>
+                        <select class="form-select" id="homekit-ip" style="width: 180px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
+                            <option value="">Auto-detect</option>
+                            <option value="0.0.0.0">All Interfaces (0.0.0.0)</option>
+                        </select>
+                    </div>
+                    <button class="homekit-button" type="button" id="save-homekit-network-btn">Save & Restart</button>
+                    <div id="homekit-ip-info" style="font-size: 12px; color: var(--text-secondary); display: none;"></div>
+                </div>
+                <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+                    Select which network interface HomeKit should use. Choose a specific IP if "not reachable" errors occur.
+                </div>
+            </div>
+            
             <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap;">
                 <button class="homekit-button" onclick="restartService()" id="restart-btn">Restart Service</button>
             </div>
@@ -860,6 +878,91 @@ if (file_exists($cssPath)) {
             });
     }
     
+    function loadHomekitNetworkConfig() {
+        const homekitIpSelect = document.getElementById('homekit-ip');
+        if (!homekitIpSelect) return;
+        
+        // Get available network interfaces from API
+        fetch('/api/plugin/fpp-Homekit/network-interfaces')
+            .then(response => response.json())
+            .then(data => {
+                debugLog('Network interfaces', data);
+                
+                // Clear existing options except the first two
+                while (homekitIpSelect.options.length > 2) {
+                    homekitIpSelect.remove(2);
+                }
+                
+                // Add detected interfaces
+                if (data.interfaces && data.interfaces.length > 0) {
+                    data.interfaces.forEach(iface => {
+                        const option = new Option(`${iface.name}: ${iface.ip}`, iface.ip);
+                        homekitIpSelect.add(option);
+                    });
+                }
+                
+                // Set current value
+                if (data.current_ip) {
+                    homekitIpSelect.value = data.current_ip;
+                }
+            })
+            .catch(error => {
+                debugLog('Error loading network interfaces', { error: error.message });
+            });
+    }
+    
+    function saveHomekitNetwork() {
+        const homekitIpSelect = document.getElementById('homekit-ip');
+        const saveBtn = document.getElementById('save-homekit-network-btn');
+        
+        if (!homekitIpSelect || !saveBtn) return;
+        
+        const originalLabel = saveBtn.textContent;
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        
+        const homekitIp = homekitIpSelect.value || '';
+        
+        debugLog('Saving HomeKit network config', { homekit_ip: homekitIp });
+        
+        const formData = new FormData();
+        formData.append('homekit_ip', homekitIp);
+        
+        fetch('/api/plugin/fpp-Homekit/config', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => response.text())
+            .then(text => {
+                debugLog('Raw save response', text);
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    throw new Error('Invalid JSON response: ' + text.substring(0, 200));
+                }
+            })
+            .then(data => {
+                debugLog('HomeKit network config save response', data);
+                if (data.success) {
+                    showMessage('✓ HomeKit network config saved. Restarting service...', 'success');
+                    // Restart the service to apply changes
+                    setTimeout(() => {
+                        restartService();
+                    }, 1000);
+                } else {
+                    showMessage('Error saving HomeKit network config: ' + (data.error || 'Unknown error'), 'error');
+                }
+            })
+            .catch(error => {
+                debugLog('Error saving HomeKit network config', { error: error.message });
+                showMessage('Error saving HomeKit network config: ' + error.message, 'error');
+            })
+            .finally(() => {
+                saveBtn.disabled = false;
+                saveBtn.textContent = originalLabel;
+            });
+    }
+    
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
         if (savePlaylistBtn) {
@@ -880,7 +983,13 @@ if (file_exists($cssPath)) {
             testMqttBtn.addEventListener('click', testMQTT);
         }
         
+        const saveHomekitNetworkBtn = document.getElementById('save-homekit-network-btn');
+        if (saveHomekitNetworkBtn) {
+            saveHomekitNetworkBtn.addEventListener('click', saveHomekitNetwork);
+        }
+        
         loadPlaylists(true);
+        loadHomekitNetworkConfig();
         loadStatus();
         loadMQTTConfig();
         
