@@ -12,7 +12,7 @@
 			"minFPPVersion": "9.0",
 			"maxFPPVersion": "0",
 			"branch": "master",
-			"sha": "389586ca32373058321f464a9c61513893e7cfe0",
+			"sha": "2ea34e33bcc67400802522dad61bc7ea0eed01bb",
 			"dependencies": {
 				"plugins": [],
 				"packages": [
