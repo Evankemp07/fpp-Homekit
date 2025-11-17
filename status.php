@@ -1127,8 +1127,8 @@ if (file_exists($cssPath)) {
                 
                 debugLog('Parsed save response', data);
                 
-                // Check for both 'success' and 'status' fields
-                if (data.success || data.status === 'OK') {
+                // Check for success indicators: 'success', 'status === saved', or 'status === OK'
+                if (data.success || data.status === 'saved' || data.status === 'OK') {
                     showMessage('✓ HomeKit network config saved. Restarting service...', 'success');
                     // Restart the service to apply changes
                     setTimeout(() => {
