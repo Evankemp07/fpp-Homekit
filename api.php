@@ -171,6 +171,83 @@ function fppHomekitDetectHttpPortsFromSystem() {
     return $ports;
 }
 
+function fppHomekitDetectHostIPs() {
+    $hosts = array();
+    
+    $prependIfValid = function(&$list, $value) {
+        if (!empty($value) && is_string($value)) {
+            $value = trim($value);
+            if ($value !== '' && $value !== '::1' && $value !== '127.0.0.1' && $value !== 'localhost' && filter_var($value, FILTER_VALIDATE_IP)) {
+                if (!in_array($value, $list)) {
+                    $list[] = $value;
+                }
+            }
+        }
+    };
+    
+    // Server environment
+    if (isset($_SERVER['SERVER_ADDR'])) {
+        $prependIfValid($hosts, $_SERVER['SERVER_ADDR']);
+    }
+    if (isset($_SERVER['SERVER_NAME'])) {
+        $resolved = @gethostbyname($_SERVER['SERVER_NAME']);
+        if ($resolved && $resolved !== $_SERVER['SERVER_NAME']) {
+            $prependIfValid($hosts, $resolved);
+        }
+    }
+    
+    // Hostname based detection
+    $hostname = @gethostname();
+    if ($hostname) {
+        $resolved = @gethostbyname($hostname);
+        if ($resolved && $resolved !== $hostname) {
+            $prependIfValid($hosts, $resolved);
+        }
+    }
+    
+    $unameHost = php_uname('n');
+    if ($unameHost && $unameHost !== $hostname) {
+        $resolved = @gethostbyname($unameHost);
+        if ($resolved && $resolved !== $unameHost) {
+            $prependIfValid($hosts, $resolved);
+        }
+    }
+    
+    // hostname -I
+    if (function_exists('shell_exec')) {
+        $output = @shell_exec('hostname -I 2>/dev/null');
+        if (!empty($output)) {
+            $tokens = preg_split('/\s+/', trim($output));
+            foreach ($tokens as $token) {
+                $prependIfValid($hosts, $token);
+            }
+        }
+        
+        // ip -4 -o addr show
+        $ipOutput = @shell_exec('ip -4 -o addr show 2>/dev/null');
+        if (!empty($ipOutput)) {
+            $lines = explode("\n", trim($ipOutput));
+            foreach ($lines as $line) {
+                if (preg_match('/inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
+                    $prependIfValid($hosts, $matches[1]);
+                }
+            }
+        }
+        
+        // ifconfig fallback (macOS/BSD)
+        $ifconfigOutput = @shell_exec('ifconfig 2>/dev/null');
+        if (!empty($ifconfigOutput)) {
+            if (preg_match_all('/inet\s+(\d+\.\d+\.\d+\.\d+)/', $ifconfigOutput, $matches)) {
+                foreach ($matches[1] as $ip) {
+                    $prependIfValid($hosts, $ip);
+                }
+            }
+        }
+    }
+    
+    return $hosts;
+}
+
 function fppHomekitBuildApiEndpoints() {
     // Disable caching temporarily to ensure fresh endpoint order after updates
     // This ensures 32320 is always tried first
@@ -221,6 +298,13 @@ function fppHomekitBuildApiEndpoints() {
     foreach (fppHomekitDetectHttpPortsFromSystem() as $detectedPort) {
         if ($detectedPort > 0 && !in_array($detectedPort, $ports)) {
             $ports[] = $detectedPort;
+        }
+    }
+
+    // Enrich hosts list with detected IPs from the system
+    foreach (fppHomekitDetectHostIPs() as $detectedHost) {
+        if (!in_array($detectedHost, $hosts)) {
+            $hosts[] = $detectedHost;
         }
     }
     
