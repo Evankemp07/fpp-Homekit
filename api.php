@@ -110,13 +110,13 @@ function fppHomekitReadHttpPort($settingsPath) {
 }
 
 function fppHomekitBuildApiEndpoints() {
-    static $cached = null;
-    // Temporarily disable caching to ensure fresh endpoint order
-    // This ensures 32320 is always tried first after code updates
-    $cached = null;
-    if ($cached !== null) {
-        return $cached;
-    }
+    // Disable caching temporarily to ensure fresh endpoint order after updates
+    // This ensures 32320 is always tried first
+    // TODO: Re-enable caching once endpoint order is stable
+    // static $cached = null;
+    // if ($cached !== null) {
+    //     return $cached;
+    // }
     
     $pluginDir = dirname(__FILE__);
     $apiConfigFile = $pluginDir . '/scripts/fpp_api_config.json';
