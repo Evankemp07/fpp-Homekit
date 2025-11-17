@@ -96,10 +96,6 @@ if (file_exists($cssPath)) {
             <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color);">
                 <div style="display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap; margin-bottom: 16px;">
                     <button class="homekit-button" onclick="restartService()" id="restart-btn">Restart Service</button>
-                    <button class="homekit-button secondary" onclick="runDiagnostics()" id="diagnostics-btn">Run Diagnostics</button>
-                </div>
-                
-                <div id="diagnostics-output" style="display: none; margin-top: 16px; padding: 16px; background: var(--bg-secondary); border-radius: 12px; border: 1px solid var(--border-color); font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto;">
                 </div>
             </div>
         </div>
@@ -173,8 +169,16 @@ if (file_exists($cssPath)) {
     const playlistSelect = document.getElementById('playlist-select');
     const savePlaylistBtn = document.getElementById('save-playlist-btn');
     
-    // Debug logging
+    // Basic debug logging (console + UI)
     function debugLog(message, data = null) {
+        // Log to console
+        if (data) {
+            console.log('[FPP-HomeKit]', message, data);
+        } else {
+            console.log('[FPP-HomeKit]', message);
+        }
+        
+        // Log to UI (keep last 15 messages)
         const debugContainer = document.getElementById('debug-messages');
         if (!debugContainer) return;
         
@@ -214,12 +218,10 @@ if (file_exists($cssPath)) {
             debugMessages.style.display = 'block';
             debugMessages.classList.add('open');
             toggleIcon.style.transform = 'rotate(0deg)';
-            toggleIcon.classList.add('open');
         } else {
             debugMessages.style.display = 'none';
             debugMessages.classList.remove('open');
             toggleIcon.style.transform = 'rotate(-90deg)';
-            toggleIcon.classList.remove('open');
         }
     };
     
@@ -296,8 +298,6 @@ if (file_exists($cssPath)) {
         } else {
             playlistFetchInProgress = true;
         }
-        debugLog('Loading playlists...');
-        
         fetch(API_BASE + '/playlists')
             .then(response => {
                 if (!response.ok) {
@@ -323,10 +323,8 @@ if (file_exists($cssPath)) {
                 
                 playlistSelect.value = currentPlaylist || '';
                 updateSaveButtonState();
-                debugLog('Playlists loaded', data);
             })
             .catch(error => {
-                debugLog('Error loading playlists', { error: error.message });
                 showMessage('Error loading playlists: ' + error.message, 'error');
             })
             .finally(() => {
@@ -357,7 +355,7 @@ if (file_exists($cssPath)) {
         const formData = new FormData();
         formData.append('playlist_name', playlistName);
         
-        debugLog('Saving playlist configuration', { playlist: playlistName });
+        debugLog('Saving playlist', playlistName);
         fetch(API_BASE + '/config', {
             method: 'POST',
             body: formData
@@ -369,8 +367,8 @@ if (file_exists($cssPath)) {
                 return response.json();
             })
             .then(data => {
-                debugLog('Save response', data);
                 if (data.status === 'saved') {
+                    debugLog('Playlist saved successfully');
                     currentPlaylist = playlistName;
                     updatePlaylistStatusText(currentPlaylist);
                     showMessage('Configuration saved.', 'success');
@@ -385,7 +383,7 @@ if (file_exists($cssPath)) {
                 }
             })
             .catch(error => {
-                debugLog('Error saving playlist', { error: error.message });
+                debugLog('Error saving playlist', error.message);
                 showMessage('Error saving configuration: ' + error.message, 'error');
             })
             .finally(() => {
@@ -413,7 +411,7 @@ if (file_exists($cssPath)) {
                 btn.innerHTML = originalHTML;
             }, 2000);
         }).catch(err => {
-            debugLog('Failed to copy setup code', { error: err.message });
+            // Copy failed silently
         });
     };
     
@@ -421,7 +419,6 @@ if (file_exists($cssPath)) {
     function loadStatus() {
         // Prevent concurrent updates
         if (isUpdating) {
-            debugLog('Update already in progress, skipping...');
             return;
         }
         
@@ -435,7 +432,7 @@ if (file_exists($cssPath)) {
                 return response.json();
             })
             .then(data => {
-                debugLog('Status response', data);
+                debugLog('Status updated', { playing: data.fpp_status?.playing, status: data.fpp_status?.status_name });
                 updateStatusDisplay(data);
                 // Clear any error messages on successful update
                 const messageContainer = document.getElementById('message-container');
@@ -450,7 +447,7 @@ if (file_exists($cssPath)) {
                 isUpdating = false;
             })
             .catch(error => {
-                debugLog('Error loading status', { error: error.message });
+                debugLog('Error loading status', error.message);
                 // Only show error message if it's not already showing
                 const messageContainer = document.getElementById('message-container');
                 const existingError = messageContainer && 
@@ -588,7 +585,6 @@ if (file_exists($cssPath)) {
             return;
         }
         autoStartAttempted = true;
-        debugLog('Attempting to auto-start HomeKit service...');
         showMessage('Starting HomeKit service...', 'info');
         
         fetch(API_BASE + '/restart', { method: 'POST' })
@@ -599,7 +595,6 @@ if (file_exists($cssPath)) {
                 return response.json();
             })
             .then(data => {
-                debugLog('Auto-start response', data);
                 if (data.started || data.status === 'restarted') {
                     showMessage('HomeKit service started.', 'success');
                 } else {
@@ -609,7 +604,6 @@ if (file_exists($cssPath)) {
                 setTimeout(() => loadStatus(), 1200);
             })
             .catch(error => {
-                debugLog('Auto-start failed', { error: error.message });
                 showMessage('Unable to start service automatically: ' + error.message, 'error');
             });
     }
@@ -628,7 +622,6 @@ if (file_exists($cssPath)) {
                 return response.json();
             })
             .then(data => {
-                debugLog('Pairing info response', data);
                 const setupCode = data.setup_code || '123-45-678';
                 
                 document.getElementById('setup-code-text').textContent = setupCode;
@@ -648,7 +641,6 @@ if (file_exists($cssPath)) {
                 };
             })
             .catch(error => {
-                debugLog('Error loading pairing info', { error: error.message });
                 document.getElementById('qr-loading').style.display = 'none';
                 document.getElementById('qr-error').style.display = 'block';
                 qrLoaded = false;
@@ -661,11 +653,11 @@ if (file_exists($cssPath)) {
             return;
         }
         
+        debugLog('Restarting service...');
         const btn = document.getElementById('restart-btn');
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span> Restarting...';
         
-        debugLog('Restarting service...');
         fetch(API_BASE + '/restart', {
             method: 'POST'
         })
@@ -679,13 +671,12 @@ if (file_exists($cssPath)) {
                 try {
                     return JSON.parse(text);
                 } catch (e) {
-                    debugLog('Failed to parse JSON response', { text: text.substring(0, 500) });
                     throw new Error('Invalid JSON response: ' + text.substring(0, 200));
                 }
             });
         })
         .then(data => {
-            debugLog('Restart response', data);
+            debugLog('Service restart response', data);
             if (data && data.started) {
                 showMessage('Service restarted successfully', 'success');
             } else {
@@ -703,7 +694,7 @@ if (file_exists($cssPath)) {
             }, 5000);
         })
         .catch(error => {
-            debugLog('Error restarting service', { error: error.message, stack: error.stack });
+            debugLog('Error restarting service', error.message);
             showMessage('Error restarting service: ' + error.message, 'error');
             btn.disabled = false;
             btn.textContent = 'Restart Service';
@@ -747,7 +738,7 @@ if (file_exists($cssPath)) {
                 }
             })
             .catch(error => {
-                debugLog('Error loading MQTT config', { error: error.message });
+                // MQTT config load failed silently
             });
     }
     
@@ -778,7 +769,6 @@ if (file_exists($cssPath)) {
         }
         formData.append('mqtt_port', port);
         
-        debugLog('Saving MQTT configuration', { broker: broker, port: port });
         fetch(API_BASE + '/config', {
             method: 'POST',
             body: formData
@@ -793,13 +783,11 @@ if (file_exists($cssPath)) {
                     try {
                         return JSON.parse(text);
                     } catch (e) {
-                        debugLog('Failed to parse JSON response', { text: text.substring(0, 500) });
                         throw new Error('Invalid JSON response: ' + text.substring(0, 200));
                     }
                 });
             })
             .then(data => {
-                debugLog('Save MQTT response', data);
                 if (data && data.status === 'saved') {
                     showMessage('MQTT configuration saved. Restart service to apply changes.', 'success');
                     setTimeout(() => loadStatus(), 300);
@@ -808,126 +796,11 @@ if (file_exists($cssPath)) {
                 }
             })
             .catch(error => {
-                debugLog('Error saving MQTT config', { error: error.message, stack: error.stack });
                 showMessage('Error saving MQTT configuration: ' + error.message, 'error');
             })
             .finally(() => {
                 saveMqttBtn.disabled = false;
                 saveMqttBtn.textContent = originalLabel;
-            });
-    }
-    
-    function runDiagnostics() {
-        const diagBtn = document.getElementById('diagnostics-btn');
-        const diagOutput = document.getElementById('diagnostics-output');
-        
-        if (!diagBtn || !diagOutput) return;
-        
-        const originalLabel = diagBtn.textContent;
-        diagBtn.disabled = true;
-        diagBtn.textContent = 'Running...';
-        
-        diagOutput.style.display = 'block';
-        diagOutput.innerHTML = '<div style="color: var(--text-secondary);">Running diagnostics...</div>';
-        
-        debugLog('Running HomeKit diagnostics...');
-        
-        fetch('/api/plugin/fpp-Homekit/diagnostics')
-            .then(response => response.text())
-            .then(text => {
-                debugLog('Diagnostics raw response', text.substring(0, 200));
-                
-                let data;
-                try {
-                    data = JSON.parse(text);
-                } catch (e) {
-                    throw new Error('Invalid JSON: ' + e.message);
-                }
-                
-                debugLog('Diagnostics data', data);
-                
-                // Format diagnostics output
-                let output = '<div style="line-height: 1.6;">';
-                
-                // Service Status
-                output += '<div style="margin-bottom: 12px; font-weight: bold; color: var(--text-primary);">🔧 Service Status</div>';
-                output += '<div style="margin-left: 16px; margin-bottom: 16px;">';
-                output += '• Service Running: ' + (data.service_running ? '✓ Yes' : '✗ No') + '<br>';
-                output += '• Process ID: ' + (data.pid || 'N/A') + '<br>';
-                output += '• Port: 51826<br>';
-                output += '• Listen Address: ' + (data.listen_address || 'Auto-detect') + '<br>';
-                output += '</div>';
-                
-                // Network Status
-                output += '<div style="margin-bottom: 12px; font-weight: bold; color: var(--text-primary);">🌐 Network</div>';
-                output += '<div style="margin-left: 16px; margin-bottom: 16px;">';
-                if (data.network && data.network.interfaces) {
-                    output += '• Interfaces Found: ' + data.network.interfaces.length + '<br>';
-                    data.network.interfaces.forEach(iface => {
-                        output += '  - ' + iface.name + ': ' + iface.ip + '<br>';
-                    });
-                }
-                output += '• Port 51826 Open: ' + (data.port_51826_open ? '✓ Yes' : '? Unknown') + '<br>';
-                output += '</div>';
-                
-                // mDNS Status
-                output += '<div style="margin-bottom: 12px; font-weight: bold; color: var(--text-primary);">📡 mDNS/Bonjour</div>';
-                output += '<div style="margin-left: 16px; margin-bottom: 16px;">';
-                output += '• Avahi Daemon: ' + (data.avahi_running ? '✓ Running' : '✗ Not Running') + '<br>';
-                if (!data.avahi_running) {
-                    output += '  <span style="color: #ff6b6b;">⚠ HomeKit requires mDNS. Run: sudo systemctl start avahi-daemon</span><br>';
-                }
-                output += '</div>';
-                
-                // MQTT Status
-                output += '<div style="margin-bottom: 12px; font-weight: bold; color: var(--text-primary);">💬 MQTT</div>';
-                output += '<div style="margin-left: 16px; margin-bottom: 16px;">';
-                output += '• Mosquitto: ' + (data.mosquitto_running ? '✓ Running' : '✗ Not Running') + '<br>';
-                output += '• Broker: ' + (data.mqtt_broker || 'localhost') + '<br>';
-                output += '• Port: ' + (data.mqtt_port || '1883') + '<br>';
-                if (!data.mosquitto_running) {
-                    output += '  <span style="color: #ffd43b;">⚠ Run: sudo systemctl start mosquitto</span><br>';
-                }
-                output += '</div>';
-                
-                // HomeKit Pairing
-                output += '<div style="margin-bottom: 12px; font-weight: bold; color: var(--text-primary);">🏠 HomeKit Pairing</div>';
-                output += '<div style="margin-left: 16px; margin-bottom: 16px;">';
-                output += '• Setup Code: ' + (data.setup_code || 'N/A') + '<br>';
-                output += '• Setup ID: ' + (data.setup_id || 'N/A') + '<br>';
-                output += '• Paired: ' + (data.paired ? '✓ Yes' : '✗ No') + '<br>';
-                output += '</div>';
-                
-                // Recommendations
-                if (!data.avahi_running || !data.mosquitto_running) {
-                    output += '<div style="margin-top: 20px; padding: 12px; background: rgba(255, 107, 107, 0.1); border-left: 3px solid #ff6b6b; border-radius: 4px;">';
-                    output += '<div style="font-weight: bold; margin-bottom: 8px;">⚠ Action Required:</div>';
-                    if (!data.avahi_running) {
-                        output += '• Install and start avahi-daemon for HomeKit discovery<br>';
-                    }
-                    if (!data.mosquitto_running) {
-                        output += '• Start mosquitto for FPP control<br>';
-                    }
-                    output += '</div>';
-                }
-                
-                // Log file location
-                output += '<div style="margin-top: 20px; padding: 12px; background: rgba(74, 144, 226, 0.1); border-left: 3px solid #4a90e2; border-radius: 4px;">';
-                output += '<div style="font-weight: bold; margin-bottom: 4px;">📄 Service Logs:</div>';
-                output += '<div style="font-size: 11px;">/home/fpp/media/logs/fpp-Homekit_postStart.log</div>';
-                output += '</div>';
-                
-                output += '</div>';
-                
-                diagOutput.innerHTML = output;
-            })
-            .catch(error => {
-                debugLog('Error running diagnostics', { error: error.message });
-                diagOutput.innerHTML = '<div style="color: #ff6b6b;">Error running diagnostics: ' + error.message + '</div>';
-            })
-            .finally(() => {
-                diagBtn.disabled = false;
-                diagBtn.textContent = originalLabel;
             });
     }
     
@@ -958,8 +831,6 @@ if (file_exists($cssPath)) {
         const originalLabel = testMqttBtn.textContent;
         testMqttBtn.innerHTML = '<span class="spinner"></span> Testing...';
         
-        debugLog('Testing MQTT connection...', { broker: broker, port: port });
-        
         // Send broker and port from UI to test
         const formData = new FormData();
         formData.append('mqtt_broker', broker);
@@ -976,7 +847,6 @@ if (file_exists($cssPath)) {
                 return response.json();
             })
             .then(data => {
-                debugLog('MQTT test response', data);
                 if (data.success) {
                     showMessage('✓ ' + (data.message || 'MQTT connection successful!'), 'success');
                 } else {
@@ -991,7 +861,6 @@ if (file_exists($cssPath)) {
                 }
             })
             .catch(error => {
-                debugLog('Error testing MQTT', { error: error.message });
                 showMessage('Error testing MQTT: ' + error.message, 'error');
             })
             .finally(() => {
@@ -1013,16 +882,12 @@ if (file_exists($cssPath)) {
                 return response.text();
             })
             .then(text => {
-                debugLog('Network interfaces raw response', text.substring(0, 200));
-                
                 let data;
                 try {
                     data = JSON.parse(text);
                 } catch (e) {
                     throw new Error('Invalid JSON: ' + e.message);
                 }
-                
-                debugLog('Network interfaces parsed', data);
                 
                 // Clear all options
                 homekitIpSelect.innerHTML = '';
@@ -1041,7 +906,7 @@ if (file_exists($cssPath)) {
                         separator.disabled = true;
                         homekitIpSelect.add(separator);
                     } catch (e) {
-                        debugLog('Could not add separator', e.message);
+                        // Separator failed silently
                     }
                 }
                 
@@ -1053,11 +918,9 @@ if (file_exists($cssPath)) {
                                 const label = iface.name + ' - ' + iface.ip;
                                 const option = new Option(label, iface.ip);
                                 homekitIpSelect.add(option);
-                            } else {
-                                debugLog('Invalid interface at index ' + index, iface);
                             }
                         } catch (e) {
-                            debugLog('Error adding interface option', e.message);
+                            // Interface option failed silently
                         }
                     });
                 }
@@ -1067,20 +930,10 @@ if (file_exists($cssPath)) {
                 try {
                     homekitIpSelect.value = currentIp;
                 } catch (e) {
-                    debugLog('Could not set current IP value', e.message);
+                    // IP value set failed silently
                 }
-                
-                debugLog('Network selector populated', {
-                    interfaceCount: interfaces.length,
-                    currentIp: currentIp
-                });
             })
             .catch(error => {
-                debugLog('Error loading network interfaces', { 
-                    error: error.message,
-                    stack: error.stack 
-                });
-                
                 // Still add basic options so user can select something
                 homekitIpSelect.innerHTML = '';
                 homekitIpSelect.add(new Option('Auto-detect (Primary Interface)', ''));
@@ -1095,7 +948,6 @@ if (file_exists($cssPath)) {
         const saveBtn = document.getElementById('save-homekit-network-btn');
         
         if (!homekitIpSelect || !saveBtn) {
-            debugLog('Save button or select not found');
             return;
         }
         
@@ -1105,8 +957,6 @@ if (file_exists($cssPath)) {
         
         const homekitIp = homekitIpSelect.value || '';
         
-        debugLog('Saving HomeKit network config', { homekit_ip: homekitIp });
-        
         const formData = new FormData();
         formData.append('homekit_ip', homekitIp);
         
@@ -1115,20 +965,15 @@ if (file_exists($cssPath)) {
             body: formData
         })
             .then(response => {
-                debugLog('Save response status', response.status);
                 return response.text();
             })
             .then(text => {
-                debugLog('Raw save response', text.substring(0, 500));
-                
                 let data;
                 try {
                     data = JSON.parse(text);
                 } catch (e) {
                     throw new Error('Invalid JSON response: ' + text.substring(0, 200));
                 }
-                
-                debugLog('Parsed save response', data);
                 
                 // Check for success indicators: 'success', 'status === saved', or 'status === OK'
                 if (data.success || data.status === 'saved' || data.status === 'OK') {
@@ -1143,10 +988,6 @@ if (file_exists($cssPath)) {
                 }
             })
             .catch(error => {
-                debugLog('Error saving HomeKit network config', { 
-                    error: error.message,
-                    stack: error.stack 
-                });
                 showMessage('Error saving HomeKit network config: ' + error.message, 'error');
             })
             .finally(() => {
