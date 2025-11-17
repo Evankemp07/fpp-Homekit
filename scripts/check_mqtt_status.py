@@ -151,13 +151,19 @@ def main() -> None:
                 'mode_name' in data
             )
             
-            # Also check topic for status indicators (fppd_status, status, etc.)
+            # Also check topic for status indicators (fppd_status, status, playlist status, etc.)
             topic_lower = topic.lower()
             is_status_topic = (
                 'fppd_status' in topic_lower or
                 '/status' in topic_lower or
                 topic_lower.endswith('/status') or
-                '/playliststatus' in topic_lower
+                '/playliststatus' in topic_lower or
+                '/playlist/status' in topic_lower
+            )
+            
+            # Check if this is a playlist status message (might have sequence info)
+            is_playlist_status = (
+                '/playlist' in topic_lower and '/status' in topic_lower
             )
             
             # Accept if it has FPP status fields OR is from a status topic
@@ -181,6 +187,24 @@ def main() -> None:
                 elif isinstance(playlist_data, str):
                     current_playlist = playlist_data
                 
+                # Extract sequence info - check multiple possible fields
+                current_sequence = data.get("current_sequence", "")
+                if not current_sequence:
+                    # Sometimes FPP sends sequence name in current_song field
+                    current_sequence = data.get("current_song", "")
+                if not current_sequence:
+                    # Check playlist status structure - sequence might be nested
+                    playlist_status = data.get("playlist", {})
+                    if isinstance(playlist_status, dict):
+                        current_sequence = playlist_status.get("current_sequence", "") or playlist_status.get("sequence", "")
+                if not current_sequence:
+                    # Check if sequence is at top level with different name
+                    current_sequence = data.get("sequence", "") or data.get("sequence_name", "")
+                
+                # Ensure sequence is a string
+                if not isinstance(current_sequence, str):
+                    current_sequence = str(current_sequence) if current_sequence else ""
+                
                 # Extract time info
                 seconds_played = data.get("seconds_played", 0)
                 if isinstance(seconds_played, str):
@@ -196,13 +220,24 @@ def main() -> None:
                     except (ValueError, TypeError):
                         seconds_remaining = 0
                 
+                # Always update with the latest status message
+                # Preserve existing sequence/playlist info if new message doesn't have it (accumulate info across messages)
+                existing_sequence = status_data.get("current_sequence", "")
+                existing_playlist = status_data.get("current_playlist", "")
+                
+                # Use new values if available, otherwise keep existing ones
+                # Prefer new sequence if available, otherwise preserve existing
+                final_sequence = current_sequence if current_sequence else existing_sequence
+                
+                final_playlist = current_playlist if current_playlist else existing_playlist
+                
                 status_data = {
                     "available": True,
                     "timeout": False,
                     "status_name": status_name,
                     "status": status_val,
-                    "current_playlist": current_playlist,
-                    "current_sequence": data.get("current_sequence", ""),
+                    "current_playlist": final_playlist,
+                    "current_sequence": final_sequence,
                     "seconds_played": seconds_played,
                     "seconds_remaining": seconds_remaining,
                 }

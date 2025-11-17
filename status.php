@@ -506,6 +506,9 @@ if (file_exists($cssPath)) {
         } else if (statusText.includes('Running') && !statusText.includes('Not Running') && !statusText.includes('Unreachable')) {
             // FPP is running (green indicator)
             statusClass = 'running';
+        } else if (statusText.includes('Available') || (!errorDetail && statusName !== 'unknown' && statusName !== '')) {
+            // FPP is available/connected (green indicator)
+            statusClass = 'running';
         } else if (statusText.includes('Not Running') || statusText.includes('Unavailable') || statusText.includes('Unreachable')) {
             statusClass = 'stopped';
         }
