@@ -49,20 +49,46 @@ if [ $FIRST_INSTALL -eq 1 ]; then
     $PYTHON3 --version | tee -a "${INSTALL_LOG}"
     echo "Python executable: $PYTHON_PATH" | tee -a "${INSTALL_LOG}"
 
-    # Ensure pip is available via python -m pip
+    # Ensure pip is available - try multiple methods
     echo ""
     echo "Step 3: Preparing pip..."
-    echo "Ensuring pip is installed via python -m pip..." | tee -a "${INSTALL_LOG}"
-    if ! $PYTHON3 -m ensurepip --upgrade >> "${INSTALL_LOG}" 2>&1; then
-        echo "Warning: python -m ensurepip failed or not available, continuing..." | tee -a "${INSTALL_LOG}"
+    PIP3=""
+    
+    # Method 1: Try python3 -m pip (preferred)
+    if $PYTHON3 -m pip --version >> "${INSTALL_LOG}" 2>&1; then
+        PIP3="$PYTHON3 -m pip"
+        echo "Found pip via: python3 -m pip" | tee -a "${INSTALL_LOG}"
+    # Method 2: Try pip3 command directly
+    elif command -v pip3 >/dev/null 2>&1; then
+        PIP3="pip3"
+        echo "Found pip via: pip3 command" | tee -a "${INSTALL_LOG}"
+    # Method 3: Try to bootstrap pip with ensurepip
+    else
+        echo "Attempting to bootstrap pip with ensurepip..." | tee -a "${INSTALL_LOG}"
+        if $PYTHON3 -m ensurepip --upgrade >> "${INSTALL_LOG}" 2>&1; then
+            if $PYTHON3 -m pip --version >> "${INSTALL_LOG}" 2>&1; then
+                PIP3="$PYTHON3 -m pip"
+                echo "Successfully bootstrapped pip via ensurepip" | tee -a "${INSTALL_LOG}"
+            fi
+        else
+            echo "Warning: python -m ensurepip failed or not available" | tee -a "${INSTALL_LOG}"
+        fi
     fi
-
-    PIP3="$PYTHON3 -m pip"
-    if ! $PIP3 --version >> "${INSTALL_LOG}" 2>&1; then
-        echo "ERROR: python -m pip is not available. Please install python3-pip." | tee -a "${INSTALL_LOG}"
+    
+    # If still no pip, give helpful error
+    if [ -z "$PIP3" ]; then
+        echo "ERROR: pip is not available. Please install python3-pip." | tee -a "${INSTALL_LOG}"
+        echo "" | tee -a "${INSTALL_LOG}"
+        echo "On Debian/Ubuntu:" | tee -a "${INSTALL_LOG}"
+        echo "  sudo apt-get update && sudo apt-get install python3-pip" | tee -a "${INSTALL_LOG}"
+        echo "" | tee -a "${INSTALL_LOG}"
+        echo "On macOS:" | tee -a "${INSTALL_LOG}"
+        echo "  python3 -m ensurepip --upgrade" | tee -a "${INSTALL_LOG}"
+        echo "  or: brew install python3" | tee -a "${INSTALL_LOG}"
         exit 1
     fi
-    echo "Using pip command: $PIP3"
+    
+    echo "Using pip command: $PIP3" | tee -a "${INSTALL_LOG}"
     $PIP3 --version | tee -a "${INSTALL_LOG}"
 
     # Update log with Python and pip info
