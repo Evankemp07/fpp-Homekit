@@ -363,53 +363,37 @@ function fppHomekitStatus() {
         'error_detail' => ''
     );
     
-    // Try HTTP API first (more reliable for status checks)
-    $fppApiHost = 'localhost';
-    $fppApiPort = 32320;
-    
-    // Try to get FPP API port from settings
-    $settingsPaths = fppHomekitSettingsCandidates();
-    foreach ($settingsPaths as $settingsPath) {
-        $port = fppHomekitReadHttpPort($settingsPath);
-        if ($port > 0) {
-            $fppApiPort = $port;
-            break;
-        }
-    }
-    
-    // Try HTTP API - test multiple ports and hosts
-    $apiHosts = array('localhost', '127.0.0.1');
-    $apiPorts = array($fppApiPort, 32320, 80);
-    
-    $apiResponse = null;
+    // Use the standard FPP API discovery method (like other FPP plugins)
+    $endpoints = fppHomekitBuildApiEndpoints();
     $apiData = null;
     $lastError = '';
     
-    foreach ($apiHosts as $host) {
-        foreach ($apiPorts as $port) {
-            $apiUrl = "http://{$host}:{$port}/api/status";
-            $context = stream_context_create(array(
-                'http' => array(
-                    'timeout' => 2,
-                    'ignore_errors' => true
-                )
-            ));
-            
-            $response = @file_get_contents($apiUrl, false, $context);
-            if ($response !== false && !empty($response)) {
-                $decoded = @json_decode($response, true);
-                if ($decoded && is_array($decoded) && isset($decoded['status_name'])) {
-                    $apiResponse = $response;
-                    $apiData = $decoded;
-                    break 2; // Break out of both loops
-                }
+    // Try each endpoint until one works
+    foreach ($endpoints as $baseUrl) {
+        $apiUrl = rtrim($baseUrl, '/') . '/status';
+        
+        $context = stream_context_create(array(
+            'http' => array(
+                'timeout' => 2,
+                'ignore_errors' => true
+            )
+        ));
+        
+        $response = @file_get_contents($apiUrl, false, $context);
+        if ($response !== false && !empty($response)) {
+            $decoded = @json_decode($response, true);
+            if ($decoded && is_array($decoded) && isset($decoded['status_name'])) {
+                $apiData = $decoded;
+                break; // Found working endpoint
             } else {
-                $lastError = "Failed to connect to {$host}:{$port}";
+                $lastError = "Invalid response from {$apiUrl}";
             }
+        } else {
+            $lastError = "Failed to connect to {$apiUrl}";
         }
     }
     
-    if ($apiResponse && $apiData) {
+    if ($apiData) {
         // Got status from HTTP API
         $fppStatus['status_name'] = $apiData['status_name'] ?? 'unknown';
         
