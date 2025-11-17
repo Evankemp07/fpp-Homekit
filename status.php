@@ -883,9 +883,23 @@ if (file_exists($cssPath)) {
         
         // Get available network interfaces from API
         fetch('/api/plugin/fpp-Homekit/network-interfaces')
-            .then(response => response.json())
-            .then(data => {
-                debugLog('Network interfaces', data);
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.text();
+            })
+            .then(text => {
+                debugLog('Network interfaces raw response', text.substring(0, 200));
+                
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    throw new Error('Invalid JSON: ' + e.message);
+                }
+                
+                debugLog('Network interfaces parsed', data);
                 
                 // Clear all options
                 homekitIpSelect.innerHTML = '';
@@ -894,33 +908,62 @@ if (file_exists($cssPath)) {
                 homekitIpSelect.add(new Option('Auto-detect (Primary Interface)', ''));
                 homekitIpSelect.add(new Option('All Interfaces (0.0.0.0)', '0.0.0.0'));
                 
+                // Safely check for interfaces
+                const interfaces = data && data.interfaces ? data.interfaces : [];
+                
                 // Add separator if we have interfaces
-                if (data.interfaces && data.interfaces.length > 0) {
-                    const separator = new Option('──────────────────────', '', true, false);
-                    separator.disabled = true;
-                    homekitIpSelect.add(separator);
+                if (interfaces.length > 0) {
+                    try {
+                        const separator = new Option('──────────────────────', '', true, false);
+                        separator.disabled = true;
+                        homekitIpSelect.add(separator);
+                    } catch (e) {
+                        debugLog('Could not add separator', e.message);
+                    }
                 }
                 
                 // Add each detected interface as a separate option
-                if (data.interfaces && data.interfaces.length > 0) {
-                    data.interfaces.forEach(iface => {
-                        const label = `${iface.name} - ${iface.ip}`;
-                        const option = new Option(label, iface.ip);
-                        homekitIpSelect.add(option);
+                if (interfaces.length > 0) {
+                    interfaces.forEach((iface, index) => {
+                        try {
+                            if (iface && iface.name && iface.ip) {
+                                const label = iface.name + ' - ' + iface.ip;
+                                const option = new Option(label, iface.ip);
+                                homekitIpSelect.add(option);
+                            } else {
+                                debugLog('Invalid interface at index ' + index, iface);
+                            }
+                        } catch (e) {
+                            debugLog('Error adding interface option', e.message);
+                        }
                     });
                 }
                 
                 // Set current value (empty string or saved IP)
-                homekitIpSelect.value = data.current_ip || '';
+                const currentIp = data && data.current_ip ? data.current_ip : '';
+                try {
+                    homekitIpSelect.value = currentIp;
+                } catch (e) {
+                    debugLog('Could not set current IP value', e.message);
+                }
                 
                 debugLog('Network selector populated', {
-                    interfaceCount: data.interfaces.length,
-                    currentIp: data.current_ip
+                    interfaceCount: interfaces.length,
+                    currentIp: currentIp
                 });
             })
             .catch(error => {
-                debugLog('Error loading network interfaces', { error: error.message });
-                showMessage('Error loading network interfaces: ' + error.message, 'error');
+                debugLog('Error loading network interfaces', { 
+                    error: error.message,
+                    stack: error.stack 
+                });
+                
+                // Still add basic options so user can select something
+                homekitIpSelect.innerHTML = '';
+                homekitIpSelect.add(new Option('Auto-detect (Primary Interface)', ''));
+                homekitIpSelect.add(new Option('All Interfaces (0.0.0.0)', '0.0.0.0'));
+                
+                showMessage('Could not load network interfaces. Using basic options.', 'warning');
             });
     }
     
