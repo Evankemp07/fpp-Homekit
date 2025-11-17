@@ -52,39 +52,55 @@ if [ $FIRST_INSTALL -eq 1 ]; then
     # Ensure pip is available - try multiple methods
     echo ""
     echo "Step 3: Preparing pip..."
+    echo "Ensuring pip is installed via $PYTHON3 -m pip..." | tee -a "${INSTALL_LOG}"
     PIP3=""
     
     # Method 1: Try python3 -m pip (preferred)
+    echo "Checking: $PYTHON3 -m pip --version" | tee -a "${INSTALL_LOG}"
     if $PYTHON3 -m pip --version >> "${INSTALL_LOG}" 2>&1; then
         PIP3="$PYTHON3 -m pip"
-        echo "Found pip via: python3 -m pip" | tee -a "${INSTALL_LOG}"
+        echo "✓ Found pip via: $PYTHON3 -m pip" | tee -a "${INSTALL_LOG}"
     # Method 2: Try pip3 command directly
     elif command -v pip3 >/dev/null 2>&1; then
         PIP3="pip3"
-        echo "Found pip via: pip3 command" | tee -a "${INSTALL_LOG}"
+        echo "✓ Found pip via: pip3 command" | tee -a "${INSTALL_LOG}"
+        # Verify it works with the same Python
+        if pip3 --version >> "${INSTALL_LOG}" 2>&1; then
+            echo "✓ Verified pip3 works" | tee -a "${INSTALL_LOG}"
+        fi
     # Method 3: Try to bootstrap pip with ensurepip
     else
         echo "Attempting to bootstrap pip with ensurepip..." | tee -a "${INSTALL_LOG}"
         if $PYTHON3 -m ensurepip --upgrade >> "${INSTALL_LOG}" 2>&1; then
+            echo "ensurepip completed, checking pip..." | tee -a "${INSTALL_LOG}"
             if $PYTHON3 -m pip --version >> "${INSTALL_LOG}" 2>&1; then
                 PIP3="$PYTHON3 -m pip"
-                echo "Successfully bootstrapped pip via ensurepip" | tee -a "${INSTALL_LOG}"
+                echo "✓ Successfully bootstrapped pip via ensurepip" | tee -a "${INSTALL_LOG}"
+            else
+                echo "Warning: ensurepip completed but pip still not available" | tee -a "${INSTALL_LOG}"
             fi
         else
-            echo "Warning: python -m ensurepip failed or not available" | tee -a "${INSTALL_LOG}"
+            echo "Warning: $PYTHON3 -m ensurepip failed or not available" | tee -a "${INSTALL_LOG}"
+            echo "This is normal on some systems. Install python3-pip instead." | tee -a "${INSTALL_LOG}"
         fi
     fi
     
     # If still no pip, give helpful error
     if [ -z "$PIP3" ]; then
-        echo "ERROR: pip is not available. Please install python3-pip." | tee -a "${INSTALL_LOG}"
+        echo "" | tee -a "${INSTALL_LOG}"
+        echo "ERROR: $PYTHON3 -m pip is not available. Please install python3-pip." | tee -a "${INSTALL_LOG}"
         echo "" | tee -a "${INSTALL_LOG}"
         echo "On Debian/Ubuntu:" | tee -a "${INSTALL_LOG}"
         echo "  sudo apt-get update && sudo apt-get install python3-pip" | tee -a "${INSTALL_LOG}"
         echo "" | tee -a "${INSTALL_LOG}"
+        echo "On Raspberry Pi OS:" | tee -a "${INSTALL_LOG}"
+        echo "  sudo apt-get update && sudo apt-get install python3-pip" | tee -a "${INSTALL_LOG}"
+        echo "" | tee -a "${INSTALL_LOG}"
         echo "On macOS:" | tee -a "${INSTALL_LOG}"
-        echo "  python3 -m ensurepip --upgrade" | tee -a "${INSTALL_LOG}"
+        echo "  $PYTHON3 -m ensurepip --upgrade" | tee -a "${INSTALL_LOG}"
         echo "  or: brew install python3" | tee -a "${INSTALL_LOG}"
+        echo "" | tee -a "${INSTALL_LOG}"
+        echo "After installing python3-pip, restart the plugin installation." | tee -a "${INSTALL_LOG}"
         exit 1
     fi
     
