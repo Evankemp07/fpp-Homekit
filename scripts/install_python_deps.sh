@@ -5,7 +5,7 @@
 
 PLUGIN_DIR="${1}"
 PYTHON3="${2}"
-PIP_CMD="$PYTHON3 -m pip"
+PIP_CMD="${3:-$PYTHON3 -m pip}"  # Allow pip command to be passed, default to python3 -m pip
 REQUIREMENTS_FILE="${PLUGIN_DIR}/scripts/requirements.txt"
 INSTALL_LOG="${PLUGIN_DIR}/scripts/install.log"
 
@@ -20,7 +20,7 @@ if [ ! -f "${REQUIREMENTS_FILE}" ]; then
 fi
 
 echo ""
-echo "Installing Python dependencies from requirements.txt using python -m pip..."
+echo "Installing Python dependencies from requirements.txt..."
 echo "This may take a few minutes..."
 echo "Detailed log: ${INSTALL_LOG}"
 
@@ -43,7 +43,7 @@ install_with() {
         args=($1)
     fi
 
-    if $PYTHON3 -m pip install -r "${REQUIREMENTS_FILE}" "${args[@]}" >> "${INSTALL_LOG}" 2>&1; then
+    if $PIP_CMD install -r "${REQUIREMENTS_FILE}" "${args[@]}" >> "${INSTALL_LOG}" 2>&1; then
         echo "✓ Dependencies installed (${1:-default flags})" | tee -a "${INSTALL_LOG}"
         return 0
     fi
