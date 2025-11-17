@@ -431,7 +431,8 @@ import sys, json, time
 try:
     import paho.mqtt.client as mqtt
 except ImportError:
-    print(json.dumps({"error": "paho-mqtt not installed", "available": False}))
+    error_msg = "paho-mqtt not installed. Install with: python3 -m pip install paho-mqtt --user"
+    print(json.dumps({"error": error_msg, "available": False, "install_command": "python3 -m pip install paho-mqtt --user"}))
     sys.exit(0)
 
 broker = sys.argv[1] if len(sys.argv) > 1 else 'localhost'
@@ -531,6 +532,10 @@ PYCODE;
                     $errorMsg = $mqttStatus['error'];
                     if (strpos($errorMsg, 'Connection refused') !== false) {
                         $fppStatus['error_detail'] = 'Cannot connect to MQTT broker at ' . $mqttBroker . ':' . $mqttPort . '. Start mosquitto: sudo systemctl start mosquitto';
+                    } elseif (strpos($errorMsg, 'paho-mqtt not installed') !== false || strpos($errorMsg, 'paho.mqtt') !== false) {
+                        // Show helpful install instructions
+                        $installCmd = isset($mqttStatus['install_command']) ? $mqttStatus['install_command'] : 'python3 -m pip install paho-mqtt --user';
+                        $fppStatus['error_detail'] = 'paho-mqtt Python package is not installed. Install it with: ' . $installCmd . ' (or reinstall the plugin to install all dependencies)';
                     } else {
                         $fppStatus['error_detail'] = 'MQTT Error: ' . $errorMsg;
                     }
@@ -1211,7 +1216,8 @@ warnings.filterwarnings('ignore', category=DeprecationWarning)
 try:
     import paho.mqtt.client as mqtt
 except ImportError:
-    print(json.dumps({"success": False, "error": "paho-mqtt not installed"}))
+    error_msg = "paho-mqtt not installed. Install with: python3 -m pip install paho-mqtt --user"
+    print(json.dumps({"success": False, "error": error_msg, "install_command": "python3 -m pip install paho-mqtt --user"}))
     sys.exit(1)
 
 broker = sys.argv[1]
