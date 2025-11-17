@@ -836,7 +836,7 @@ class FPPLightAccessory(Accessory):
     def stop(self):
         """Stop the accessory"""
         self.fpp_status_polling = False
-        if hasattr(self, 'mqtt_client') and self.mqtt_client:
+        if hasattr(self, 'use_mqtt') and self.use_mqtt and hasattr(self, 'mqtt_client') and self.mqtt_client:
             self.mqtt_client.disconnect()
         super().stop()
 
