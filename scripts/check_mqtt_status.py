@@ -41,10 +41,22 @@ def main() -> None:
 
     def on_connect(client, userdata, flags, rc, *args, **kwargs):  # type: ignore
         if rc == 0:
-            client.subscribe(f"{prefix}/status")
+            topics = [
+                f"{prefix}/status",
+                f"{prefix.lower()}/status",
+            ]
+            for topic in topics:
+                client.subscribe(topic)
+
             # Request status updates explicitly in case FPP isn't broadcasting yet
-            client.publish(f"{prefix}/command/GetStatus", "")
-            client.publish(f"{prefix}/command/GetPlaylistStatus", "")
+            request_topics = [
+                f"{prefix}/command/GetStatus",
+                f"{prefix}/command/GetPlaylistStatus",
+                f"{prefix.lower()}/command/GetStatus",
+                f"{prefix.lower()}/command/GetPlaylistStatus",
+            ]
+            for topic in request_topics:
+                client.publish(topic, "", qos=1)
 
     def on_message(client, userdata, msg):  # type: ignore
         nonlocal status_data
@@ -82,7 +94,7 @@ def main() -> None:
         client.connect(broker, port, keepalive=5)
         client.loop_start()
 
-        for _ in range(50):  # wait up to ~5 seconds
+        for _ in range(80):  # wait up to ~8 seconds
             if status_data.get("available"):
                 break
             time.sleep(0.1)
