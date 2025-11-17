@@ -13,8 +13,8 @@ if (file_exists($cssPath)) {
 
 <div class="homekit-container">
     <div class="homekit-card">
-        <h2>About FPP HomeKit Integration</h2>
-        <p class="info-text"><strong>FPP HomeKit Integration</strong> bridges Falcon Player (FPP) with Apple HomeKit so you can launch or stop playlists directly from the Home app or Siri. The plugin handles pairing, status monitoring, and playlist control with an Apple-style UI that supports dark mode.</p>
+        <h2>About FPP Homekit</h2>
+        <p class="info-text"><strong>FPP Homekit</strong> bridges Falcon Player (FPP) with Apple HomeKit so you can launch or stop playlists directly from the Home app or Siri. The plugin handles pairing, status monitoring, and playlist control with an Apple-style UI that supports dark mode.</p>
     </div>
 
     <div class="homekit-card">

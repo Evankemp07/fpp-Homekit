@@ -285,7 +285,7 @@
     border-radius: 10px;
     border: 1px solid var(--border-color);
     background: var(--bg-primary);
-    color: var(--text-primary);
+    color: #000000;
     font-size: 15px;
     font-family: inherit;
     appearance: none;
@@ -295,6 +295,11 @@
     padding-right: 40px;
     cursor: pointer;
     transition: border-color 0.2s;
+}
+
+.form-select option {
+    color: #000000;
+    background: #ffffff;
 }
 
 .form-select:hover {

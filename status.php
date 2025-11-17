@@ -17,7 +17,7 @@ if (file_exists($cssPath)) {
 
 <div class="homekit-container">
     <div class="homekit-card">
-        <h2>HomeKit Status</h2>
+        <h2>FPP Homekit</h2>
         
         <div id="message-container"></div>
         

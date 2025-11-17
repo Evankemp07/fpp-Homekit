@@ -13,13 +13,13 @@
 
 $menuEntries = Array(
 	Array(
-		'text' => 'FPP HomeKit',
+		'text' => 'FPP Homekit',
 		'type' => 'status',
 		'page' => 'status.php',
 		'wrap' => 1
 	),
 	Array(
-		'text' => 'FPP HomeKit - About',
+		'text' => 'FPP Homekit - About',
 		'type' => 'help',
 		'page' => 'about.php',
 		'wrap' => 1
