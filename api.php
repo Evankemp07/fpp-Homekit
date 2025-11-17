@@ -432,42 +432,72 @@ PYCODE;
         $fppStatus['status_text'] = 'Shell Exec Disabled';
         $fppStatus['error_detail'] = 'PHP shell_exec is disabled. Cannot check FPP status.';
     } else {
-        $command = "timeout 3 python3 -W ignore -c " . escapeshellarg($pythonStatusScript) . " " . 
-                   escapeshellarg($mqttBroker) . " " . 
-                   escapeshellarg($mqttPort) . " " . 
-                   escapeshellarg($mqttTopicPrefix) . " 2>&1";
+        // Try with timeout first, then without if timeout doesn't exist
+        $hasTimeout = @shell_exec('which timeout 2>/dev/null');
+        
+        if ($hasTimeout) {
+            $command = "timeout 3 python3 -W ignore -c " . escapeshellarg($pythonStatusScript) . " " . 
+                       escapeshellarg($mqttBroker) . " " . 
+                       escapeshellarg($mqttPort) . " " . 
+                       escapeshellarg($mqttTopicPrefix) . " 2>&1";
+        } else {
+            // No timeout command, run directly (with Python timeout in script)
+            $command = "python3 -W ignore -c " . escapeshellarg($pythonStatusScript) . " " . 
+                       escapeshellarg($mqttBroker) . " " . 
+                       escapeshellarg($mqttPort) . " " . 
+                       escapeshellarg($mqttTopicPrefix) . " 2>&1";
+        }
         
         $output = @shell_exec($command);
     
-    if ($output) {
-        $mqttStatus = @json_decode(trim($output), true);
-        if ($mqttStatus && is_array($mqttStatus)) {
-            if (isset($mqttStatus['available']) && $mqttStatus['available']) {
-                // Got real status from FPP via MQTT
-                $fppStatus['status_name'] = $mqttStatus['status_name'] ?? 'unknown';
-                $fppStatus['current_playlist'] = $mqttStatus['current_playlist'] ?? '';
-                $fppStatus['current_sequence'] = $mqttStatus['current_sequence'] ?? '';
-                $fppStatus['seconds_elapsed'] = $mqttStatus['seconds_played'] ?? 0;
-                $fppStatus['seconds_remaining'] = $mqttStatus['seconds_remaining'] ?? 0;
-                $fppStatus['playing'] = ($mqttStatus['status'] ?? 0) == 1;
-                $fppStatus['status_text'] = 'FPP Available';
-                $fppStatus['error_detail'] = '';
-            } elseif (isset($mqttStatus['timeout']) && $mqttStatus['timeout']) {
-                $fppStatus['status_text'] = 'FPP Not Responding';
-                $fppStatus['error_detail'] = 'MQTT connected but FPP not publishing. Is fppd running?';
-            } elseif (isset($mqttStatus['error'])) {
-                $fppStatus['status_text'] = 'MQTT Error';
-                $fppStatus['error_detail'] = $mqttStatus['error'];
+        if ($output) {
+            $mqttStatus = @json_decode(trim($output), true);
+            if ($mqttStatus && is_array($mqttStatus)) {
+                if (isset($mqttStatus['available']) && $mqttStatus['available']) {
+                    // Got real status from FPP via MQTT
+                    $fppStatus['status_name'] = $mqttStatus['status_name'] ?? 'unknown';
+                    $fppStatus['current_playlist'] = $mqttStatus['current_playlist'] ?? '';
+                    $fppStatus['current_sequence'] = $mqttStatus['current_sequence'] ?? '';
+                    $fppStatus['seconds_elapsed'] = $mqttStatus['seconds_played'] ?? 0;
+                    $fppStatus['seconds_remaining'] = $mqttStatus['seconds_remaining'] ?? 0;
+                    $fppStatus['playing'] = ($mqttStatus['status'] ?? 0) == 1;
+                    $fppStatus['status_text'] = 'FPP Available';
+                    $fppStatus['error_detail'] = '';
+                } elseif (isset($mqttStatus['timeout']) && $mqttStatus['timeout']) {
+                    $fppStatus['status_text'] = 'FPP Not Responding';
+                    $fppStatus['error_detail'] = 'MQTT broker reachable but FPP not publishing status.';
+                } elseif (isset($mqttStatus['error'])) {
+                    $fppStatus['status_text'] = 'MQTT Connection Failed';
+                    $errorMsg = $mqttStatus['error'];
+                    if (strpos($errorMsg, 'Connection refused') !== false) {
+                        $fppStatus['error_detail'] = 'Cannot connect to MQTT broker at ' . $mqttBroker . ':' . $mqttPort . '. Start mosquitto: sudo systemctl start mosquitto';
+                    } else {
+                        $fppStatus['error_detail'] = 'MQTT Error: ' . $errorMsg;
+                    }
+                }
+            } else {
+                // Failed to parse JSON - might be a Python error
+                $fppStatus['status_text'] = 'Status Check Error';
+                // Show actual output for debugging
+                $cleanOutput = preg_replace('/\s+/', ' ', substr($output, 0, 150));
+                $fppStatus['error_detail'] = 'Check failed: ' . $cleanOutput;
             }
         } else {
-            // Failed to parse JSON - might be a Python error
-            $fppStatus['status_text'] = 'Status Check Error';
-            $fppStatus['error_detail'] = 'MQTT check failed. Output: ' . substr($output, 0, 100);
+            // No output - command might have failed
+            $fppStatus['status_text'] = 'Status Check Failed';
+            
+            // Try to determine why
+            $pythonCheck = @shell_exec('which python3 2>/dev/null');
+            $pahoCheck = @shell_exec('python3 -c "import paho.mqtt.client" 2>&1');
+            
+            if (!$pythonCheck) {
+                $fppStatus['error_detail'] = 'Python3 not found. Install with: sudo apt-get install python3';
+            } elseif (strpos($pahoCheck, 'No module named') !== false) {
+                $fppStatus['error_detail'] = 'paho-mqtt not installed. Install with: sudo python3 -m pip install paho-mqtt';
+            } else {
+                $fppStatus['error_detail'] = 'MQTT status check timed out or failed. Check if mosquitto is running: sudo systemctl status mosquitto';
+            }
         }
-    } else {
-        $fppStatus['status_text'] = 'Status Check Failed';
-        $fppStatus['error_detail'] = 'Could not check FPP status via MQTT. Check if mosquitto is running: sudo systemctl status mosquitto';
-    }
     }
     
     $result['fpp_status'] = $fppStatus;
