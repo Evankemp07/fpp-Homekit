@@ -1022,83 +1022,118 @@ function fppHomekitRestart() {
     $pidFile = $pluginDir . '/scripts/homekit_service.pid';
     $script = $pluginDir . '/scripts/homekit_service.py';
     $startScript = $pluginDir . '/scripts/postStart.sh';
-    
-    // Stop service
-    if (file_exists($pidFile)) {
-        $pid = trim(file_get_contents($pidFile));
-        if ($pid) {
-            // Try posix_kill if available
-            if (function_exists('posix_kill')) {
-                // Use numeric signal values (SIGTERM=15, SIGKILL=9) since constants may not be defined
-                $sigterm = defined('SIGTERM') ? SIGTERM : 15;
-                $sigkill = defined('SIGKILL') ? SIGKILL : 9;
-                
-                if (posix_kill($pid, 0)) {
-                    posix_kill($pid, $sigterm);
-                    sleep(1);
-                    if (posix_kill($pid, 0)) {
-                        posix_kill($pid, $sigkill);
-                    }
-                }
-            } else {
-                // Fallback: use kill command
-                @exec("kill $pid 2>&1", $output, $return_var);
-                sleep(1);
-                @exec("kill -9 $pid 2>&1", $output, $return_var);
-            }
-        }
-        @unlink($pidFile);
-    }
-    
-    // Start service using postStart.sh script for consistency
-    if (file_exists($startScript)) {
-        // Use nohup and background execution to ensure it runs
-        $cmd = "cd " . escapeshellarg($pluginDir . '/scripts') . " && nohup bash " . escapeshellarg($startScript) . " >> " . escapeshellarg($pluginDir . '/scripts/restart.log') . " 2>&1 &";
-        shell_exec($cmd);
-        
-        // Wait a moment for service to start
-        sleep(3);
-        
-        // Check if service started successfully
-        $started = false;
+
+    try {
+        // Stop service
         if (file_exists($pidFile)) {
-            $newPid = trim(file_get_contents($pidFile));
-            if ($newPid) {
-                // Check if process is running
+            $pid = trim(file_get_contents($pidFile));
+            if ($pid) {
+                // Try posix_kill if available
                 if (function_exists('posix_kill')) {
-                    if (posix_kill($newPid, 0)) {
-                        $started = true;
+                    // Use numeric signal values (SIGTERM=15, SIGKILL=9) since constants may not be defined
+                    $sigterm = defined('SIGTERM') ? SIGTERM : 15;
+                    $sigkill = defined('SIGKILL') ? SIGKILL : 9;
+
+                    if (posix_kill($pid, 0)) {
+                        posix_kill($pid, $sigterm);
+                        sleep(2);
+                        if (posix_kill($pid, 0)) {
+                            posix_kill($pid, $sigkill);
+                            sleep(1);
+                        }
                     }
                 } else {
-                    $output = array();
-                    $return_var = 0;
-                    @exec("ps -p $newPid 2>&1", $output, $return_var);
-                    if ($return_var === 0 && !empty($output)) {
-                        $started = true;
-                    }
+                    // Fallback: use kill command
+                    @exec("kill $pid 2>&1", $output, $return_var);
+                    sleep(2);
+                    @exec("kill -9 $pid 2>&1", $output, $return_var);
                 }
             }
+            @unlink($pidFile);
         }
-        
+
+        // Start service using postStart.sh script for consistency
+        if (file_exists($startScript)) {
+            // Use nohup and background execution to ensure it runs
+            $cmd = "cd " . escapeshellarg($pluginDir . '/scripts') . " && bash " . escapeshellarg($startScript) . " 2>&1";
+            $output = shell_exec($cmd);
+
+            if ($output) {
+                // Check for errors in output
+                if (strpos($output, 'ERROR') !== false || strpos($output, 'exit 1') !== false) {
+                    $result = array(
+                        'status' => 'error',
+                        'message' => 'Service failed to start: ' . trim($output)
+                    );
+                } else {
+                    $result = array(
+                        'status' => 'restarted',
+                        'started' => true,
+                        'message' => 'Service restarted successfully'
+                    );
+                }
+            } else {
+                // Check if service started successfully by looking for PID file
+                $started = false;
+                if (file_exists($pidFile)) {
+                    $newPid = trim(file_get_contents($pidFile));
+                    if ($newPid) {
+                        // Check if process is running
+                        if (function_exists('posix_kill')) {
+                            if (posix_kill($newPid, 0)) {
+                                $started = true;
+                            }
+                        } else {
+                            $output_ps = array();
+                            $return_var = 0;
+                            @exec("ps -p $newPid 2>&1", $output_ps, $return_var);
+                            if ($return_var === 0 && !empty($output_ps)) {
+                                $started = true;
+                            }
+                        }
+                    }
+                }
+
+                $result = array(
+                    'status' => $started ? 'restarted' : 'restart_initiated',
+                    'started' => $started,
+                    'message' => $started ? 'Service restarted successfully' : 'Restart initiated, service may still be starting...'
+                );
+            }
+        } elseif (file_exists($script)) {
+            // Fallback: start directly
+            $python3 = trim(shell_exec("which python3 2>/dev/null"));
+            if (empty($python3)) {
+                $python3 = 'python3';
+            }
+            $cmd = "cd " . escapeshellarg($pluginDir . '/scripts') . " && timeout 10 " . escapeshellarg($python3) . " " . escapeshellarg($script) . " 2>&1";
+            $output = shell_exec($cmd);
+
+            if ($output && (strpos($output, 'ERROR') !== false || strpos($output, 'ModuleNotFoundError') !== false)) {
+                $result = array(
+                    'status' => 'error',
+                    'message' => 'Service failed to start: ' . trim($output)
+                );
+            } else {
+                $result = array(
+                    'status' => 'restarted',
+                    'started' => true,
+                    'message' => 'Service restarted successfully'
+                );
+            }
+        } else {
+            $result = array(
+                'status' => 'error',
+                'message' => 'Service script not found at: ' . $script
+            );
+        }
+    } catch (Exception $e) {
         $result = array(
-            'status' => $started ? 'restarted' : 'restart_initiated',
-            'started' => $started,
-            'message' => $started ? 'Service restarted successfully' : 'Restart initiated, checking status...'
+            'status' => 'error',
+            'message' => 'Exception during restart: ' . $e->getMessage()
         );
-    } elseif (file_exists($script)) {
-        // Fallback: start directly
-        $python3 = trim(shell_exec("which python3 2>/dev/null"));
-        if (empty($python3)) {
-            $python3 = 'python3';
-        }
-        $cmd = "cd " . escapeshellarg($pluginDir . '/scripts') . " && nohup " . escapeshellarg($python3) . " " . escapeshellarg($script) . " >> " . escapeshellarg($pluginDir . '/scripts/homekit_service.log') . " 2>&1 &";
-        shell_exec($cmd);
-        sleep(3);
-        $result = array('status' => 'restarted');
-    } else {
-        $result = array('status' => 'error', 'message' => 'Service script not found');
     }
-    
+
     return json($result);
 }
 
