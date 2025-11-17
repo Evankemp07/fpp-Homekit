@@ -22,28 +22,80 @@ if (file_exists($cssPath)) {
         <div id="message-container"></div>
         
         <div id="status-content">
-            <div class="status-cards-container">
-                <div class="status-card">
-                    <div class="status-card-label">HomeKit Service</div>
-                    <div class="status-card-value" id="service-status">Loading...</div>
-                </div>
-                
-                <div class="status-card">
-                    <div class="status-card-label">Pairing Status</div>
-                    <div class="status-card-value" id="pairing-status">Loading...</div>
-                </div>
-                
-                <div class="status-card" id="fpp-status-card">
-                    <div class="status-card-label">FPP Status</div>
-                    <div class="status-card-value" id="fpp-status" style="display: flex; align-items: center; justify-content: space-between;">
-                        <span id="fpp-status-text">Loading...</span>
-                        <span class="status-dot-large" id="fpp-status-dot"></span>
+            <div class="status-main-layout">
+                <div class="status-cards-container">
+                    <div class="status-card">
+                        <div class="status-card-label">HomeKit Service</div>
+                        <div class="status-card-value" id="service-status" style="display: flex; align-items: center; justify-content: space-between;">
+                            <span id="service-status-text">Loading...</span>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span class="status-dot-large" id="service-status-dot"></span>
+                                <button class="restart-icon-btn" onclick="restartService()" id="restart-btn" title="Restart Service">
+                                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M9 3V1M9 3C7.93913 3 6.92172 3.42143 6.17157 4.17157C5.42143 4.92172 5 5.93913 5 7C5 7.53043 4.78929 8.03914 4.41421 8.41421C4.03914 8.78929 3.53043 9 3 9H1M9 15V17M9 15C10.0609 15 11.0783 14.5786 11.8284 13.8284C12.5786 13.0783 13 12.0609 13 11C13 10.4696 13.2107 9.96086 13.5858 9.58579C13.9609 9.21071 14.4696 9 15 9H17M1 9L3 7L1 5M17 9L15 11L17 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                    <span class="restart-btn-text">Restart Service</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="status-card">
+                        <div class="status-card-label">Pairing Status</div>
+                        <div class="status-card-value" id="pairing-status" style="display: flex; align-items: center; justify-content: space-between;">
+                            <span id="pairing-status-text">Loading...</span>
+                            <span class="status-dot-large" id="pairing-status-dot"></span>
+                        </div>
+                    </div>
+                    
+                    <div class="status-card" id="fpp-status-card">
+                        <div class="status-card-label">FPP Status</div>
+                        <div class="status-card-value" id="fpp-status" style="display: flex; align-items: center; justify-content: space-between;">
+                            <span id="fpp-status-text">Loading...</span>
+                            <span class="status-dot-large" id="fpp-status-dot"></span>
+                        </div>
+                    </div>
+                    
+                    <div class="status-card" id="playlist-status-card">
+                        <div class="status-card-label">Configured Playlist</div>
+                        <div class="status-card-value" id="playlist-status">Loading...</div>
                     </div>
                 </div>
                 
-                <div class="status-card" id="playlist-status-card">
-                    <div class="status-card-label">Configured Playlist</div>
-                    <div class="status-card-value" id="playlist-status">Loading...</div>
+                <div class="qr-sidebar">
+                    <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Pair with HomeKit</h3>
+                    <div id="pairing-section">
+                        <div class="qr-container">
+                            <div id="qr-loading" style="display: none;">
+                                <p class="info-text">Generating QR code...</p>
+                            </div>
+                            <div id="qr-content" style="display: none;">
+                                <div class="qr-code">
+                                    <img id="qr-image" alt="HomeKit QR Code" style="max-width: 280px; display: block;" />
+                                </div>
+                                <div class="setup-code">
+                                    <span class="setup-code-label">Setup Code</span>
+                                    <div class="setup-code-value">
+                                        <span id="setup-code-text"></span>
+                                        <button class="copy-btn" onclick="copySetupCode()" title="Copy Setup Code" id="copy-btn">
+                                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="M5.5 2.5H11.5C12.0523 2.5 12.5 2.94772 12.5 3.5V9.5C12.5 10.0523 12.0523 10.5 11.5 10.5H9.5V12.5C9.5 13.0523 9.05228 13.5 8.5 13.5H2.5C1.94772 13.5 1.5 13.0523 1.5 12.5V6.5C1.5 5.94772 1.94772 5.5 2.5 5.5H4.5V3.5C4.5 2.94772 4.94772 2.5 5.5 2.5Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                <path d="M4.5 5.5H8.5C9.05228 5.5 9.5 5.94772 9.5 6.5V10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="qr-error" style="display: none;">
+                                <p style="color: var(--error-color);">Service is not running. Please start the service to generate QR code.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="paired-section" style="display: none;">
+                        <p class="success-message">✓ Successfully paired with HomeKit</p>
+                        <p class="info-text">You can now control FPP from the Home app on your iOS devices.</p>
+                    </div>
                 </div>
             </div>
             
@@ -90,47 +142,6 @@ if (file_exists($cssPath)) {
                 </div>
             </div>
             
-            <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color);">
-                <div style="display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap; margin-bottom: 16px;">
-                    <button class="homekit-button" onclick="restartService()" id="restart-btn">Restart Service</button>
-                </div>
-            </div>
-        </div>
-        
-        <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-color);">
-            <h3>Pair with HomeKit</h3>
-            <div id="pairing-section">
-                <div class="qr-container">
-                    <div id="qr-loading" style="display: none;">
-                        <p class="info-text">Generating QR code...</p>
-                    </div>
-                    <div id="qr-content" style="display: none;">
-                        <div class="qr-code">
-                            <img id="qr-image" alt="HomeKit QR Code" style="max-width: 280px; display: block;" />
-                        </div>
-                        <div class="setup-code">
-                            <span class="setup-code-label">Setup Code</span>
-                            <div class="setup-code-value">
-                                <span id="setup-code-text"></span>
-                                <button class="copy-btn" onclick="copySetupCode()" title="Copy Setup Code" id="copy-btn">
-                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M5.5 2.5H11.5C12.0523 2.5 12.5 2.94772 12.5 3.5V9.5C12.5 10.0523 12.0523 10.5 11.5 10.5H9.5V12.5C9.5 13.0523 9.05228 13.5 8.5 13.5H2.5C1.94772 13.5 1.5 13.0523 1.5 12.5V6.5C1.5 5.94772 1.94772 5.5 2.5 5.5H4.5V3.5C4.5 2.94772 4.94772 2.5 5.5 2.5Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                                        <path d="M4.5 5.5H8.5C9.05228 5.5 9.5 5.94772 9.5 6.5V10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                                    </svg>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="qr-error" style="display: none;">
-                        <p style="color: var(--error-color);">Service is not running. Please start the service to generate QR code.</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div id="paired-section" style="display: none;">
-                <p class="success-message">✓ Successfully paired with HomeKit</p>
-                <p class="info-text">You can now control FPP from the Home app on your iOS devices.</p>
-            </div>
         </div>
         
         <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-color);">
@@ -477,9 +488,15 @@ if (file_exists($cssPath)) {
         const playlist = data.playlist || '';
         
         // Update service status card
-        const serviceStatusEl = document.getElementById('service-status');
+        const serviceStatusTextEl = document.getElementById('service-status-text');
+        const serviceStatusDotEl = document.getElementById('service-status-dot');
         const serviceStatusText = serviceRunning ? 'Running' : 'Stopped';
-        serviceStatusEl.textContent = serviceStatusText;
+        if (serviceStatusTextEl) {
+            serviceStatusTextEl.textContent = serviceStatusText;
+        }
+        if (serviceStatusDotEl) {
+            serviceStatusDotEl.className = 'status-dot-large ' + (serviceRunning ? 'running' : 'stopped');
+        }
         if (serviceRunning) {
             autoStartAttempted = false;
         } else if (!autoStartAttempted) {
@@ -487,9 +504,15 @@ if (file_exists($cssPath)) {
         }
         
         // Update pairing status card
-        const pairingStatusEl = document.getElementById('pairing-status');
+        const pairingStatusTextEl = document.getElementById('pairing-status-text');
+        const pairingStatusDotEl = document.getElementById('pairing-status-dot');
         const pairingStatusText = paired ? 'Paired' : 'Not Paired';
-        pairingStatusEl.textContent = pairingStatusText;
+        if (pairingStatusTextEl) {
+            pairingStatusTextEl.textContent = pairingStatusText;
+        }
+        if (pairingStatusDotEl) {
+            pairingStatusDotEl.className = 'status-dot-large ' + (paired ? 'paired' : 'not-paired');
+        }
         
         // Update FPP status
         const playing = fppStatus.playing || false;
@@ -716,7 +739,7 @@ if (file_exists($cssPath)) {
         debugLog('Restarting service...');
         const btn = document.getElementById('restart-btn');
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner"></span> Restarting...';
+        btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="spinning"><path d="M9 3V1M9 3C7.93913 3 6.92172 3.42143 6.17157 4.17157C5.42143 4.92172 5 5.93913 5 7C5 7.53043 4.78929 8.03914 4.41421 8.41421C4.03914 8.78929 3.53043 9 3 9H1M9 15V17M9 15C10.0609 15 11.0783 14.5786 11.8284 13.8284C12.5786 13.0783 13 12.0609 13 11C13 10.4696 13.2107 9.96086 13.5858 9.58579C13.9609 9.21071 14.4696 9 15 9H17M1 9L3 7L1 5M17 9L15 11L17 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
         
         fetch(API_BASE + '/restart', {
             method: 'POST'
@@ -750,14 +773,16 @@ if (file_exists($cssPath)) {
             setTimeout(() => {
                 loadStatus();
                 btn.disabled = false;
-                btn.textContent = 'Restart Service';
+                // Restore original button content
+                btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3V1M9 3C7.93913 3 6.92172 3.42143 6.17157 4.17157C5.42143 4.92172 5 5.93913 5 7C5 7.53043 4.78929 8.03914 4.41421 8.41421C4.03914 8.78929 3.53043 9 3 9H1M9 15V17M9 15C10.0609 15 11.0783 14.5786 11.8284 13.8284C12.5786 13.0783 13 12.0609 13 11C13 10.4696 13.2107 9.96086 13.5858 9.58579C13.9609 9.21071 14.4696 9 15 9H17M1 9L3 7L1 5M17 9L15 11L17 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="restart-btn-text">Restart Service</span>';
             }, 5000);
         })
         .catch(error => {
             debugLog('Error restarting service', error.message);
             showMessage('Error restarting service: ' + error.message, 'error');
             btn.disabled = false;
-            btn.textContent = 'Restart Service';
+            // Restore original button content
+            btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3V1M9 3C7.93913 3 6.92172 3.42143 6.17157 4.17157C5.42143 4.92172 5 5.93913 5 7C5 7.53043 4.78929 8.03914 4.41421 8.41421C4.03914 8.78929 3.53043 9 3 9H1M9 15V17M9 15C10.0609 15 11.0783 14.5786 11.8284 13.8284C12.5786 13.0783 13 12.0609 13 11C13 10.4696 13.2107 9.96086 13.5858 9.58579C13.9609 9.21071 14.4696 9 15 9H17M1 9L3 7L1 5M17 9L15 11L17 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="restart-btn-text">Restart Service</span>';
         });
     };
     

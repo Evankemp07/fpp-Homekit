@@ -66,11 +66,36 @@
     color: var(--text-primary);
 }
 
+.status-main-layout {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    margin-bottom: 24px;
+}
+
 .status-cards-container {
     display: flex;
     gap: 16px;
-    margin-bottom: 24px;
     flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.qr-sidebar {
+    flex-shrink: 0;
+    min-width: 300px;
+    max-width: 320px;
+}
+
+@media (max-width: 900px) {
+    .status-main-layout {
+        flex-direction: column;
+    }
+    
+    .qr-sidebar {
+        min-width: 100%;
+        max-width: 100%;
+    }
 }
 
 .status-card {
@@ -119,6 +144,57 @@
 .status-dot-large.playing { background: var(--success-color); }
 .status-dot-large.paused { background: var(--warning-color); }
 .status-dot-large.testing { background: var(--info-color); }
+.status-dot-large.paired { background: var(--success-color); }
+.status-dot-large.not-paired { background: var(--warning-color); }
+
+.restart-icon-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    transition: color 0.2s ease;
+    border-radius: 6px;
+    margin-left: 4px;
+}
+
+.restart-icon-btn:hover {
+    color: var(--text-primary);
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.restart-icon-btn:active {
+    transform: scale(0.95);
+}
+
+.restart-icon-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.restart-icon-btn svg {
+    flex-shrink: 0;
+}
+
+.restart-btn-text {
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+}
+
+.restart-icon-btn:hover .restart-btn-text {
+    opacity: 1;
+}
+
+.restart-icon-btn .spinning {
+    animation: spin 1s linear infinite;
+}
 
 .status-row {
     display: flex;
