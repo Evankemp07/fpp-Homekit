@@ -421,11 +421,17 @@ function fppHomekitStatus() {
     } else {
         // Build more helpful error message
         $lastError = $apiResult['error'] ?: "Failed to connect to FPP API";
-        if (isset($apiResult['url'])) {
+        if (isset($apiResult['tried_endpoints']) && is_array($apiResult['tried_endpoints']) && !empty($apiResult['tried_endpoints'])) {
+            $triedList = implode(', ', array_slice($apiResult['tried_endpoints'], 0, 3));
+            if (count($apiResult['tried_endpoints']) > 3) {
+                $triedList .= ' (and ' . (count($apiResult['tried_endpoints']) - 3) . ' more)';
+            }
+            $lastError .= " (tried endpoints: {$triedList})";
+        } elseif (isset($apiResult['url'])) {
             $lastError .= " (tried: {$apiResult['url']})";
         }
         if (isset($apiResult['endpoint'])) {
-            $lastError .= " (endpoint: {$apiResult['endpoint']})";
+            $lastError .= " (last endpoint: {$apiResult['endpoint']})";
         }
     }
     
