@@ -759,8 +759,19 @@ class FPPLightAccessory(Accessory):
                     self.subscribe_to_status()
                     subscriptions_setup = True
                     logger.info("MQTT status subscriptions set up")
+                else:
+                    # Connected - periodically request status updates (every 10 seconds)
+                    import time as time_module
+                    current_time = time_module.time()
+                    if current_time - last_status_request > 10:
+                        try:
+                            self.mqtt_client.publish_command("GetStatus")
+                            last_status_request = current_time
+                            logger.debug("Requested FPP status update via MQTT")
+                        except Exception as e:
+                            logger.debug(f"Could not request status update: {e}")
                 
-                time.sleep(5)  # Check connection every 5 seconds when connected
+                time.sleep(1)  # Check connection every second when connected
             except Exception as e:
                 logger.error(f"Error in MQTT status polling: {e}")
                 time.sleep(5)
