@@ -1390,16 +1390,42 @@ function fppHomekitNetworkInterfaces() {
     
     // Get network interfaces using 'ip' command (Linux)
     if (command_exists('ip')) {
-        $output = shell_exec('ip -o addr show scope global 2>/dev/null | grep -v "inet6" | awk \'{print $2 " " $4}\' | sed \'s|/.*||\'');
+        // Get all interfaces with their IPs (excluding loopback and IPv6)
+        $output = shell_exec('ip -4 addr show 2>/dev/null | grep -E "^[0-9]+:|inet " | sed "N;s/\n/ /"');
         if ($output) {
             $lines = explode("\n", trim($output));
             foreach ($lines as $line) {
-                $parts = preg_split('/\s+/', trim($line));
-                if (count($parts) >= 2 && $parts[1]) {
-                    $interfaces[] = array(
-                        'name' => $parts[0],
-                        'ip' => $parts[1]
-                    );
+                // Parse: "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP>     inet 192.168.1.100/24"
+                if (preg_match('/\d+:\s+(\S+):.*inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
+                    $ifname = $matches[1];
+                    $ip = $matches[2];
+                    // Skip loopback
+                    if ($ifname !== 'lo' && $ip !== '127.0.0.1') {
+                        $interfaces[] = array(
+                            'name' => $ifname,
+                            'ip' => $ip
+                        );
+                    }
+                }
+            }
+        }
+        
+        // Fallback: simpler parsing
+        if (empty($interfaces)) {
+            $output = shell_exec('ip -4 -o addr show scope global 2>/dev/null');
+            if ($output) {
+                $lines = explode("\n", trim($output));
+                foreach ($lines as $line) {
+                    if (preg_match('/\d+:\s+(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
+                        $ifname = $matches[1];
+                        $ip = $matches[2];
+                        if ($ifname !== 'lo' && $ip !== '127.0.0.1') {
+                            $interfaces[] = array(
+                                'name' => $ifname,
+                                'ip' => $ip
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -1407,23 +1433,45 @@ function fppHomekitNetworkInterfaces() {
     
     // Fallback: try ifconfig (macOS/BSD)
     if (empty($interfaces) && command_exists('ifconfig')) {
-        $output = shell_exec('ifconfig 2>/dev/null | grep "inet " | grep -v "127.0.0.1" | awk \'{print $2}\'');
+        $output = shell_exec('ifconfig -a 2>/dev/null');
         if ($output) {
-            $ips = explode("\n", trim($output));
-            foreach ($ips as $idx => $ip) {
-                if ($ip) {
-                    $interfaces[] = array(
-                        'name' => 'Interface ' . ($idx + 1),
-                        'ip' => $ip
-                    );
+            $lines = explode("\n", $output);
+            $currentIface = null;
+            foreach ($lines as $line) {
+                // New interface
+                if (preg_match('/^(\S+):/', $line, $matches)) {
+                    $currentIface = $matches[1];
+                }
+                // IP address line
+                if ($currentIface && preg_match('/inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
+                    $ip = $matches[1];
+                    if ($currentIface !== 'lo' && $currentIface !== 'lo0' && $ip !== '127.0.0.1') {
+                        $interfaces[] = array(
+                            'name' => $currentIface,
+                            'ip' => $ip
+                        );
+                    }
                 }
             }
         }
     }
     
-    // Auto-detect current IP if not set
-    if (!$currentIp && !empty($interfaces)) {
-        $currentIp = $interfaces[0]['ip'];  // Use first interface
+    // Remove duplicates (same IP on multiple interfaces)
+    $seen = array();
+    $uniqueInterfaces = array();
+    foreach ($interfaces as $iface) {
+        $key = $iface['ip'];
+        if (!isset($seen[$key])) {
+            $uniqueInterfaces[] = $iface;
+            $seen[$key] = true;
+        }
+    }
+    $interfaces = $uniqueInterfaces;
+    
+    // If no current IP set and we have interfaces, don't set a default (let it be empty for auto-detect)
+    // Current IP will be empty string or the saved value
+    if ($currentIp === null) {
+        $currentIp = ''; // Empty means auto-detect
     }
     
     $result = array(
