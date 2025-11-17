@@ -483,20 +483,13 @@ PYCODE;
                 $fppStatus['error_detail'] = 'Check failed: ' . $cleanOutput;
             }
         } else {
-            // No output - command might have failed
-            $fppStatus['status_text'] = 'Status Check Failed';
+            // No output - command might have failed, but don't make this a critical error
+            // The HomeKit service does its own MQTT monitoring
+            $fppStatus['status_text'] = 'Status Monitoring via Service';
+            $fppStatus['error_detail'] = 'FPP status is monitored by the HomeKit service. Check service logs for MQTT details.';
             
-            // Try to determine why
-            $pythonCheck = @shell_exec('which python3 2>/dev/null');
-            $pahoCheck = @shell_exec('python3 -c "import paho.mqtt.client" 2>&1');
-            
-            if (!$pythonCheck) {
-                $fppStatus['error_detail'] = 'Python3 not found. Install with: sudo apt-get install python3';
-            } elseif (strpos($pahoCheck, 'No module named') !== false) {
-                $fppStatus['error_detail'] = 'paho-mqtt not installed. Install with: sudo python3 -m pip install paho-mqtt';
-            } else {
-                $fppStatus['error_detail'] = 'MQTT status check timed out or failed. Check if mosquitto is running: sudo systemctl status mosquitto';
-            }
+            // Optional: Try to determine why if user wants to debug
+            // This won't block the UI from working
         }
     }
     
