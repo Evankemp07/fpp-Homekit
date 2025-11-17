@@ -669,23 +669,25 @@ PYCODE;
     $hasTimeout = @shell_exec('which timeout 2>/dev/null');
 
     // Try multiple Python commands in case python3 isn't in PATH
-    $pythonCommands = array(
-        'python3 -W ignore -c ' . escapeshellarg($pythonStatusScript),
-        'python -W ignore -c ' . escapeshellarg($pythonStatusScript),
-        '/usr/bin/python3 -W ignore -c ' . escapeshellarg($pythonStatusScript)
+    $pythonExecutables = array(
+        'sudo -u fpp -H python3',
+        'sudo -u fpp -H /usr/bin/python3',
+        'sudo -u fpp -H python3',
+        'sudo -u fpp -H python',
+        'python3',
+        '/usr/bin/python3',
+        'python'
     );
 
     $output = '';
     $triedCommands = array();
 
-    foreach ($pythonCommands as $pythonCmd) {
-        $fullCommand = $pythonCmd . " " . escapeshellarg($mqttBroker) . " " .
-                      escapeshellarg($mqttPort) . " " . escapeshellarg($mqttTopicPrefix);
+    foreach ($pythonExecutables as $pythonExe) {
+        $baseCommand = $pythonExe . " -W ignore -c " . escapeshellarg($pythonStatusScript) . " " .
+                       escapeshellarg($mqttBroker) . " " . escapeshellarg($mqttPort) . " " .
+                       escapeshellarg($mqttTopicPrefix);
 
-        if ($hasTimeout) {
-            $fullCommand = "timeout 5 " . $fullCommand;
-        }
-
+        $fullCommand = $hasTimeout ? "timeout 5 " . $baseCommand : $baseCommand;
         $fullCommand .= " 2>&1";
         $triedCommands[] = $fullCommand;
 
