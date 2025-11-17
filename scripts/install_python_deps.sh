@@ -27,11 +27,12 @@ echo "Detailed log: ${INSTALL_LOG}"
 echo "Using pip command: $PIP_CMD" | tee -a "${INSTALL_LOG}"
 $PIP_CMD --version >> "${INSTALL_LOG}" 2>&1 || true
 
-# Best-effort pip upgrade so we have modern flags (ignore failures)
+# Best-effort pip upgrade (try --user first, then system-wide)
 echo "Upgrading pip (best effort)..." | tee -a "${INSTALL_LOG}"
-if ! $PIP_CMD install --upgrade pip --break-system-packages >> "${INSTALL_LOG}" 2>&1; then
-    $PIP_CMD install --upgrade pip >> "${INSTALL_LOG}" 2>&1 || \
+if ! $PIP_CMD install --upgrade pip --user >> "${INSTALL_LOG}" 2>&1; then
+    if ! $PIP_CMD install --upgrade pip >> "${INSTALL_LOG}" 2>&1; then
         echo "Warning: Could not upgrade pip, continuing..." | tee -a "${INSTALL_LOG}"
+    fi
 fi
 
 install_with() {
@@ -52,16 +53,19 @@ install_with() {
 
 INSTALL_SUCCESS=0
 
-echo "Trying installation with --break-system-packages..." | tee -a "${INSTALL_LOG}"
-if install_with "--upgrade --break-system-packages"; then
+# Try --user first (cleanest, doesn't break system package management)
+echo "Trying installation with --user (recommended)..." | tee -a "${INSTALL_LOG}"
+if install_with "--user --upgrade"; then
     INSTALL_SUCCESS=1
 else
-    echo "Retrying installation with --user..." | tee -a "${INSTALL_LOG}"
-    if install_with "--user --upgrade"; then
+    # Fallback to system-wide if --user fails
+    echo "Retrying installation system-wide..." | tee -a "${INSTALL_LOG}"
+    if install_with "--upgrade"; then
         INSTALL_SUCCESS=1
     else
-        echo "Attempting final system-wide installation..." | tee -a "${INSTALL_LOG}"
-        if install_with "--upgrade"; then
+        # Last resort: --break-system-packages (only if everything else fails)
+        echo "Attempting installation with --break-system-packages (last resort)..." | tee -a "${INSTALL_LOG}"
+        if install_with "--upgrade --break-system-packages"; then
             INSTALL_SUCCESS=1
         fi
     fi
@@ -73,8 +77,9 @@ if [ $INSTALL_SUCCESS -eq 0 ]; then
     tail -30 "${INSTALL_LOG}" || true
     echo ""
     echo "Try manual install with one of:" | tee -a "${INSTALL_LOG}"
-    echo "  $PIP_CMD install -r ${REQUIREMENTS_FILE} --upgrade --break-system-packages"
     echo "  $PIP_CMD install -r ${REQUIREMENTS_FILE} --user --upgrade"
+    echo "  $PIP_CMD install -r ${REQUIREMENTS_FILE} --upgrade"
+    echo "  $PIP_CMD install -r ${REQUIREMENTS_FILE} --upgrade --break-system-packages"
     exit 1
 fi
 
