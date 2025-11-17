@@ -111,6 +111,9 @@ function fppHomekitReadHttpPort($settingsPath) {
 
 function fppHomekitBuildApiEndpoints() {
     static $cached = null;
+    // Clear cache if we want to force rebuild (for debugging)
+    // Uncomment next line to disable caching temporarily:
+    // $cached = null;
     if ($cached !== null) {
         return $cached;
     }
@@ -191,18 +194,18 @@ function fppHomekitBuildApiEndpoints() {
         $sortedHosts = array('localhost', '127.0.0.1');
     }
     
-    // Sort ports: 32320 first (FPP default), then others
+    // Sort ports: ALWAYS put 32320 first (FPP default), then others
     $sortedPorts = array();
+    // ALWAYS start with 32320 (FPP default port)
+    $sortedPorts[] = 32320;
+    // Then add other ports (excluding 32320 if it was already in the list)
     foreach ($ports as $port) {
-        if ($port == 32320) {
-            array_unshift($sortedPorts, $port);
-        } else {
+        if ($port != 32320) {
             $sortedPorts[] = $port;
         }
     }
-    if (empty($sortedPorts)) {
-        $sortedPorts = array(32320, 80, 8080);
-    }
+    // Remove duplicates while preserving order
+    $sortedPorts = array_values(array_unique($sortedPorts));
     
     // Build endpoints: try localhost:32320 first, then other combinations
     foreach ($sortedHosts as $host) {
