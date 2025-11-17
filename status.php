@@ -22,32 +22,29 @@ if (file_exists($cssPath)) {
         <div id="message-container"></div>
         
         <div id="status-content">
-            <div class="status-row">
-                <span class="status-label">HomeKit Service</span>
-                <span class="status-value" id="service-status">
-                    <span class="status-indicator stopped"></span>Loading...
-                </span>
-            </div>
-            
-            <div class="status-row">
-                <span class="status-label">Pairing Status</span>
-                <span class="status-value" id="pairing-status">
-                    <span class="status-indicator not-paired"></span>Loading...
-                </span>
-            </div>
-            
-            <div class="status-row">
-                <span class="status-label">FPP Status</span>
-                <span class="status-value" id="fpp-status">
-                    <span class="status-indicator stopped"></span>Loading...
-                </span>
-            </div>
-            
-            <div class="status-row">
-                <span class="status-label">Configured Playlist</span>
-                <span class="status-value" id="playlist-status">
-                    Loading...
-                </span>
+            <div class="status-cards-container">
+                <div class="status-card">
+                    <div class="status-card-label">HomeKit Service</div>
+                    <div class="status-card-value" id="service-status">Loading...</div>
+                </div>
+                
+                <div class="status-card">
+                    <div class="status-card-label">Pairing Status</div>
+                    <div class="status-card-value" id="pairing-status">Loading...</div>
+                </div>
+                
+                <div class="status-card" id="fpp-status-card">
+                    <div class="status-card-label">FPP Status</div>
+                    <div class="status-card-value" id="fpp-status" style="display: flex; align-items: center; justify-content: space-between;">
+                        <span id="fpp-status-text">Loading...</span>
+                        <span class="status-dot-large" id="fpp-status-dot"></span>
+                    </div>
+                </div>
+                
+                <div class="status-card" id="playlist-status-card">
+                    <div class="status-card-label">Configured Playlist</div>
+                    <div class="status-card-value" id="playlist-status">Loading...</div>
+                </div>
             </div>
             
             <div class="playlist-config">
@@ -257,9 +254,9 @@ if (file_exists($cssPath)) {
             return;
         }
         if (name) {
-            playlistStatusEl.innerHTML = '<span style="color: var(--success-color);">' + escapeHtml(name) + '</span>';
+            playlistStatusEl.textContent = name;
         } else {
-            playlistStatusEl.innerHTML = '<span style="color: var(--warning-color);">Not configured</span>';
+            playlistStatusEl.textContent = 'Not configured';
         }
     }
     
@@ -479,22 +476,20 @@ if (file_exists($cssPath)) {
         const fppStatus = data.fpp_status || {};
         const playlist = data.playlist || '';
         
-        // Update service status - indicator on right
+        // Update service status card
         const serviceStatusEl = document.getElementById('service-status');
         const serviceStatusText = serviceRunning ? 'Running' : 'Stopped';
-        const serviceStatusClass = serviceRunning ? 'running' : 'stopped';
-        serviceStatusEl.innerHTML = serviceStatusText + '<span class="status-indicator ' + serviceStatusClass + '"></span>';
+        serviceStatusEl.textContent = serviceStatusText;
         if (serviceRunning) {
             autoStartAttempted = false;
         } else if (!autoStartAttempted) {
             attemptAutoStart();
         }
         
-        // Update pairing status - indicator on right
+        // Update pairing status card
         const pairingStatusEl = document.getElementById('pairing-status');
         const pairingStatusText = paired ? 'Paired' : 'Not Paired';
-        const pairingStatusClass = paired ? 'paired' : 'not-paired';
-        pairingStatusEl.innerHTML = pairingStatusText + '<span class="status-indicator ' + pairingStatusClass + '"></span>';
+        pairingStatusEl.textContent = pairingStatusText;
         
         // Update FPP status
         const playing = fppStatus.playing || false;
@@ -504,60 +499,106 @@ if (file_exists($cssPath)) {
         const fppCurrentPlaylist = fppStatus.current_playlist || '';
         const fppCurrentSequence = fppStatus.current_sequence || '';
         
-        // Determine status indicator class based on status
-        let statusClass = 'stopped';
+        // Determine FPP status text and dot class
+        let fppStatusText = 'Unknown';
+        let fppDotClass = 'stopped';
+        let fppStatusDetails = '';
+        
         if (playing || statusName === 'playing') {
-            statusClass = 'playing';
-        } else if (statusName === 'paused') {
-            statusClass = 'paused';
-        } else if (statusName === 'testing') {
-            statusClass = 'testing';
-        } else if (statusText.includes('Running') && !statusText.includes('Not Running') && !statusText.includes('Unreachable')) {
-            // FPP is running (green indicator)
-            statusClass = 'running';
-        } else if (statusText.includes('Available') || (!errorDetail && statusName !== 'unknown' && statusName !== '')) {
-            // FPP is available/connected (green indicator)
-            statusClass = 'running';
-        } else if (statusText.includes('Not Running') || statusText.includes('Unavailable') || statusText.includes('Unreachable')) {
-            statusClass = 'stopped';
-        }
-        
-        // Build status display with better formatting - indicator on right side
-        let statusHtml = '<div style="flex: 1; min-width: 0; text-align: right;">';
-        
-        if (playing) {
-            statusHtml += '<strong>Playing</strong>';
+            fppStatusText = 'Playing';
+            fppDotClass = 'playing';
+            // Add playlist and sequence details
             if (fppCurrentPlaylist) {
-                statusHtml += '<div style="color: var(--text-secondary); font-size: 13px; margin-top: 4px;">Playlist: ' + escapeHtml(fppCurrentPlaylist) + '</div>';
+                fppStatusDetails += '<div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Playlist: ' + escapeHtml(fppCurrentPlaylist) + '</div>';
             }
             if (fppCurrentSequence) {
-                statusHtml += '<div style="color: var(--text-secondary); font-size: 13px; margin-top: 2px;">Sequence: ' + escapeHtml(fppCurrentSequence) + '</div>';
+                fppStatusDetails += '<div style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">Sequence: ' + escapeHtml(fppCurrentSequence) + '</div>';
+            }
+        } else if (statusName === 'paused') {
+            fppStatusText = 'Paused';
+            fppDotClass = 'paused';
+        } else if (statusName === 'testing') {
+            fppStatusText = 'Testing';
+            fppDotClass = 'testing';
+        } else if (statusText.includes('Running') && !statusText.includes('Not Running') && !statusText.includes('Unreachable')) {
+            fppStatusText = 'Running';
+            fppDotClass = 'running';
+        } else if (statusText.includes('Available') || (!errorDetail && statusName !== 'unknown' && statusName !== '')) {
+            fppStatusText = 'Available';
+            fppDotClass = 'running';
+            // Show error detail if available
+            if (errorDetail) {
+                const errorParts = errorDetail.split('. ').filter(part => part.trim());
+                if (errorParts.length > 0) {
+                    fppStatusDetails += '<div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.4;">';
+                    errorParts.forEach((part, index) => {
+                        if (part.trim()) {
+                            const trimmedPart = part.trim();
+                            fppStatusDetails += escapeHtml(trimmedPart);
+                            if (!trimmedPart.endsWith('.') && !trimmedPart.endsWith(':')) {
+                                fppStatusDetails += '.';
+                            }
+                            if (index < errorParts.length - 1) {
+                                fppStatusDetails += '<br>';
+                            }
+                        }
+                    });
+                    fppStatusDetails += '</div>';
+                }
+            }
+        } else if (statusText.includes('Not Running') || statusText.includes('Unavailable') || statusText.includes('Unreachable')) {
+            fppStatusText = 'Unavailable';
+            fppDotClass = 'stopped';
+            if (errorDetail) {
+                const errorParts = errorDetail.split('. ').filter(part => part.trim());
+                if (errorParts.length > 0) {
+                    fppStatusDetails += '<div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.4;">';
+                    errorParts.forEach((part, index) => {
+                        if (part.trim()) {
+                            const trimmedPart = part.trim();
+                            fppStatusDetails += escapeHtml(trimmedPart);
+                            if (!trimmedPart.endsWith('.') && !trimmedPart.endsWith(':')) {
+                                fppStatusDetails += '.';
+                            }
+                            if (index < errorParts.length - 1) {
+                                fppStatusDetails += '<br>';
+                            }
+                        }
+                    });
+                    fppStatusDetails += '</div>';
+                }
             }
         } else {
-            statusHtml += '<div>' + escapeHtml(statusText) + '</div>';
-            if (errorDetail) {
-                // Format error detail with better styling - split into readable lines
-                const errorParts = errorDetail.split('. ').filter(part => part.trim());
-                statusHtml += '<div style="color: var(--text-secondary); font-size: 12px; margin-top: 6px; line-height: 1.5; text-align: right;">';
-                errorParts.forEach((part, index) => {
-                    if (part.trim()) {
-                        const trimmedPart = part.trim();
-                        statusHtml += escapeHtml(trimmedPart);
-                        if (!trimmedPart.endsWith('.') && !trimmedPart.endsWith(':')) {
-                            statusHtml += '.';
-                        }
-                        if (index < errorParts.length - 1) {
-                            statusHtml += '<br>';
-                        }
-                    }
-                });
-                statusHtml += '</div>';
+            fppStatusText = statusText || 'Unknown';
+            fppDotClass = 'stopped';
+        }
+        
+        // Update FPP status card
+        const fppStatusTextEl = document.getElementById('fpp-status-text');
+        const fppStatusDotEl = document.getElementById('fpp-status-dot');
+        const fppStatusCard = document.getElementById('fpp-status-card');
+        if (fppStatusTextEl) {
+            fppStatusTextEl.textContent = fppStatusText;
+        }
+        if (fppStatusDotEl) {
+            fppStatusDotEl.className = 'status-dot-large ' + fppDotClass;
+        }
+        // Add details below the status value if available
+        if (fppStatusCard && fppStatusDetails) {
+            let detailsEl = fppStatusCard.querySelector('.status-card-details');
+            if (!detailsEl) {
+                detailsEl = document.createElement('div');
+                detailsEl.className = 'status-card-details';
+                fppStatusCard.appendChild(detailsEl);
+            }
+            detailsEl.innerHTML = fppStatusDetails;
+        } else if (fppStatusCard) {
+            // Remove details if not needed
+            const detailsEl = fppStatusCard.querySelector('.status-card-details');
+            if (detailsEl) {
+                detailsEl.remove();
             }
         }
-        statusHtml += '</div><span class="status-indicator ' + statusClass + '"></span>';
-        
-        const fppStatusEl = document.getElementById('fpp-status');
-        fppStatusEl.innerHTML = statusHtml;
         
         // Update playlist
         const newPlaylist = playlist || '';

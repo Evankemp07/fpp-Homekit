@@ -66,6 +66,60 @@
     color: var(--text-primary);
 }
 
+.status-cards-container {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.status-card {
+    flex: 1;
+    min-width: 180px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.status-card-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-card-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.status-card-details {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.status-dot-large {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.status-dot-large.running { background: var(--success-color); }
+.status-dot-large.stopped { background: var(--error-color); }
+.status-dot-large.playing { background: var(--success-color); }
+.status-dot-large.paused { background: var(--warning-color); }
+.status-dot-large.testing { background: var(--info-color); }
+
 .status-row {
     display: flex;
     justify-content: space-between;
