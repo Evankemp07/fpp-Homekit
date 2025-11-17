@@ -79,6 +79,18 @@ function getEndpointsfppHomekit() {
         'callback' => 'fppHomekitMQTTDiagnostics');
     array_push($result, $ep);
 
+    $ep = array(
+        'method' => 'GET',
+        'endpoint' => 'network-interfaces',
+        'callback' => 'fppHomekitNetworkInterfaces');
+    array_push($result, $ep);
+
+    $ep = array(
+        'method' => 'GET',
+        'endpoint' => 'diagnostics',
+        'callback' => 'fppHomekitDiagnostics');
+    array_push($result, $ep);
+
     return $result;
 }
 
