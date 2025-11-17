@@ -102,21 +102,14 @@ function fppHomekitReadHttpPort($settingsPath) {
     $contents = @file_get_contents($settingsPath);
     if ($contents) {
         // Try multiple patterns to find HTTPPort
-        // Pattern 1: HTTPPort=32320
-        if (preg_match('/^HTTPPort\s*=\s*(\d+)/m', $contents, $matches)) {
+        // Pattern 1: HTTPPort=32320 or HTTPPort = 32320 (multiline match)
+        if (preg_match('/^HTTPPort\s*[=:]\s*(\d+)/m', $contents, $matches)) {
             $port = (int)$matches[1];
             if ($port > 0) {
                 return $port;
             }
         }
-        // Pattern 2: HTTPPort = 32320 (with spaces)
-        if (preg_match('/^HTTPPort\s*=\s*(\d+)/m', $contents, $matches)) {
-            $port = (int)$matches[1];
-            if ($port > 0) {
-                return $port;
-            }
-        }
-        // Pattern 3: Look for any HTTPPort line
+        // Pattern 2: Look for any HTTPPort line (case-insensitive, more flexible)
         $lines = explode("\n", $contents);
         foreach ($lines as $line) {
             $line = trim($line);
