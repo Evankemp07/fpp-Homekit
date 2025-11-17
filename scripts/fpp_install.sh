@@ -81,7 +81,36 @@ if [ $FIRST_INSTALL -eq 1 ]; then
             fi
         else
             echo "Warning: $PYTHON3 -m ensurepip failed or not available" | tee -a "${INSTALL_LOG}"
-            echo "This is normal on some systems. Install python3-pip instead." | tee -a "${INSTALL_LOG}"
+        fi
+    fi
+    
+    # Method 4: Try to install python3-pip automatically (if we have sudo access)
+    if [ -z "$PIP3" ]; then
+        echo "pip not found, attempting to install python3-pip..." | tee -a "${INSTALL_LOG}"
+        
+        # Check if we can use apt-get (Debian/Ubuntu/Raspberry Pi OS)
+        if command -v apt-get >/dev/null 2>&1; then
+            # Try with sudo if available
+            if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                echo "Attempting to install python3-pip with sudo..." | tee -a "${INSTALL_LOG}"
+                if sudo apt-get update -qq >> "${INSTALL_LOG}" 2>&1 && \
+                   sudo apt-get install -y python3-pip >> "${INSTALL_LOG}" 2>&1; then
+                    echo "✓ Successfully installed python3-pip" | tee -a "${INSTALL_LOG}"
+                    sleep 2  # Give system a moment to register the new package
+                    # Now try to find pip again
+                    if $PYTHON3 -m pip --version >> "${INSTALL_LOG}" 2>&1; then
+                        PIP3="$PYTHON3 -m pip"
+                        echo "✓ Found pip after installation: $PYTHON3 -m pip" | tee -a "${INSTALL_LOG}"
+                    elif command -v pip3 >/dev/null 2>&1; then
+                        PIP3="pip3"
+                        echo "✓ Found pip3 after installation" | tee -a "${INSTALL_LOG}"
+                    fi
+                else
+                    echo "Warning: Could not install python3-pip automatically (may need manual sudo password)" | tee -a "${INSTALL_LOG}"
+                fi
+            else
+                echo "Warning: sudo not available or requires password (cannot auto-install python3-pip)" | tee -a "${INSTALL_LOG}"
+            fi
         fi
     fi
     
@@ -90,10 +119,7 @@ if [ $FIRST_INSTALL -eq 1 ]; then
         echo "" | tee -a "${INSTALL_LOG}"
         echo "ERROR: $PYTHON3 -m pip is not available. Please install python3-pip." | tee -a "${INSTALL_LOG}"
         echo "" | tee -a "${INSTALL_LOG}"
-        echo "On Debian/Ubuntu:" | tee -a "${INSTALL_LOG}"
-        echo "  sudo apt-get update && sudo apt-get install python3-pip" | tee -a "${INSTALL_LOG}"
-        echo "" | tee -a "${INSTALL_LOG}"
-        echo "On Raspberry Pi OS:" | tee -a "${INSTALL_LOG}"
+        echo "On Debian/Ubuntu/Raspberry Pi OS:" | tee -a "${INSTALL_LOG}"
         echo "  sudo apt-get update && sudo apt-get install python3-pip" | tee -a "${INSTALL_LOG}"
         echo "" | tee -a "${INSTALL_LOG}"
         echo "On macOS:" | tee -a "${INSTALL_LOG}"
