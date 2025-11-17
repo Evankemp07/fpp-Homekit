@@ -81,16 +81,15 @@ if (file_exists($cssPath)) {
                 <div class="playlist-config-controls" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <label for="homekit-ip" style="font-weight: 500; color: var(--text-secondary);">Listen Address:</label>
-                        <select class="form-select" id="homekit-ip" style="width: 180px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
-                            <option value="">Auto-detect</option>
+                        <select class="form-select" id="homekit-ip" style="min-width: 220px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
+                            <option value="">Auto-detect (Primary Interface)</option>
                             <option value="0.0.0.0">All Interfaces (0.0.0.0)</option>
                         </select>
                     </div>
                     <button class="homekit-button" type="button" id="save-homekit-network-btn">Save & Restart</button>
-                    <div id="homekit-ip-info" style="font-size: 12px; color: var(--text-secondary); display: none;"></div>
                 </div>
                 <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
-                    Select which network interface HomeKit should use. Choose a specific IP if "not reachable" errors occur.
+                    Select which network interface HomeKit should listen on. Choose a specific interface if you get "not reachable" errors.
                 </div>
             </div>
             
@@ -888,26 +887,40 @@ if (file_exists($cssPath)) {
             .then(data => {
                 debugLog('Network interfaces', data);
                 
-                // Clear existing options except the first two
-                while (homekitIpSelect.options.length > 2) {
-                    homekitIpSelect.remove(2);
+                // Clear all options
+                homekitIpSelect.innerHTML = '';
+                
+                // Add default options
+                homekitIpSelect.add(new Option('Auto-detect (Primary Interface)', ''));
+                homekitIpSelect.add(new Option('All Interfaces (0.0.0.0)', '0.0.0.0'));
+                
+                // Add separator if we have interfaces
+                if (data.interfaces && data.interfaces.length > 0) {
+                    const separator = new Option('──────────────────────', '', true, false);
+                    separator.disabled = true;
+                    homekitIpSelect.add(separator);
                 }
                 
-                // Add detected interfaces
+                // Add each detected interface as a separate option
                 if (data.interfaces && data.interfaces.length > 0) {
                     data.interfaces.forEach(iface => {
-                        const option = new Option(`${iface.name}: ${iface.ip}`, iface.ip);
+                        const label = `${iface.name} - ${iface.ip}`;
+                        const option = new Option(label, iface.ip);
                         homekitIpSelect.add(option);
                     });
                 }
                 
-                // Set current value
-                if (data.current_ip) {
-                    homekitIpSelect.value = data.current_ip;
-                }
+                // Set current value (empty string or saved IP)
+                homekitIpSelect.value = data.current_ip || '';
+                
+                debugLog('Network selector populated', {
+                    interfaceCount: data.interfaces.length,
+                    currentIp: data.current_ip
+                });
             })
             .catch(error => {
                 debugLog('Error loading network interfaces', { error: error.message });
+                showMessage('Error loading network interfaces: ' + error.message, 'error');
             });
     }
     
