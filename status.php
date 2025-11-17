@@ -93,8 +93,14 @@ if (file_exists($cssPath)) {
                 </div>
             </div>
             
-            <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap;">
-                <button class="homekit-button" onclick="restartService()" id="restart-btn">Restart Service</button>
+            <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                <div style="display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap; margin-bottom: 16px;">
+                    <button class="homekit-button" onclick="restartService()" id="restart-btn">Restart Service</button>
+                    <button class="homekit-button secondary" onclick="runDiagnostics()" id="diagnostics-btn">Run Diagnostics</button>
+                </div>
+                
+                <div id="diagnostics-output" style="display: none; margin-top: 16px; padding: 16px; background: var(--bg-secondary); border-radius: 12px; border: 1px solid var(--border-color); font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto;">
+                </div>
             </div>
         </div>
         
@@ -805,6 +811,120 @@ if (file_exists($cssPath)) {
             .finally(() => {
                 saveMqttBtn.disabled = false;
                 saveMqttBtn.textContent = originalLabel;
+            });
+    }
+    
+    function runDiagnostics() {
+        const diagBtn = document.getElementById('diagnostics-btn');
+        const diagOutput = document.getElementById('diagnostics-output');
+        
+        if (!diagBtn || !diagOutput) return;
+        
+        const originalLabel = diagBtn.textContent;
+        diagBtn.disabled = true;
+        diagBtn.textContent = 'Running...';
+        
+        diagOutput.style.display = 'block';
+        diagOutput.innerHTML = '<div style="color: var(--text-secondary);">Running diagnostics...</div>';
+        
+        debugLog('Running HomeKit diagnostics...');
+        
+        fetch('/api/plugin/fpp-Homekit/diagnostics')
+            .then(response => response.text())
+            .then(text => {
+                debugLog('Diagnostics raw response', text.substring(0, 200));
+                
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    throw new Error('Invalid JSON: ' + e.message);
+                }
+                
+                debugLog('Diagnostics data', data);
+                
+                // Format diagnostics output
+                let output = '<div style="line-height: 1.6;">';
+                
+                // Service Status
+                output += '<div style="margin-bottom: 12px; font-weight: bold; color: var(--text-primary);">🔧 Service Status</div>';
+                output += '<div style="margin-left: 16px; margin-bottom: 16px;">';
+                output += '• Service Running: ' + (data.service_running ? '✓ Yes' : '✗ No') + '<br>';
+                output += '• Process ID: ' + (data.pid || 'N/A') + '<br>';
+                output += '• Port: 51826<br>';
+                output += '• Listen Address: ' + (data.listen_address || 'Auto-detect') + '<br>';
+                output += '</div>';
+                
+                // Network Status
+                output += '<div style="margin-bottom: 12px; font-weight: bold; color: var(--text-primary);">🌐 Network</div>';
+                output += '<div style="margin-left: 16px; margin-bottom: 16px;">';
+                if (data.network && data.network.interfaces) {
+                    output += '• Interfaces Found: ' + data.network.interfaces.length + '<br>';
+                    data.network.interfaces.forEach(iface => {
+                        output += '  - ' + iface.name + ': ' + iface.ip + '<br>';
+                    });
+                }
+                output += '• Port 51826 Open: ' + (data.port_51826_open ? '✓ Yes' : '? Unknown') + '<br>';
+                output += '</div>';
+                
+                // mDNS Status
+                output += '<div style="margin-bottom: 12px; font-weight: bold; color: var(--text-primary);">📡 mDNS/Bonjour</div>';
+                output += '<div style="margin-left: 16px; margin-bottom: 16px;">';
+                output += '• Avahi Daemon: ' + (data.avahi_running ? '✓ Running' : '✗ Not Running') + '<br>';
+                if (!data.avahi_running) {
+                    output += '  <span style="color: #ff6b6b;">⚠ HomeKit requires mDNS. Run: sudo systemctl start avahi-daemon</span><br>';
+                }
+                output += '</div>';
+                
+                // MQTT Status
+                output += '<div style="margin-bottom: 12px; font-weight: bold; color: var(--text-primary);">💬 MQTT</div>';
+                output += '<div style="margin-left: 16px; margin-bottom: 16px;">';
+                output += '• Mosquitto: ' + (data.mosquitto_running ? '✓ Running' : '✗ Not Running') + '<br>';
+                output += '• Broker: ' + (data.mqtt_broker || 'localhost') + '<br>';
+                output += '• Port: ' + (data.mqtt_port || '1883') + '<br>';
+                if (!data.mosquitto_running) {
+                    output += '  <span style="color: #ffd43b;">⚠ Run: sudo systemctl start mosquitto</span><br>';
+                }
+                output += '</div>';
+                
+                // HomeKit Pairing
+                output += '<div style="margin-bottom: 12px; font-weight: bold; color: var(--text-primary);">🏠 HomeKit Pairing</div>';
+                output += '<div style="margin-left: 16px; margin-bottom: 16px;">';
+                output += '• Setup Code: ' + (data.setup_code || 'N/A') + '<br>';
+                output += '• Setup ID: ' + (data.setup_id || 'N/A') + '<br>';
+                output += '• Paired: ' + (data.paired ? '✓ Yes' : '✗ No') + '<br>';
+                output += '</div>';
+                
+                // Recommendations
+                if (!data.avahi_running || !data.mosquitto_running) {
+                    output += '<div style="margin-top: 20px; padding: 12px; background: rgba(255, 107, 107, 0.1); border-left: 3px solid #ff6b6b; border-radius: 4px;">';
+                    output += '<div style="font-weight: bold; margin-bottom: 8px;">⚠ Action Required:</div>';
+                    if (!data.avahi_running) {
+                        output += '• Install and start avahi-daemon for HomeKit discovery<br>';
+                    }
+                    if (!data.mosquitto_running) {
+                        output += '• Start mosquitto for FPP control<br>';
+                    }
+                    output += '</div>';
+                }
+                
+                // Log file location
+                output += '<div style="margin-top: 20px; padding: 12px; background: rgba(74, 144, 226, 0.1); border-left: 3px solid #4a90e2; border-radius: 4px;">';
+                output += '<div style="font-weight: bold; margin-bottom: 4px;">📄 Service Logs:</div>';
+                output += '<div style="font-size: 11px;">/home/fpp/media/logs/fpp-Homekit_postStart.log</div>';
+                output += '</div>';
+                
+                output += '</div>';
+                
+                diagOutput.innerHTML = output;
+            })
+            .catch(error => {
+                debugLog('Error running diagnostics', { error: error.message });
+                diagOutput.innerHTML = '<div style="color: #ff6b6b;">Error running diagnostics: ' + error.message + '</div>';
+            })
+            .finally(() => {
+                diagBtn.disabled = false;
+                diagBtn.textContent = originalLabel;
             });
     }
     

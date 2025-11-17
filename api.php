@@ -1262,6 +1262,100 @@ PYCODE;
     return json($result);
 }
 
+// GET /api/plugin/fpp-Homekit/diagnostics
+function fppHomekitDiagnostics() {
+    $pluginDir = dirname(__FILE__);
+    $scriptsDir = $pluginDir . '/scripts';
+    $pidFile = $scriptsDir . '/homekit_service.pid';
+    $configFile = $scriptsDir . '/homekit_config.json';
+    $pairingInfoFile = $scriptsDir . '/homekit_pairing_info.json';
+    
+    $result = array(
+        'service_running' => false,
+        'pid' => null,
+        'listen_address' => '',
+        'network' => array('interfaces' => array()),
+        'port_51826_open' => false,
+        'avahi_running' => false,
+        'mosquitto_running' => false,
+        'mqtt_broker' => 'localhost',
+        'mqtt_port' => 1883,
+        'setup_code' => null,
+        'setup_id' => null,
+        'paired' => false
+    );
+    
+    // Check service running
+    if (file_exists($pidFile)) {
+        $pid = trim(file_get_contents($pidFile));
+        if ($pid) {
+            $result['pid'] = $pid;
+            if (file_exists("/proc/$pid")) {
+                $result['service_running'] = true;
+            }
+        }
+    }
+    
+    // Get listen address
+    if (file_exists($configFile)) {
+        $config = @json_decode(file_get_contents($configFile), true);
+        if ($config && isset($config['homekit_ip'])) {
+            $result['listen_address'] = $config['homekit_ip'] ?: 'Auto-detect';
+        }
+        if ($config && isset($config['mqtt'])) {
+            $result['mqtt_broker'] = $config['mqtt']['broker'] ?? 'localhost';
+            $result['mqtt_port'] = $config['mqtt']['port'] ?? 1883;
+        }
+    }
+    
+    // Get network interfaces
+    $interfacesResult = fppHomekitNetworkInterfaces();
+    if ($interfacesResult) {
+        $interfacesData = json_decode($interfacesResult, true);
+        if ($interfacesData && isset($interfacesData['interfaces'])) {
+            $result['network']['interfaces'] = $interfacesData['interfaces'];
+        }
+    }
+    
+    // Check port 51826
+    if (function_exists('shell_exec')) {
+        $portCheck = @shell_exec('netstat -tuln 2>/dev/null | grep ":51826 " || ss -tuln 2>/dev/null | grep ":51826 "');
+        $result['port_51826_open'] = !empty($portCheck);
+    }
+    
+    // Check avahi-daemon
+    if (function_exists('shell_exec')) {
+        $avahiCheck = @shell_exec('systemctl is-active avahi-daemon 2>/dev/null');
+        $result['avahi_running'] = (trim($avahiCheck) === 'active');
+    }
+    
+    // Check mosquitto
+    if (function_exists('shell_exec')) {
+        $mosquittoCheck = @shell_exec('systemctl is-active mosquitto 2>/dev/null');
+        $result['mosquitto_running'] = (trim($mosquittoCheck) === 'active');
+    }
+    
+    // Get pairing info
+    if (file_exists($pairingInfoFile)) {
+        $pairingInfo = @json_decode(file_get_contents($pairingInfoFile), true);
+        if ($pairingInfo) {
+            $result['setup_code'] = $pairingInfo['setup_code'] ?? null;
+            $result['setup_id'] = $pairingInfo['setup_id'] ?? null;
+        }
+    }
+    
+    // Check if paired
+    $stateFile = $scriptsDir . '/homekit_accessory.state';
+    if (file_exists($stateFile)) {
+        $state = @json_decode(file_get_contents($stateFile), true);
+        if ($state && isset($state['paired_clients']) && count($state['paired_clients']) > 0) {
+            $result['paired'] = true;
+        }
+    }
+    
+    return json($result);
+}
+
 // GET /api/plugin/fpp-Homekit/mqtt-diagnostics
 function fppHomekitMQTTDiagnostics() {
     $pluginDir = dirname(__FILE__);
