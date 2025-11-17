@@ -111,9 +111,9 @@ function fppHomekitReadHttpPort($settingsPath) {
 
 function fppHomekitBuildApiEndpoints() {
     static $cached = null;
-    // Clear cache if we want to force rebuild (for debugging)
-    // Uncomment next line to disable caching temporarily:
-    // $cached = null;
+    // Temporarily disable caching to ensure fresh endpoint order
+    // This ensures 32320 is always tried first after code updates
+    $cached = null;
     if ($cached !== null) {
         return $cached;
     }
