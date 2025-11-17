@@ -444,8 +444,9 @@ function fppHomekitStatus() {
         // Build more helpful error message
         $lastError = $apiResult['error'] ?: "Failed to connect to FPP API";
         
-        // Check if FPP daemon is running
+        // Check if FPP daemon is running and what ports it's listening on
         $fppRunning = false;
+        $listeningPorts = array();
         if (function_exists('shell_exec')) {
             // Check if fppd process exists
             $fppCheck = @shell_exec('pgrep -f "fppd" 2>/dev/null');
@@ -456,6 +457,23 @@ function fppHomekitStatus() {
                 $fppCheck2 = @shell_exec('ps aux | grep -i "[f]ppd" 2>/dev/null');
                 if (!empty($fppCheck2)) {
                     $fppRunning = true;
+                }
+            }
+            
+            // If FPP is running, try to detect what ports it's actually listening on
+            if ($fppRunning) {
+                // Try netstat first (common on most systems)
+                $netstatOutput = @shell_exec('netstat -tuln 2>/dev/null | grep LISTEN | grep -E ":(80|443|8080|32320|32321)" 2>/dev/null');
+                if (!$netstatOutput) {
+                    // Try ss command (newer Linux systems)
+                    $netstatOutput = @shell_exec('ss -tuln 2>/dev/null | grep LISTEN | grep -E ":(80|443|8080|32320|32321)" 2>/dev/null');
+                }
+                if ($netstatOutput) {
+                    // Parse output to find ports
+                    if (preg_match_all('/:(\d+)\s/', $netstatOutput, $matches)) {
+                        $listeningPorts = array_unique($matches[1]);
+                        sort($listeningPorts);
+                    }
                 }
             }
         }
