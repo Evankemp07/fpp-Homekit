@@ -175,9 +175,38 @@ function fppHomekitBuildApiEndpoints() {
     $ports = array_values(array_unique(array_filter($ports)));
     
     // Prioritize detected port (first in array)
+    // Also prioritize localhost/127.0.0.1 first, and port 32320 first
     $endpoints = array();
+    
+    // Sort hosts: localhost/127.0.0.1 first, then others
+    $sortedHosts = array();
     foreach ($hosts as $host) {
-        foreach ($ports as $port) {
+        if ($host === 'localhost' || $host === '127.0.0.1') {
+            array_unshift($sortedHosts, $host);
+        } else {
+            $sortedHosts[] = $host;
+        }
+    }
+    if (empty($sortedHosts)) {
+        $sortedHosts = array('localhost', '127.0.0.1');
+    }
+    
+    // Sort ports: 32320 first (FPP default), then others
+    $sortedPorts = array();
+    foreach ($ports as $port) {
+        if ($port == 32320) {
+            array_unshift($sortedPorts, $port);
+        } else {
+            $sortedPorts[] = $port;
+        }
+    }
+    if (empty($sortedPorts)) {
+        $sortedPorts = array(32320, 80, 8080);
+    }
+    
+    // Build endpoints: try localhost:32320 first, then other combinations
+    foreach ($sortedHosts as $host) {
+        foreach ($sortedPorts as $port) {
             if ($port === 80) {
                 $endpoints[] = "http://{$host}/api";
             } else {
@@ -187,6 +216,7 @@ function fppHomekitBuildApiEndpoints() {
     }
     
     if (empty($endpoints)) {
+        $endpoints[] = 'http://localhost:32320/api';
         $endpoints[] = 'http://localhost/api';
     }
     
