@@ -350,7 +350,7 @@ function fppHomekitStatus() {
     }
     $result['paired'] = $paired;
     
-    // Get REAL FPP status via MQTT (not just checking if fppd process exists)
+    // Get REAL FPP status - try HTTP API first (more reliable), fallback to MQTT
     $fppStatus = array(
         'playing' => false, 
         'status_name' => 'unknown',
@@ -363,6 +363,67 @@ function fppHomekitStatus() {
         'error_detail' => ''
     );
     
+    // Try HTTP API first (more reliable for status checks)
+    $fppApiHost = 'localhost';
+    $fppApiPort = 32320;
+    
+    // Try to get FPP API port from settings
+    $settingsPaths = fppHomekitSettingsCandidates();
+    foreach ($settingsPaths as $settingsPath) {
+        $port = fppHomekitReadHttpPort($settingsPath);
+        if ($port > 0) {
+            $fppApiPort = $port;
+            break;
+        }
+    }
+    
+    // Try HTTP API
+    $apiUrl = "http://{$fppApiHost}:{$fppApiPort}/api/status";
+    $context = stream_context_create(array(
+        'http' => array(
+            'timeout' => 2,
+            'ignore_errors' => true
+        )
+    ));
+    
+    $apiResponse = @file_get_contents($apiUrl, false, $context);
+    if ($apiResponse) {
+        $apiData = @json_decode($apiResponse, true);
+        if ($apiData && is_array($apiData)) {
+            // Got status from HTTP API
+            $fppStatus['status_name'] = $apiData['status_name'] ?? 'unknown';
+            $fppStatus['current_playlist'] = $apiData['current_playlist'] ?? '';
+            $fppStatus['current_sequence'] = $apiData['current_sequence'] ?? '';
+            $fppStatus['seconds_elapsed'] = $apiData['seconds_played'] ?? 0;
+            $fppStatus['seconds_remaining'] = $apiData['seconds_remaining'] ?? 0;
+            $fppStatus['volume'] = $apiData['volume'] ?? 0;
+            
+            // Determine playing state
+            $statusCode = $apiData['status'] ?? 0;
+            $statusName = strtolower($fppStatus['status_name']);
+            $fppStatus['playing'] = ($statusCode == 1 || $statusName === 'playing');
+            
+            $fppStatus['status_text'] = 'FPP Available';
+            $fppStatus['error_detail'] = '';
+            
+            $result['fpp_status'] = $fppStatus;
+            $result['control_method'] = 'MQTT';
+            
+            // Get configured playlist
+            $playlist = '';
+            if (file_exists($configFile)) {
+                $config = @json_decode(file_get_contents($configFile), true);
+                if ($config && isset($config['playlist_name'])) {
+                    $playlist = $config['playlist_name'];
+                }
+            }
+            $result['playlist'] = $playlist;
+            
+            return json($result);
+        }
+    }
+    
+    // Fallback to MQTT if HTTP API failed
     // Get MQTT config
     $mqttBroker = 'localhost';
     $mqttPort = 1883;
