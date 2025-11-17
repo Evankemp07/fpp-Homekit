@@ -789,40 +789,65 @@ def main():
                 return value if isinstance(value, str) else default
 
             setup_code = _as_str(driver.state.pincode, '000-00-000')
-            setup_id = _as_str(getattr(driver.state, 'setup_id', ''), 'HOME')
             mac = _as_str(getattr(driver.state, 'mac', ''), '')
             
             # Validate setup code format (should be XXX-XX-XXX = 8 digits)
             setup_code_clean = setup_code.replace('-', '')
             if len(setup_code_clean) != 8 or not setup_code_clean.isdigit():
                 logger.error(f"Invalid setup code format: {setup_code} (expected XXX-XX-XXX)")
-                setup_code = '123-45-678'  # Fallback
-                setup_code_clean = '12345678'
+                logger.error(f"This usually means the state file is corrupted. Please restart the service.")
             
-            # Ensure setup ID is valid (should be 4 hex chars)
-            if not setup_id or len(setup_id) != 4:
-                logger.warning(f"Invalid setup ID format: {setup_id}, generating from MAC")
-                if mac and len(mac) >= 4:
-                    # Use last 4 chars of MAC as setup ID
-                    setup_id = mac[-4:].upper()
-                else:
-                    setup_id = 'HOME'
-            
-            # Generate QR code if available
+            # Generate QR code data using HAP-python's method
             qr_code_data = None
+            setup_id = None
+            
             if QR_AVAILABLE:
                 try:
-                    qr_code_data = qr.get_qr_code(setup_code, setup_id)
-                    logger.info(f"Generated QR code data: {qr_code_data[:50]}...")
+                    # Get the accessory to extract its info
+                    acc = driver.accessory
+                    if acc:
+                        logger.info(f"Accessory category: {acc.category}")
+                        logger.info(f"Accessory MAC: {mac}")
+                        
+                        # HAP-python's qr.get_qr_code expects:
+                        # - setup_code: the 8-digit PIN (with or without dashes)
+                        # - setup_id: 4-character identifier
+                        # But it can also derive setup_id from accessory category
+                        # Try to get setup_id from state first
+                        setup_id = _as_str(getattr(driver.state, 'setup_id', ''), '')
+                        
+                        if not setup_id:
+                            # Generate setup_id from MAC (standard approach)
+                            setup_id = mac[-4:].upper() if mac and len(mac) >= 4 else 'HOME'
+                        
+                        logger.info(f"Using setup ID: {setup_id}")
+                        
+                        # Generate QR code with HAP-python's built-in function
+                        qr_code_data = qr.get_qr_code(setup_code, setup_id)
+                        logger.info(f"Generated QR code data: {qr_code_data[:60]}...")
+                    else:
+                        logger.warning("No accessory object available for QR generation")
+                        # Fallback: Use MAC-based setup_id
+                        setup_id = mac[-4:].upper() if mac and len(mac) >= 4 else 'HOME'
+                        qr_code_data = qr.get_qr_code(setup_code, setup_id)
+                        logger.info(f"Generated QR code data (fallback): {qr_code_data[:60]}...")
+                    
                 except Exception as e:
                     logger.warning(f"Could not generate QR code: {e}")
-                    logger.warning(f"Setup code: {setup_code}, Setup ID: {setup_id}")
+                    logger.warning(f"Setup code: {setup_code}")
+                    import traceback
+                    logger.warning(traceback.format_exc())
+                    # Create a basic setup_id from MAC as last resort
+                    setup_id = mac[-4:].upper() if mac and len(mac) >= 4 else 'HOME'
+            else:
+                # No QR module, just generate setup_id from MAC
+                setup_id = mac[-4:].upper() if mac and len(mac) >= 4 else 'HOME'
             
             # Save to a JSON file for PHP to read
             info_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_pairing_info.json')
             info_data = {
                 'setup_code': setup_code,
-                'setup_id': setup_id,
+                'setup_id': setup_id if setup_id else 'UNKNOWN',
                 'mac': mac
             }
             if qr_code_data:
@@ -832,8 +857,11 @@ def main():
                 json.dump(info_data, f, indent=2)
             
             logger.info(f"Setup code: {setup_code}, Setup ID: {setup_id}")
+            logger.info(f"Pairing info saved to: {info_file}")
         except Exception as e:
             logger.warning(f"Could not save setup info: {e}")
+            import traceback
+            logger.warning(traceback.format_exc())
         
         # Write PID file only after successful initialization
         try:
