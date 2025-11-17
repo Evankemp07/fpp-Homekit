@@ -502,11 +502,84 @@ except Exception as e:
     print(json.dumps({"error": str(e), "available": False}))
 PYCODE;
     
-    // Check if we can execute commands
-    if (!function_exists('shell_exec')) {
-        $fppStatus['status_text'] = 'Shell Exec Disabled';
-        $fppStatus['error_detail'] = 'PHP shell_exec is disabled. Cannot check FPP status.';
-    } else {
+    // Fallback to MQTT if HTTP API failed
+    if (!$apiData && function_exists('shell_exec')) {
+        // Get MQTT config
+        $mqttBroker = 'localhost';
+        $mqttPort = 1883;
+        $mqttTopicPrefix = 'FPP';
+        
+        if (file_exists($configFile)) {
+            $config = @json_decode(file_get_contents($configFile), true);
+            if ($config) {
+                if (isset($config['mqtt']['broker'])) {
+                    $mqttBroker = $config['mqtt']['broker'];
+                }
+                if (isset($config['mqtt']['port'])) {
+                    $mqttPort = intval($config['mqtt']['port']);
+                }
+            }
+        }
+        
+        // Python script to check FPP status via MQTT
+        $pythonStatusScript = <<<'PYCODE'
+import sys, json, time
+try:
+    import paho.mqtt.client as mqtt
+except ImportError:
+    print(json.dumps({"error": "paho-mqtt not installed", "available": False}))
+    sys.exit(0)
+
+broker = sys.argv[1] if len(sys.argv) > 1 else 'localhost'
+port = int(sys.argv[2]) if len(sys.argv) > 2 else 1883
+prefix = sys.argv[3] if len(sys.argv) > 3 else 'FPP'
+
+status_data = {"available": False, "timeout": True}
+
+def on_connect(client, userdata, flags, rc, *args, **kwargs):
+    if rc == 0:
+        client.subscribe(f"{prefix}/status")
+
+def on_message(client, userdata, msg):
+    global status_data
+    try:
+        data = json.loads(msg.payload.decode('utf-8'))
+        status_data = {
+            "available": True,
+            "timeout": False,
+            "status_name": data.get("status_name", "unknown"),
+            "status": data.get("status", 0),
+            "current_playlist": data.get("current_playlist", {}).get("playlist", ""),
+            "current_sequence": data.get("current_sequence", ""),
+            "seconds_played": data.get("seconds_played", 0),
+            "seconds_remaining": data.get("seconds_remaining", 0)
+        }
+    except:
+        pass
+
+try:
+    try:
+        client = mqtt.Client(client_id="fpp-hk-status", callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
+    except:
+        client = mqtt.Client(client_id="fpp-hk-status")
+    
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect(broker, port, keepalive=5)
+    client.loop_start()
+    
+    for _ in range(20):
+        if status_data.get("available"):
+            break
+        time.sleep(0.1)
+    
+    client.loop_stop()
+    client.disconnect()
+    print(json.dumps(status_data))
+except Exception as e:
+    print(json.dumps({"error": str(e), "available": False}))
+PYCODE;
+        
         // Try with timeout first, then without if timeout doesn't exist
         $hasTimeout = @shell_exec('which timeout 2>/dev/null');
         
@@ -559,14 +632,13 @@ PYCODE;
             }
         } else {
             // No output - command might have failed
-            // Show what we tried
             $fppStatus['status_text'] = 'Status Check Failed';
             $fppStatus['error_detail'] = 'HTTP API failed: ' . $lastError . '. MQTT check also failed. Check if FPP is running and API is accessible.';
         }
-    } else {
-        // shell_exec disabled
+    } elseif (!$apiData) {
+        // HTTP API failed and shell_exec disabled
         $fppStatus['status_text'] = 'Status Check Disabled';
-        $fppStatus['error_detail'] = 'PHP shell_exec is disabled. HTTP API also failed: ' . $lastError;
+        $fppStatus['error_detail'] = 'HTTP API failed: ' . $lastError . '. PHP shell_exec is disabled, cannot try MQTT fallback.';
     }
     
     $result['fpp_status'] = $fppStatus;
