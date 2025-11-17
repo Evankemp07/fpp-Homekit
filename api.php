@@ -646,15 +646,27 @@ function fppHomekitStatus() {
         if ($mqttStatus && is_array($mqttStatus)) {
             if (isset($mqttStatus['available']) && $mqttStatus['available']) {
                 // Got real status from FPP via MQTT
+                $statusCode = isset($mqttStatus['status']) ? (int)$mqttStatus['status'] : 0;
+                $statusName = strtolower($mqttStatus['status_name'] ?? 'unknown');
+                $currentPlaylist = $mqttStatus['current_playlist'] ?? '';
+                $currentSequence = $mqttStatus['current_sequence'] ?? '';
+                
+                // Determine playing state: status code 1, status_name contains 'playing', or has active sequence/playlist
+                $isPlaying = ($statusCode === 1 || 
+                             $statusName === 'playing' || 
+                             $statusName === 'play' ||
+                             (strpos($statusName, 'play') !== false && strpos($statusName, 'stop') === false) ||
+                             (!empty($currentSequence) || !empty($currentPlaylist)));
+                
                 $apiData = array(
                     'status_name' => $mqttStatus['status_name'] ?? 'unknown',
-                    'status' => $mqttStatus['status'] ?? 0,
-                    'current_playlist' => $mqttStatus['current_playlist'] ?? '',
-                    'current_sequence' => $mqttStatus['current_sequence'] ?? '',
+                    'status' => $statusCode,
+                    'current_playlist' => $currentPlaylist,
+                    'current_sequence' => $currentSequence,
                     'seconds_played' => $mqttStatus['seconds_played'] ?? 0,
                     'seconds_remaining' => $mqttStatus['seconds_remaining'] ?? 0,
                     'volume' => 0, // MQTT doesn't provide volume
-                    'playing' => ($mqttStatus['status'] ?? 0) === 1
+                    'playing' => $isPlaying
                 );
             } elseif (isset($mqttStatus['timeout']) && $mqttStatus['timeout']) {
                 $lastError = 'FPP MQTT status timeout - FPP may not be publishing status updates';
@@ -785,13 +797,15 @@ function fppHomekitStatus() {
         $statusCode = isset($apiData['status']) ? (int)$apiData['status'] : 0;
         $statusName = strtolower($fppStatus['status_name']);
         $isPlaying = isset($apiData['playing']) ? (bool)$apiData['playing'] : false;
+        $hasActiveContent = !empty($fppStatus['current_sequence']) || !empty($fppStatus['current_playlist']);
         
-        // Check if playing: status code 1, or status_name contains 'playing', or playing flag is true
+        // Check if playing: status code 1, or status_name contains 'playing', or playing flag is true, or has active sequence/playlist
         $fppStatus['playing'] = ($statusCode === 1 || 
                                  $statusName === 'playing' || 
                                  $statusName === 'play' ||
                                  $isPlaying === true ||
-                                 (strpos($statusName, 'play') !== false && strpos($statusName, 'stop') === false));
+                                 (strpos($statusName, 'play') !== false && strpos($statusName, 'stop') === false) ||
+                                 $hasActiveContent);
         
         $fppStatus['status_text'] = 'FPP Available';
         $fppStatus['error_detail'] = '';
@@ -881,10 +895,12 @@ function fppHomekitStatus() {
                     // Determine playing state from MQTT status (same logic as HTTP API)
                     $mqttStatusCode = isset($mqttStatus['status']) ? (int)$mqttStatus['status'] : 0;
                     $mqttStatusName = strtolower($fppStatus['status_name']);
+                    $hasActiveContent = !empty($fppStatus['current_sequence']) || !empty($fppStatus['current_playlist']);
                     $fppStatus['playing'] = ($mqttStatusCode === 1 || 
                                              $mqttStatusName === 'playing' || 
                                              $mqttStatusName === 'play' ||
-                                             (strpos($mqttStatusName, 'play') !== false && strpos($mqttStatusName, 'stop') === false));
+                                             (strpos($mqttStatusName, 'play') !== false && strpos($mqttStatusName, 'stop') === false) ||
+                                             $hasActiveContent);
                     
                     $fppStatus['status_text'] = 'FPP Available';
                     $fppStatus['error_detail'] = '';
