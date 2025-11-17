@@ -338,8 +338,7 @@ function fppHomekitStatus() {
     }
     $result['paired'] = $paired;
     
-    // FPP status is monitored via MQTT by the Python service
-    // PHP status page just shows basic info
+    // Get REAL FPP status via MQTT (not just checking if fppd process exists)
     $fppStatus = array(
         'playing' => false, 
         'status_name' => 'unknown',
@@ -348,31 +347,117 @@ function fppHomekitStatus() {
         'seconds_elapsed' => 0,
         'seconds_remaining' => 0,
         'volume' => 0,
-        'status_text' => 'Status via MQTT',
-        'error_detail' => 'FPP status is monitored via MQTT by the HomeKit service. Check service logs for details.'
+        'status_text' => 'Unknown',
+        'error_detail' => ''
     );
     
-    // Check if FPPD process is running (just for info)
-    $fppdRunning = false;
-    if (function_exists('exec')) {
-        $output = array();
-        @exec('pgrep -f fppd 2>/dev/null', $output);
-        if (!empty($output)) {
-            $fppdRunning = true;
-        } else {
-            @exec('ps aux | grep -i "[f]ppd" 2>/dev/null', $output);
-            if (!empty($output)) {
-                $fppdRunning = true;
+    // Get MQTT config
+    $mqttBroker = 'localhost';
+    $mqttPort = 1883;
+    $mqttTopicPrefix = 'FPP';
+    
+    if (file_exists($configFile)) {
+        $config = @json_decode(file_get_contents($configFile), true);
+        if ($config) {
+            if (isset($config['mqtt']['broker'])) {
+                $mqttBroker = $config['mqtt']['broker'];
+            }
+            if (isset($config['mqtt']['port'])) {
+                $mqttPort = intval($config['mqtt']['port']);
             }
         }
     }
     
-    if ($fppdRunning) {
-        $fppStatus['status_text'] = 'FPP Running (MQTT)';
-        $fppStatus['error_detail'] = 'FPP daemon is running. Control and status updates use MQTT.';
+    // Python script to check FPP status via MQTT
+    $pythonStatusScript = <<<'PYCODE'
+import sys, json, time
+try:
+    import paho.mqtt.client as mqtt
+except ImportError:
+    print(json.dumps({"error": "paho-mqtt not installed", "available": False}))
+    sys.exit(0)
+
+broker = sys.argv[1] if len(sys.argv) > 1 else 'localhost'
+port = int(sys.argv[2]) if len(sys.argv) > 2 else 1883
+prefix = sys.argv[3] if len(sys.argv) > 3 else 'FPP'
+
+status_data = {"available": False, "timeout": True}
+
+def on_connect(client, userdata, flags, rc, *args, **kwargs):
+    if rc == 0:
+        client.subscribe(f"{prefix}/status")
+
+def on_message(client, userdata, msg):
+    global status_data
+    try:
+        data = json.loads(msg.payload.decode('utf-8'))
+        status_data = {
+            "available": True,
+            "timeout": False,
+            "status_name": data.get("status_name", "unknown"),
+            "status": data.get("status", 0),
+            "current_playlist": data.get("current_playlist", {}).get("playlist", ""),
+            "current_sequence": data.get("current_sequence", ""),
+            "seconds_played": data.get("seconds_played", 0),
+            "seconds_remaining": data.get("seconds_remaining", 0)
+        }
+    except:
+        pass
+
+try:
+    try:
+        client = mqtt.Client(client_id="fpp-hk-status", callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
+    except:
+        client = mqtt.Client(client_id="fpp-hk-status")
+    
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect(broker, port, keepalive=5)
+    client.loop_start()
+    
+    for _ in range(20):
+        if status_data.get("available"):
+            break
+        time.sleep(0.1)
+    
+    client.loop_stop()
+    client.disconnect()
+    print(json.dumps(status_data))
+except Exception as e:
+    print(json.dumps({"error": str(e), "available": False}))
+PYCODE;
+    
+    $command = "timeout 3 python3 -W ignore -c " . escapeshellarg($pythonStatusScript) . " " . 
+               escapeshellarg($mqttBroker) . " " . 
+               escapeshellarg($mqttPort) . " " . 
+               escapeshellarg($mqttTopicPrefix) . " 2>/dev/null";
+    
+    $output = shell_exec($command);
+    
+    if ($output) {
+        $mqttStatus = @json_decode(trim($output), true);
+        if ($mqttStatus && is_array($mqttStatus)) {
+            if (isset($mqttStatus['available']) && $mqttStatus['available']) {
+                // Got real status from FPP via MQTT
+                $fppStatus['status_name'] = $mqttStatus['status_name'] ?? 'unknown';
+                $fppStatus['current_playlist'] = $mqttStatus['current_playlist'] ?? '';
+                $fppStatus['current_sequence'] = $mqttStatus['current_sequence'] ?? '';
+                $fppStatus['seconds_elapsed'] = $mqttStatus['seconds_played'] ?? 0;
+                $fppStatus['seconds_remaining'] = $mqttStatus['seconds_remaining'] ?? 0;
+                $fppStatus['playing'] = ($mqttStatus['status'] ?? 0) == 1;
+                $fppStatus['status_text'] = 'FPP Available';
+                $fppStatus['error_detail'] = '';
+            } elseif (isset($mqttStatus['timeout']) && $mqttStatus['timeout']) {
+                $fppStatus['status_text'] = 'FPP Not Responding';
+                $fppStatus['error_detail'] = 'MQTT connected but FPP not publishing. Is fppd running?';
+            } elseif (isset($mqttStatus['error'])) {
+                $fppStatus['status_text'] = 'MQTT Error';
+                $fppStatus['error_detail'] = $mqttStatus['error'];
+            }
+        }
     } else {
-        $fppStatus['status_text'] = 'FPP Not Running';
-        $fppStatus['error_detail'] = 'FPP daemon does not appear to be running. Start FPP to enable control.';
+        $fppStatus['status_text'] = 'Status Check Failed';
+        $fppStatus['error_detail'] = 'Could not check FPP status via MQTT.';
     }
     
     $result['fpp_status'] = $fppStatus;
