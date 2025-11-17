@@ -84,17 +84,27 @@ if [ $FIRST_INSTALL -eq 1 ]; then
         fi
     fi
     
-    # Method 4: Try to install python3-pip automatically (if we have sudo access)
+    # Method 4: Try to install python3-pip automatically (if we have root/sudo access)
     if [ -z "$PIP3" ]; then
         echo "pip not found, attempting to install python3-pip..." | tee -a "${INSTALL_LOG}"
         
         # Check if we can use apt-get (Debian/Ubuntu/Raspberry Pi OS)
         if command -v apt-get >/dev/null 2>&1; then
-            # Try with sudo if available
-            if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-                echo "Attempting to install python3-pip with sudo..." | tee -a "${INSTALL_LOG}"
-                if sudo apt-get update -qq >> "${INSTALL_LOG}" 2>&1 && \
-                   sudo apt-get install -y python3-pip >> "${INSTALL_LOG}" 2>&1; then
+            INSTALL_CMD=""
+            # Check if we're running as root
+            if [ "$(id -u)" -eq 0 ]; then
+                INSTALL_CMD="apt-get"
+                echo "Running as root, will use apt-get directly..." | tee -a "${INSTALL_LOG}"
+            # Try with sudo if available (passwordless sudo)
+            elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                INSTALL_CMD="sudo apt-get"
+                echo "Passwordless sudo available, will use sudo apt-get..." | tee -a "${INSTALL_LOG}"
+            fi
+            
+            if [ -n "$INSTALL_CMD" ]; then
+                echo "Attempting to install python3-pip..." | tee -a "${INSTALL_LOG}"
+                if $INSTALL_CMD update -qq >> "${INSTALL_LOG}" 2>&1 && \
+                   $INSTALL_CMD install -y python3-pip >> "${INSTALL_LOG}" 2>&1; then
                     echo "✓ Successfully installed python3-pip" | tee -a "${INSTALL_LOG}"
                     sleep 2  # Give system a moment to register the new package
                     # Now try to find pip again
@@ -106,10 +116,11 @@ if [ $FIRST_INSTALL -eq 1 ]; then
                         echo "✓ Found pip3 after installation" | tee -a "${INSTALL_LOG}"
                     fi
                 else
-                    echo "Warning: Could not install python3-pip automatically (may need manual sudo password)" | tee -a "${INSTALL_LOG}"
+                    echo "Warning: Could not install python3-pip automatically" | tee -a "${INSTALL_LOG}"
+                    echo "Check ${INSTALL_LOG} for details" | tee -a "${INSTALL_LOG}"
                 fi
             else
-                echo "Warning: sudo not available or requires password (cannot auto-install python3-pip)" | tee -a "${INSTALL_LOG}"
+                echo "Warning: Cannot auto-install python3-pip (need root or passwordless sudo)" | tee -a "${INSTALL_LOG}"
             fi
         fi
     fi
