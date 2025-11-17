@@ -45,7 +45,16 @@ def main() -> None:
         nonlocal connection_established, connection_error
         if rc == 0:
             connection_established = True
-            # Subscribe to status topics specifically, plus wildcard to catch all FPP messages
+            # Subscribe to all topics to catch FPP status messages regardless of topic structure
+            # FPP can publish to various topic patterns like:
+            # - FPP/status
+            # - falcon/player/FPP2/falcon/player/FPP2/fppd_status
+            # - {prefix}/status
+            # - {prefix}/fppd_status
+            # So we subscribe to everything and filter by content
+            client.subscribe('#', qos=1)
+            
+            # Also subscribe to specific patterns based on prefix
             prefixes = {prefix, prefix.lower()}
             status_topics = []
             for base in prefixes:
@@ -55,17 +64,30 @@ def main() -> None:
                 status_topics.extend([
                     f"{normalized}/status",
                     f"{normalized}/status/#",
+                    f"{normalized}/fppd_status",
+                    f"{normalized}/fppd_status/#",
                     f"{normalized}/#",  # Subscribe to all topics under prefix
                 ])
             
-            # Also subscribe to default topics if no prefix provided
-            if not status_topics:
-                status_topics = ['FPP/status', 'FPP/status/#', 'FPP/#', 'fpp/status', 'fpp/status/#', 'fpp/#']
+            # Also subscribe to default FPP topics
+            status_topics.extend([
+                'FPP/status', 'FPP/status/#', 'FPP/fppd_status', 'FPP/fppd_status/#', 'FPP/#',
+                'fpp/status', 'fpp/status/#', 'fpp/fppd_status', 'fpp/fppd_status/#', 'fpp/#',
+                'falcon/#',  # Common FPP topic prefix
+            ])
             
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_topics = []
             for topic in status_topics:
+                if topic not in seen:
+                    seen.add(topic)
+                    unique_topics.append(topic)
+            
+            for topic in unique_topics:
                 client.subscribe(topic, qos=1)
 
-            # Request status updates
+            # Request status updates using various topic patterns
             request_topics = set()
             for base in prefixes:
                 if not base:
@@ -78,15 +100,15 @@ def main() -> None:
                     }
                 )
 
-            if not request_topics:
-                request_topics.update(
-                    {
-                        'FPP/command/GetStatus',
-                        'FPP/command/GetPlaylistStatus',
-                        'fpp/command/GetStatus',
-                        'fpp/command/GetPlaylistStatus',
-                    }
-                )
+            # Add default FPP command topics
+            request_topics.update(
+                {
+                    'FPP/command/GetStatus',
+                    'FPP/command/GetPlaylistStatus',
+                    'fpp/command/GetStatus',
+                    'fpp/command/GetPlaylistStatus',
+                }
+            )
 
             for topic in request_topics:
                 client.publish(topic, '', qos=1)
@@ -103,52 +125,86 @@ def main() -> None:
 
     def on_message(client, userdata, msg):  # type: ignore
         nonlocal status_data
-        # Process messages from FPP topics (status, playlist status, etc.)
-        topic = msg.topic.lower()
-        
-        # Check if this is an FPP-related topic
-        is_fpp_topic = False
-        prefixes_lower = {prefix.lower(), 'fpp'}
-        for pfx in prefixes_lower:
-            if pfx and topic.startswith(pfx.lower() + '/'):
-                is_fpp_topic = True
-                break
-        
-        if not is_fpp_topic:
-            return
-        
-        # Only process status-related topics or any JSON that looks like status
-        is_status_topic = (
-            '/status' in topic or 
-            topic.endswith('/status') or 
-            '/playliststatus' in topic or
-            topic.endswith('/playliststatus')
-        )
+        # Process ALL messages and filter by content - FPP can publish to various topic structures
+        topic = msg.topic
         
         try:
             payload = msg.payload.decode("utf-8")
-            if not payload:
+            if not payload or not payload.strip():
                 return
             
             # Try to parse as JSON
             data = json.loads(payload)
             
-            # Verify this looks like FPP status data
-            # Accept if it has status-related fields OR if it's from a status topic
-            if is_status_topic or 'status' in data or 'status_name' in data or 'current_playlist' in data:
+            # Check if this looks like FPP status data by examining the JSON structure
+            # FPP status messages typically have these fields:
+            # - status_name (e.g., "idle", "playing", "paused")
+            # - status (numeric: 0=idle, 1=playing, 2=paused, etc.)
+            # - current_playlist (dict or string)
+            # - fppd (e.g., "running")
+            # - mode_name (e.g., "player")
+            
+            has_status_fields = (
+                'status_name' in data or 
+                ('status' in data and isinstance(data.get('status'), (int, str))) or
+                'fppd' in data or
+                'mode_name' in data
+            )
+            
+            # Also check topic for status indicators (fppd_status, status, etc.)
+            topic_lower = topic.lower()
+            is_status_topic = (
+                'fppd_status' in topic_lower or
+                '/status' in topic_lower or
+                topic_lower.endswith('/status') or
+                '/playliststatus' in topic_lower
+            )
+            
+            # Accept if it has FPP status fields OR is from a status topic
+            if has_status_fields or is_status_topic:
+                # Extract status information
+                status_name = data.get("status_name", "unknown")
+                status_val = data.get("status", 0)
+                
+                # Handle status as string or int
+                if isinstance(status_val, str):
+                    try:
+                        status_val = int(status_val)
+                    except (ValueError, TypeError):
+                        status_val = 0
+                
+                # Extract playlist info
+                current_playlist = ""
+                playlist_data = data.get("current_playlist", {})
+                if isinstance(playlist_data, dict):
+                    current_playlist = playlist_data.get("playlist", "")
+                elif isinstance(playlist_data, str):
+                    current_playlist = playlist_data
+                
+                # Extract time info
+                seconds_played = data.get("seconds_played", 0)
+                if isinstance(seconds_played, str):
+                    try:
+                        seconds_played = int(float(seconds_played))
+                    except (ValueError, TypeError):
+                        seconds_played = 0
+                
+                seconds_remaining = data.get("seconds_remaining", 0)
+                if isinstance(seconds_remaining, str):
+                    try:
+                        seconds_remaining = int(float(seconds_remaining))
+                    except (ValueError, TypeError):
+                        seconds_remaining = 0
+                
                 status_data = {
                     "available": True,
                     "timeout": False,
-                    "status_name": data.get("status_name", "unknown"),
-                    "status": data.get("status", 0),
-                    "current_playlist": data.get("current_playlist", {}).get(
-                        "playlist", ""
-                    )
-                    if isinstance(data.get("current_playlist"), dict)
-                    else data.get("current_playlist", ""),
+                    "status_name": status_name,
+                    "status": status_val,
+                    "current_playlist": current_playlist,
                     "current_sequence": data.get("current_sequence", ""),
-                    "seconds_played": data.get("seconds_played", 0),
-                    "seconds_remaining": data.get("seconds_remaining", 0),
+                    "seconds_played": seconds_played,
+                    "seconds_remaining": seconds_remaining,
                 }
         except json.JSONDecodeError:
             # Not JSON, ignore
