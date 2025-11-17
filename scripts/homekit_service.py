@@ -883,36 +883,12 @@ def main():
         if not homekit_ip:
             try:
                 import socket
-                import subprocess
-
-                # Try to get primary IP from hostname -I (most reliable)
-                try:
-                    result = subprocess.run(['hostname', '-I'], capture_output=True, text=True, timeout=5)
-                    if result.returncode == 0 and result.stdout.strip():
-                        ips = result.stdout.strip().split()
-                        # Prefer private IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
-                        for ip in ips:
-                            if ip.startswith(('192.168.', '10.', '172.')):
-                                homekit_ip = ip
-                                break
-                        # If no private IP found, use first IP
-                        if not homekit_ip and ips:
-                            homekit_ip = ips[0]
-                except:
-                    pass
-
-                # Fallback: Try to get the IP by connecting to an external address
-                if not homekit_ip:
-                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    s.connect(("8.8.8.8", 80))
-                    homekit_ip = s.getsockname()[0]
-                    s.close()
-
-                if homekit_ip:
-                    logger.info(f"Auto-detected HomeKit IP: {homekit_ip}")
-                else:
-                    logger.warning("Could not auto-detect IP, using 0.0.0.0")
-                    homekit_ip = "0.0.0.0"  # Listen on all interfaces
+                # Try to get the IP by connecting to an external address (doesn't actually connect)
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                homekit_ip = s.getsockname()[0]
+                s.close()
+                logger.info(f"Auto-detected HomeKit IP: {homekit_ip}")
             except Exception as e:
                 logger.warning(f"Could not auto-detect IP, using 0.0.0.0: {e}")
                 homekit_ip = "0.0.0.0"  # Listen on all interfaces
