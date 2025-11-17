@@ -79,17 +79,22 @@ fi
 # Make sure script is executable
 chmod +x "${SERVICE_SCRIPT}" 2>/dev/null
 
-# Check if service is already running
-if [ -f "${PID_FILE}" ]; then
-    OLD_PID=$(cat "${PID_FILE}" 2>/dev/null)
-    if [ -n "$OLD_PID" ] && ps -p "${OLD_PID}" > /dev/null 2>&1; then
-        echo "HomeKit service is already running (PID: ${OLD_PID})"
-        exit 0
-    else
-        # Remove stale PID file
-        rm -f "${PID_FILE}"
-    fi
+# Kill any existing HomeKit processes to avoid double-binding issues
+echo "Ensuring no existing HomeKit service is running..."
+if command -v pkill >/dev/null 2>&1; then
+    pkill -f homekit_service.py 2>/dev/null || true
+elif command -v killall >/dev/null 2>&1; then
+    killall homekit_service.py 2>/dev/null || true
+else
+    # Fallback: loop through ps output
+    ps aux | grep homekit_service.py | grep -v grep | awk '{print $2}' | while read -r pid; do
+        kill "$pid" 2>/dev/null || true
+        kill -9 "$pid" 2>/dev/null || true
+    done
 fi
+
+# Remove stale PID file if present
+rm -f "${PID_FILE}"
 
 # Start the service in background with logging
 echo "Starting FPP HomeKit service..."

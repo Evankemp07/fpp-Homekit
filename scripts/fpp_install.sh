@@ -20,6 +20,7 @@ echo "Started: $(date)" >> "${INSTALL_LOG}"
 
 # Determine if this is a brand new install (no config or state files)
 FIRST_INSTALL=0
+UPDATED_USING_SCRIPT=0
 if [ ! -f "${SCRIPTS_DIR}/homekit_config.json" ] && [ ! -f "${SCRIPTS_DIR}/homekit_accessory.state" ]; then
     FIRST_INSTALL=1
     echo "Detected first-time installation (no config/state files found)." | tee -a "${INSTALL_LOG}"
@@ -28,11 +29,22 @@ else
 
     # For updates, use the update script instead of reinstalling everything
     if [ -f "${SCRIPTS_DIR}/update_plugin.sh" ]; then
+        # Stop the HomeKit service before updating (if possible)
+        if [ -x "${PLUGIN_DIR}/scripts/postStop.sh" ]; then
+            echo "Stopping HomeKit service before update..." | tee -a "${INSTALL_LOG}"
+            if command -v sudo >/dev/null 2>&1; then
+                sudo -u fpp MEDIADIR="${MEDIADIR}" bash "${PLUGIN_DIR}/scripts/postStop.sh" >> "${INSTALL_LOG}" 2>&1 || true
+            else
+                MEDIADIR="${MEDIADIR}" bash "${PLUGIN_DIR}/scripts/postStop.sh" >> "${INSTALL_LOG}" 2>&1 || true
+            fi
+        fi
+
         echo "Running update script..." | tee -a "${INSTALL_LOG}"
         cd "${PLUGIN_DIR}"
         bash "${SCRIPTS_DIR}/update_plugin.sh" 2>&1 | tee -a "${INSTALL_LOG}"
+        UPDATED_USING_SCRIPT=1
         echo "Update completed successfully." | tee -a "${INSTALL_LOG}"
-        exit 0
+        cd "${PLUGIN_DIR}"
     else
         echo "Update script not found, falling back to normal install process." | tee -a "${INSTALL_LOG}"
     fi
@@ -175,6 +187,14 @@ else
     PYTHON3=$(echo "$PYTHON_INFO" | cut -d'|' -f1)
     PYTHON_PATH=$(echo "$PYTHON_INFO" | cut -d'|' -f2)
     echo "Python (cached): $PYTHON3 ($PYTHON_PATH)" >> "${INSTALL_LOG}"
+
+    if [ "${UPDATED_USING_SCRIPT}" -eq 1 ]; then
+        echo "Ensuring Python dependencies after update..." | tee -a "${INSTALL_LOG}"
+        if [ -n "$PYTHON3" ]; then
+            "${SCRIPTS_DIR}/install_python_deps.sh" "${PLUGIN_DIR}" "$PYTHON3" >> "${INSTALL_LOG}" 2>&1 || \
+                echo "Warning: Could not verify Python dependencies" | tee -a "${INSTALL_LOG}"
+        fi
+    fi
 fi
 
 # Create data directory for storing pairing information
@@ -198,6 +218,17 @@ if [ -f "${PLUGIN_DIR}/scripts/homekit_service.py" ]; then
     fi
 else
     echo "WARNING: homekit_service.py not found at ${PLUGIN_DIR}/scripts/homekit_service.py"
+fi
+
+# Ensure helper scripts are executable
+if [ -f "${PLUGIN_DIR}/scripts/check_mqtt_status.py" ]; then
+    chmod +x "${PLUGIN_DIR}/scripts/check_mqtt_status.py"
+    echo "✓ Made check_mqtt_status.py executable"
+fi
+
+if [ -f "${PLUGIN_DIR}/scripts/update_plugin.sh" ]; then
+    chmod +x "${PLUGIN_DIR}/scripts/update_plugin.sh"
+    echo "✓ Made update_plugin.sh executable"
 fi
 
 # Check if avahi-daemon is running
@@ -244,6 +275,21 @@ if command -v systemctl >/dev/null 2>&1; then
     elif command -v ss >/dev/null 2>&1; then
         if ss -tuln 2>/dev/null | grep -q ":1883 "; then
             echo "✓ mosquitto listening on port 1883"
+        fi
+    fi
+fi
+
+# Restart the HomeKit service after install/update
+if [ $FIRST_INSTALL -eq 1 ] || [ "${UPDATED_USING_SCRIPT}" -eq 1 ]; then
+    echo ""
+    echo "Step 6b: Starting HomeKit service..."
+    if [ -x "${PLUGIN_DIR}/scripts/postStart.sh" ]; then
+        if command -v sudo >/dev/null 2>&1; then
+            sudo -u fpp MEDIADIR="${MEDIADIR}" bash "${PLUGIN_DIR}/scripts/postStart.sh" >> "${INSTALL_LOG}" 2>&1 || \
+                echo "Warning: Could not start HomeKit service automatically" | tee -a "${INSTALL_LOG}"
+        else
+            MEDIADIR="${MEDIADIR}" bash "${PLUGIN_DIR}/scripts/postStart.sh" >> "${INSTALL_LOG}" 2>&1 || \
+                echo "Warning: Could not start HomeKit service automatically" | tee -a "${INSTALL_LOG}"
         fi
     fi
 fi
