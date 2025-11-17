@@ -182,11 +182,18 @@ function fppHomekitBuildApiEndpoints() {
         array_unshift($ports, 32320);
     }
     
-    // Add common fallback ports if none found
+    // Add common fallback ports if none found or if we want to scan
+    // Common FPP ports to try
+    $commonPorts = array(32320, 80, 8080, 8000, 8888, 32321);
+    foreach ($commonPorts as $commonPort) {
+        if (!in_array($commonPort, $ports)) {
+            $ports[] = $commonPort;
+        }
+    }
+    
+    // If still empty (shouldn't happen), add defaults
     if (empty($ports)) {
-        $ports[] = 32320; // Default FPP port (most common)
-        $ports[] = 80;    // Standard HTTP
-        $ports[] = 8080;  // Alternative HTTP
+        $ports[] = 32320;
     }
     
     $hosts = array_values(array_unique(array_filter($hosts)));
@@ -467,7 +474,31 @@ function fppHomekitStatus() {
         if (!$fppRunning) {
             $lastError .= ". FPP daemon (fppd) does not appear to be running. Start it with: sudo systemctl start fppd";
         } else {
-            $lastError .= ". FPP daemon is running but API is not accessible on the tried ports. Check FPP web interface to confirm the HTTP port.";
+            $lastError .= ". FPP daemon is running but API is not accessible on the tried ports";
+            
+            // Try to detect what port FPP might be listening on
+            if (function_exists('shell_exec')) {
+                $listeningPorts = @shell_exec("netstat -tulpn 2>/dev/null | grep -i 'fppd\\|lighttpd\\|nginx' | grep LISTEN | awk '{print $4}' | awk -F: '{print $NF}' | sort -u 2>/dev/null");
+                if (empty($listeningPorts)) {
+                    // Try alternative method (works on systems without netstat)
+                    $listeningPorts = @shell_exec("ss -tulpn 2>/dev/null | grep -i 'fppd\\|lighttpd\\|nginx' | grep LISTEN | awk '{print $5}' | awk -F: '{print $NF}' | sort -u 2>/dev/null");
+                }
+                if (empty($listeningPorts)) {
+                    // Try lsof as last resort
+                    $listeningPorts = @shell_exec("lsof -iTCP -sTCP:LISTEN -n -P 2>/dev/null | grep -i 'fppd\\|lighttpd\\|nginx' | awk '{print $9}' | awk -F: '{print $NF}' | sort -u 2>/dev/null");
+                }
+                
+                if (!empty($listeningPorts)) {
+                    $ports = array_filter(array_map('trim', explode("\n", trim($listeningPorts))));
+                    if (!empty($ports)) {
+                        $lastError .= ". FPP may be listening on port(s): " . implode(', ', $ports);
+                    } else {
+                        $lastError .= ". Could not detect FPP listening port. Check: netstat -tulpn | grep -i fppd";
+                    }
+                } else {
+                    $lastError .= ". Could not detect FPP listening port. Check FPP web interface or run: netstat -tulpn | grep -i fppd";
+                }
+            }
         }
         
         if (isset($apiResult['endpoint'])) {
