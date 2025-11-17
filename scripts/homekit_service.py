@@ -652,24 +652,41 @@ class FPPLightAccessory(Accessory):
             """Handle FPP status updates from MQTT."""
             try:
                 payload = msg.payload.decode('utf-8')
+                logger.debug(f"MQTT message on topic {msg.topic}: {payload[:200]}")  # Log first 200 chars
+                
                 # FPP status messages can be JSON or simple text
                 if payload.startswith('{'):
                     import json
                     status_data = json.loads(payload)
+                    
+                    # FPP uses numeric status codes: 0=idle, 1=playing, 2=paused, etc.
+                    status_code = status_data.get('status', 0)
                     status_name = status_data.get('status_name', 'idle')
+                    current_playlist = status_data.get('current_playlist', {})
+                    playlist_name = current_playlist.get('playlist', '') if isinstance(current_playlist, dict) else ''
+                    current_sequence = status_data.get('current_sequence', '')
+                    
+                    logger.debug(f"FPP status parsed: code={status_code}, name={status_name}, playlist={playlist_name}, sequence={current_sequence}")
+                    
+                    # Status code 1 means playing
+                    fpp_playing = (status_code == 1 or status_name.lower() == 'playing')
                 else:
                     # Simple text status
                     status_name = payload.lower()
-                
-                fpp_playing = status_name == 'playing'
+                    fpp_playing = status_name == 'playing'
+                    logger.debug(f"FPP status (text): {status_name}, playing={fpp_playing}")
                 
                 # Update HomeKit state if it differs from FPP state
                 if fpp_playing != self.is_on:
-                    logger.info(f"FPP status changed via MQTT: {status_name} (playing={fpp_playing})")
+                    logger.info(f"FPP status changed via MQTT: {status_name} (playing={fpp_playing}, was={self.is_on})")
                     self.is_on = fpp_playing
                     self.on_char.set_value(fpp_playing)
+                else:
+                    logger.debug(f"FPP status unchanged: {status_name} (playing={fpp_playing})")
             except Exception as e:
                 logger.error(f"Error processing MQTT status message: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
         
         self.mqtt_client.subscribe(status_topic, on_status_message)
         
