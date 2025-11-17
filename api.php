@@ -588,14 +588,15 @@ PYCODE;
                 $fppStatus['error_detail'] = 'Check failed: ' . $cleanOutput;
             }
         } else {
-            // No output - command might have failed, but don't make this a critical error
-            // The HomeKit service does its own MQTT monitoring
-            $fppStatus['status_text'] = 'Status Monitoring via Service';
-            $fppStatus['error_detail'] = 'FPP status is monitored by the HomeKit service. Check service logs for MQTT details.';
-            
-            // Optional: Try to determine why if user wants to debug
-            // This won't block the UI from working
+            // No output - command might have failed
+            // Show what we tried
+            $fppStatus['status_text'] = 'Status Check Failed';
+            $fppStatus['error_detail'] = 'HTTP API failed: ' . $lastError . '. MQTT check also failed. Check if FPP is running and API is accessible.';
         }
+    } else {
+        // shell_exec disabled
+        $fppStatus['status_text'] = 'Status Check Disabled';
+        $fppStatus['error_detail'] = 'PHP shell_exec is disabled. HTTP API also failed: ' . $lastError;
     }
     
     $result['fpp_status'] = $fppStatus;
