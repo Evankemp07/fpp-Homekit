@@ -100,10 +100,32 @@ function fppHomekitReadHttpPort($settingsPath) {
         return 0;
     }
     $contents = @file_get_contents($settingsPath);
-    if ($contents && preg_match('/^HTTPPort\s*=\s*(\d+)/m', $contents, $matches)) {
-        $port = (int)$matches[1];
-        if ($port > 0) {
-            return $port;
+    if ($contents) {
+        // Try multiple patterns to find HTTPPort
+        // Pattern 1: HTTPPort=32320
+        if (preg_match('/^HTTPPort\s*=\s*(\d+)/m', $contents, $matches)) {
+            $port = (int)$matches[1];
+            if ($port > 0) {
+                return $port;
+            }
+        }
+        // Pattern 2: HTTPPort = 32320 (with spaces)
+        if (preg_match('/^HTTPPort\s*=\s*(\d+)/m', $contents, $matches)) {
+            $port = (int)$matches[1];
+            if ($port > 0) {
+                return $port;
+            }
+        }
+        // Pattern 3: Look for any HTTPPort line
+        $lines = explode("\n", $contents);
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if (preg_match('/^HTTPPort\s*[=:]\s*(\d+)/i', $line, $matches)) {
+                $port = (int)$matches[1];
+                if ($port > 0) {
+                    return $port;
+                }
+            }
         }
     }
     return 0;
@@ -421,6 +443,23 @@ function fppHomekitStatus() {
     } else {
         // Build more helpful error message
         $lastError = $apiResult['error'] ?: "Failed to connect to FPP API";
+        
+        // Check if FPP daemon is running
+        $fppRunning = false;
+        if (function_exists('shell_exec')) {
+            // Check if fppd process exists
+            $fppCheck = @shell_exec('pgrep -f "fppd" 2>/dev/null');
+            if (!empty($fppCheck)) {
+                $fppRunning = true;
+            } else {
+                // Alternative check
+                $fppCheck2 = @shell_exec('ps aux | grep -i "[f]ppd" 2>/dev/null');
+                if (!empty($fppCheck2)) {
+                    $fppRunning = true;
+                }
+            }
+        }
+        
         if (isset($apiResult['tried_endpoints']) && is_array($apiResult['tried_endpoints']) && !empty($apiResult['tried_endpoints'])) {
             $triedList = implode(', ', array_slice($apiResult['tried_endpoints'], 0, 3));
             if (count($apiResult['tried_endpoints']) > 3) {
@@ -430,6 +469,14 @@ function fppHomekitStatus() {
         } elseif (isset($apiResult['url'])) {
             $lastError .= " (tried: {$apiResult['url']})";
         }
+        
+        // Add helpful troubleshooting info
+        if (!$fppRunning) {
+            $lastError .= ". FPP daemon (fppd) does not appear to be running. Start it with: sudo systemctl start fppd";
+        } else {
+            $lastError .= ". FPP daemon is running but API is not accessible on the tried ports. Check FPP web interface to confirm the HTTP port.";
+        }
+        
         if (isset($apiResult['endpoint'])) {
             $lastError .= " (last endpoint: {$apiResult['endpoint']})";
         }
