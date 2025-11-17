@@ -6,13 +6,13 @@
 	"homeURL": "https://github.com/Evankemp07/fpp-Homekit",
 	"srcURL": "https://github.com/Evankemp07/fpp-Homekit.git",
 	"bugURL": "https://github.com/Evankemp07/fpp-Homekit/issues",
+	"allowUpdates": 1,
 	"versions": [
 		{
 			"minFPPVersion": "9.0",
 			"maxFPPVersion": "0",
 			"branch": "master",
-			"sha": "",
-			"allowUpdates": 1,
+			"sha": "8ca69fdab0e90b4f48df682b6d253be5caf06b50",
 			"dependencies": {
 				"plugins": [],
 				"packages": [
