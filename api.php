@@ -668,20 +668,33 @@ PYCODE;
     // Try with timeout
     $hasTimeout = @shell_exec('which timeout 2>/dev/null');
 
-    if ($hasTimeout) {
-        $command = "timeout 5 python3 -W ignore -c " . escapeshellarg($pythonStatusScript) . " " .
-                   escapeshellarg($mqttBroker) . " " .
-                   escapeshellarg($mqttPort) . " " .
-                   escapeshellarg($mqttTopicPrefix) . " 2>&1";
-    } else {
-        // No timeout command, run directly (with Python timeout in script)
-        $command = "python3 -W ignore -c " . escapeshellarg($pythonStatusScript) . " " .
-                   escapeshellarg($mqttBroker) . " " .
-                   escapeshellarg($mqttPort) . " " .
-                   escapeshellarg($mqttTopicPrefix) . " 2>&1";
-    }
+    // Try multiple Python commands in case python3 isn't in PATH
+    $pythonCommands = array(
+        'python3 -W ignore -c ' . escapeshellarg($pythonStatusScript),
+        'python -W ignore -c ' . escapeshellarg($pythonStatusScript),
+        '/usr/bin/python3 -W ignore -c ' . escapeshellarg($pythonStatusScript)
+    );
 
-    $output = @shell_exec($command);
+    $output = '';
+    $triedCommands = array();
+
+    foreach ($pythonCommands as $pythonCmd) {
+        $fullCommand = $pythonCmd . " " . escapeshellarg($mqttBroker) . " " .
+                      escapeshellarg($mqttPort) . " " . escapeshellarg($mqttTopicPrefix);
+
+        if ($hasTimeout) {
+            $fullCommand = "timeout 5 " . $fullCommand;
+        }
+
+        $fullCommand .= " 2>&1";
+        $triedCommands[] = $fullCommand;
+
+        $cmdOutput = @shell_exec($fullCommand);
+        if ($cmdOutput) {
+            $output = $cmdOutput;
+            break; // Found a working command
+        }
+    }
 
     if ($output) {
         $mqttStatus = @json_decode(trim($output), true);
@@ -718,7 +731,14 @@ PYCODE;
         }
     } else {
         // No output - command might have failed
-        $lastError = 'MQTT status check command failed - check if python3 is available';
+        // Try a simple connectivity test with nc/netcat
+        $connectivityTest = @shell_exec("timeout 2 bash -c 'echo > /dev/tcp/$mqttBroker/$mqttPort' 2>/dev/null && echo 'CONNECTED' || echo 'FAILED'");
+
+        if (trim($connectivityTest) === 'CONNECTED') {
+            $lastError = 'Can connect to MQTT broker, but Python/paho-mqtt issue. Tried commands: ' . implode('; ', array_slice($triedCommands, 0, 2));
+        } else {
+            $lastError = 'Cannot connect to MQTT broker at ' . $mqttBroker . ':' . $mqttPort . '. Start mosquitto: sudo systemctl start mosquitto';
+        }
     }
 
     // Fallback to HTTP API if MQTT fails
