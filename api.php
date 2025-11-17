@@ -158,11 +158,17 @@ function fppHomekitBuildApiEndpoints() {
         $hosts[] = '127.0.0.1';
     }
     
-    // Add common fallback ports if none found
+    // Add common fallback ports if none found (prioritize FPP default)
     if (empty($ports)) {
-        $ports[] = 32320; // Default FPP port
-        $ports[] = 80;
-        $ports[] = 8080;
+        $ports[] = 32320; // Default FPP port (most common)
+        $ports[] = 80;    // Standard HTTP
+        $ports[] = 8080;  // Alternative HTTP
+    } else {
+        // Ensure 32320 is tried first if we found other ports
+        // (FPP default is most likely to work)
+        if (!in_array(32320, $ports)) {
+            array_unshift($ports, 32320);
+        }
     }
     
     $hosts = array_values(array_unique(array_filter($hosts)));
@@ -342,7 +348,8 @@ function fppHomekitStatus() {
     );
     
     // Use the standard FPP API request method (like other FPP plugins, e.g. fpp-HomeAssistant)
-    $apiResult = fppHomekitApiRequest('GET', '/status', array('timeout' => 2));
+    // Increase timeout slightly for first connection attempt
+    $apiResult = fppHomekitApiRequest('GET', '/status', array('timeout' => 3, 'connect_timeout' => 2));
     $apiData = null;
     $lastError = '';
     
@@ -354,7 +361,14 @@ function fppHomekitStatus() {
             $lastError = "Invalid response from {$apiResult['endpoint']}/status";
         }
     } else {
+        // Build more helpful error message
         $lastError = $apiResult['error'] ?: "Failed to connect to FPP API";
+        if (isset($apiResult['url'])) {
+            $lastError .= " (tried: {$apiResult['url']})";
+        }
+        if (isset($apiResult['endpoint'])) {
+            $lastError .= " (endpoint: {$apiResult['endpoint']})";
+        }
     }
     
     if ($apiData) {
