@@ -177,10 +177,20 @@ function fppHomekitDetectHostIPs() {
     $prependIfValid = function(&$list, $value) {
         if (!empty($value) && is_string($value)) {
             $value = trim($value);
-            if ($value !== '' && $value !== '::1' && $value !== '127.0.0.1' && $value !== 'localhost' && filter_var($value, FILTER_VALIDATE_IP)) {
-                if (!in_array($value, $list)) {
-                    $list[] = $value;
-                }
+            // Skip if empty, IPv6, localhost variants, or external IPs
+            if ($value === '' || strpos($value, ':') !== false || $value === '::1' || $value === '127.0.0.1' || $value === 'localhost') {
+                return;
+            }
+            // Only accept valid IPv4 addresses (exclude IPv6 and invalid formats)
+            if (filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+                return;
+            }
+            // Additional check: only accept private IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+            if (!preg_match('/^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/', $value)) {
+                return;
+            }
+            if (!in_array($value, $list)) {
+                $list[] = $value;
             }
         }
     };
