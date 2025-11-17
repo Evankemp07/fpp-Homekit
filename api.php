@@ -279,7 +279,13 @@ function fppHomekitBuildApiEndpoints() {
         if ($apiConfig && isset($apiConfig['host']) && isset($apiConfig['port'])) {
             $hosts[] = $apiConfig['host'];
             $ports[] = (int)$apiConfig['port'];
+            // Debug: log that config was loaded
+            error_log("FPP API Config loaded: {$apiConfig['host']}:{$apiConfig['port']}");
+        } else {
+            error_log("FPP API Config file exists but invalid: " . json_encode($apiConfig));
         }
+    } else {
+        error_log("FPP API Config file not found at: $apiConfigFile");
     }
     
     // Second priority: Environment variables
