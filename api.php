@@ -581,20 +581,148 @@ function fppHomekitStatus() {
         'error_detail' => ''
     );
     
-    // Use the standard FPP API request method (like other FPP plugins, e.g. fpp-HomeAssistant)
-    // Increase timeout slightly for first connection attempt
-    $apiResult = fppHomekitApiRequest('GET', '/status', array('timeout' => 3, 'connect_timeout' => 2));
+    // Use MQTT to get FPP status (more reliable than HTTP API)
     $apiData = null;
     $lastError = '';
-    
-    if ($apiResult['success'] && !empty($apiResult['body'])) {
-        $decoded = @json_decode($apiResult['body'], true);
-        if ($decoded && is_array($decoded) && isset($decoded['status_name'])) {
-            $apiData = $decoded;
+
+    // Get MQTT config
+    $mqttBroker = 'localhost';
+    $mqttPort = 1883;
+    $mqttTopicPrefix = 'FPP';
+
+    if (file_exists($configFile)) {
+        $config = @json_decode(file_get_contents($configFile), true);
+        if ($config) {
+            if (isset($config['mqtt']['broker'])) {
+                $mqttBroker = $config['mqtt']['broker'];
+            }
+            if (isset($config['mqtt']['port'])) {
+                $mqttPort = intval($config['mqtt']['port']);
+            }
+            if (isset($config['mqtt']['topic_prefix'])) {
+                $mqttTopicPrefix = $config['mqtt']['topic_prefix'];
+            }
+        }
+    }
+
+    // Python script to check FPP status via MQTT
+    $pythonStatusScript = <<<'PYCODE'
+import sys, json, time
+try:
+    import paho.mqtt.client as mqtt
+except ImportError:
+    error_msg = "paho-mqtt not installed. Install with: python3 -m pip install paho-mqtt --user"
+    print(json.dumps({"error": error_msg, "available": False, "install_command": "python3 -m pip install paho-mqtt --user"}))
+    sys.exit(0)
+
+broker = sys.argv[1] if len(sys.argv) > 1 else 'localhost'
+port = int(sys.argv[2]) if len(sys.argv) > 2 else 1883
+prefix = sys.argv[3] if len(sys.argv) > 3 else 'FPP'
+
+status_data = {"available": False, "timeout": True}
+
+def on_connect(client, userdata, flags, rc, *args, **kwargs):
+    if rc == 0:
+        client.subscribe(f"{prefix}/status")
+
+def on_message(client, userdata, msg):
+    global status_data
+    try:
+        data = json.loads(msg.payload.decode('utf-8'))
+        status_data = {
+            "available": True,
+            "timeout": False,
+            "status_name": data.get("status_name", "unknown"),
+            "status": data.get("status", 0),
+            "current_playlist": data.get("current_playlist", {}).get("playlist", "") if isinstance(data.get("current_playlist"), dict) else data.get("current_playlist", ""),
+            "current_sequence": data.get("current_sequence", ""),
+            "seconds_played": data.get("seconds_played", 0),
+            "seconds_remaining": data.get("seconds_remaining", 0)
+        }
+    except:
+        pass
+
+try:
+    try:
+        client = mqtt.Client(client_id="fpp-hk-status", callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
+    except:
+        client = mqtt.Client(client_id="fpp-hk-status")
+
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect(broker, port, keepalive=5)
+    client.loop_start()
+
+    for _ in range(30):  # Wait up to 3 seconds
+        if status_data.get("available"):
+            break
+        time.sleep(0.1)
+
+    client.loop_stop()
+    client.disconnect()
+    print(json.dumps(status_data))
+except Exception as e:
+    print(json.dumps({"error": str(e), "available": False}))
+PYCODE;
+
+    // Try with timeout
+    $hasTimeout = @shell_exec('which timeout 2>/dev/null');
+
+    if ($hasTimeout) {
+        $command = "timeout 5 python3 -W ignore -c " . escapeshellarg($pythonStatusScript) . " " .
+                   escapeshellarg($mqttBroker) . " " .
+                   escapeshellarg($mqttPort) . " " .
+                   escapeshellarg($mqttTopicPrefix) . " 2>&1";
+    } else {
+        // No timeout command, run directly (with Python timeout in script)
+        $command = "python3 -W ignore -c " . escapeshellarg($pythonStatusScript) . " " .
+                   escapeshellarg($mqttBroker) . " " .
+                   escapeshellarg($mqttPort) . " " .
+                   escapeshellarg($mqttTopicPrefix) . " 2>&1";
+    }
+
+    $output = @shell_exec($command);
+
+    if ($output) {
+        $mqttStatus = @json_decode(trim($output), true);
+        if ($mqttStatus && is_array($mqttStatus)) {
+            if (isset($mqttStatus['available']) && $mqttStatus['available']) {
+                // Got real status from FPP via MQTT
+                $apiData = array(
+                    'status_name' => $mqttStatus['status_name'] ?? 'unknown',
+                    'status' => $mqttStatus['status'] ?? 0,
+                    'current_playlist' => $mqttStatus['current_playlist'] ?? '',
+                    'current_sequence' => $mqttStatus['current_sequence'] ?? '',
+                    'seconds_played' => $mqttStatus['seconds_played'] ?? 0,
+                    'seconds_remaining' => $mqttStatus['seconds_remaining'] ?? 0,
+                    'volume' => 0, // MQTT doesn't provide volume
+                    'playing' => ($mqttStatus['status'] ?? 0) === 1
+                );
+            } elseif (isset($mqttStatus['timeout']) && $mqttStatus['timeout']) {
+                $lastError = 'FPP MQTT status timeout - FPP may not be publishing status updates';
+            } elseif (isset($mqttStatus['error'])) {
+                $errorMsg = $mqttStatus['error'];
+                if (strpos($errorMsg, 'Connection refused') !== false) {
+                    $lastError = 'Cannot connect to MQTT broker at ' . $mqttBroker . ':' . $mqttPort . '. Start mosquitto: sudo systemctl start mosquitto';
+                } elseif (strpos($errorMsg, 'paho-mqtt not installed') !== false || strpos($errorMsg, 'paho.mqtt') !== false) {
+                    // Show helpful install instructions
+                    $installCmd = isset($mqttStatus['install_command']) ? $mqttStatus['install_command'] : 'python3 -m pip install paho-mqtt --user';
+                    $lastError = 'paho-mqtt Python package is not installed. Install it with: ' . $installCmd;
+                } else {
+                    $lastError = 'MQTT Error: ' . $errorMsg;
+                }
+            }
         } else {
-            $lastError = "Invalid response from {$apiResult['endpoint']}/status";
+            // Failed to parse JSON - might be a Python error
+            $lastError = 'MQTT status check failed: ' . htmlspecialchars(substr($output, 0, 200));
         }
     } else {
+        // No output - command might have failed
+        $lastError = 'MQTT status check command failed - check if python3 is available';
+    }
+
+    // Fallback to HTTP API if MQTT fails
+    if (!$apiData && empty($lastError)) {
         // Build more helpful error message
         $lastError = $apiResult['error'] ?: "Failed to connect to FPP API";
         
@@ -712,7 +840,7 @@ function fppHomekitStatus() {
         $fppStatus['error_detail'] = '';
         
         $result['fpp_status'] = $fppStatus;
-        $result['control_method'] = 'MQTT';
+        $result['control_method'] = 'MQTT (Status via MQTT)';
         
         // Get configured playlist
         $playlist = '';
