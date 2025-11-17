@@ -24,7 +24,18 @@ if [ ! -f "${SCRIPTS_DIR}/homekit_config.json" ] && [ ! -f "${SCRIPTS_DIR}/homek
     FIRST_INSTALL=1
     echo "Detected first-time installation (no config/state files found)." | tee -a "${INSTALL_LOG}"
 else
-    echo "Detected existing installation; skipping dependency re-install." | tee -a "${INSTALL_LOG}"
+    echo "Detected existing installation - using update script." | tee -a "${INSTALL_LOG}"
+
+    # For updates, use the update script instead of reinstalling everything
+    if [ -f "${SCRIPTS_DIR}/update_plugin.sh" ]; then
+        echo "Running update script..." | tee -a "${INSTALL_LOG}"
+        cd "${PLUGIN_DIR}"
+        bash "${SCRIPTS_DIR}/update_plugin.sh" 2>&1 | tee -a "${INSTALL_LOG}"
+        echo "Update completed successfully." | tee -a "${INSTALL_LOG}"
+        exit 0
+    else
+        echo "Update script not found, falling back to normal install process." | tee -a "${INSTALL_LOG}"
+    fi
 fi
 
 if [ $FIRST_INSTALL -eq 1 ]; then
