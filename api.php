@@ -1614,14 +1614,36 @@ function fppHomekitNetworkInterfaces() {
         }
     }
     
-    // Current IP defaults to empty (auto-detect)
-    if ($currentIp === null) {
-        $currentIp = '';
+    // If no current IP is set, default to the hardwired ethernet interface
+    if ($currentIp === null || $currentIp === '') {
+        // Find the first ethernet interface (eth0, enp*, ens*, etc.)
+        foreach ($interfaces as $iface) {
+            $name = strtolower($iface['name']);
+            // Prioritize wired interfaces: eth, enp, ens
+            if (strpos($name, 'eth') === 0 || 
+                strpos($name, 'enp') === 0 || 
+                strpos($name, 'ens') === 0 ||
+                strpos($name, 'primary') !== false) {
+                $currentIp = $iface['ip'];
+                break;
+            }
+        }
+        
+        // If still not set, use first interface
+        if (($currentIp === null || $currentIp === '') && !empty($interfaces)) {
+            $currentIp = $interfaces[0]['ip'];
+        }
+        
+        // If still nothing, leave empty for auto-detect
+        if ($currentIp === null) {
+            $currentIp = '';
+        }
     }
     
     $result = array(
         'interfaces' => $interfaces,
-        'current_ip' => $currentIp
+        'current_ip' => $currentIp,
+        'default_is_ethernet' => !empty($currentIp)
     );
     
     return json($result);
