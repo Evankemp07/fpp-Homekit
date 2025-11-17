@@ -363,34 +363,20 @@ function fppHomekitStatus() {
         'error_detail' => ''
     );
     
-    // Use the standard FPP API discovery method (like other FPP plugins)
-    $endpoints = fppHomekitBuildApiEndpoints();
+    // Use the standard FPP API request method (like other FPP plugins, e.g. fpp-HomeAssistant)
+    $apiResult = fppHomekitApiRequest('GET', '/status', array('timeout' => 2));
     $apiData = null;
     $lastError = '';
     
-    // Try each endpoint until one works
-    foreach ($endpoints as $baseUrl) {
-        $apiUrl = rtrim($baseUrl, '/') . '/status';
-        
-        $context = stream_context_create(array(
-            'http' => array(
-                'timeout' => 2,
-                'ignore_errors' => true
-            )
-        ));
-        
-        $response = @file_get_contents($apiUrl, false, $context);
-        if ($response !== false && !empty($response)) {
-            $decoded = @json_decode($response, true);
-            if ($decoded && is_array($decoded) && isset($decoded['status_name'])) {
-                $apiData = $decoded;
-                break; // Found working endpoint
-            } else {
-                $lastError = "Invalid response from {$apiUrl}";
-            }
+    if ($apiResult['success'] && !empty($apiResult['body'])) {
+        $decoded = @json_decode($apiResult['body'], true);
+        if ($decoded && is_array($decoded) && isset($decoded['status_name'])) {
+            $apiData = $decoded;
         } else {
-            $lastError = "Failed to connect to {$apiUrl}";
+            $lastError = "Invalid response from {$apiResult['endpoint']}/status";
         }
+    } else {
+        $lastError = $apiResult['error'] ?: "Failed to connect to FPP API";
     }
     
     if ($apiData) {
