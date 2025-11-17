@@ -261,11 +261,14 @@ function fppHomekitApiRequest($method, $path, $options = array()) {
     $lastEndpoint = '';
     $lastResponse = '';
     $lastUrl = '';
+    $triedEndpoints = array(); // Track all endpoints tried for debugging
     
-    foreach (fppHomekitBuildApiEndpoints() as $endpoint) {
+    $endpoints = fppHomekitBuildApiEndpoints();
+    foreach ($endpoints as $endpoint) {
         $url = rtrim($endpoint, '/') . $path;
         $lastEndpoint = $endpoint;
         $lastUrl = $url;
+        $triedEndpoints[] = $url; // Track this endpoint
         
         $ch = curl_init($url);
         if ($ch === false) {
@@ -319,7 +322,9 @@ function fppHomekitApiRequest($method, $path, $options = array()) {
         'url' => $lastUrl,
         'http_code' => $lastHttpCode,
         'body' => $lastResponse,
-        'error' => $lastError
+        'error' => $lastError,
+        'tried_endpoints' => $triedEndpoints, // Show all endpoints that were tried
+        'first_endpoint' => !empty($triedEndpoints) ? $triedEndpoints[0] : null
     );
 }
 
