@@ -1091,7 +1091,10 @@ if (file_exists($cssPath)) {
         const homekitIpSelect = document.getElementById('homekit-ip');
         const saveBtn = document.getElementById('save-homekit-network-btn');
         
-        if (!homekitIpSelect || !saveBtn) return;
+        if (!homekitIpSelect || !saveBtn) {
+            debugLog('Save button or select not found');
+            return;
+        }
         
         const originalLabel = saveBtn.textContent;
         saveBtn.disabled = true;
@@ -1108,29 +1111,39 @@ if (file_exists($cssPath)) {
             method: 'POST',
             body: formData
         })
-            .then(response => response.text())
+            .then(response => {
+                debugLog('Save response status', response.status);
+                return response.text();
+            })
             .then(text => {
-                debugLog('Raw save response', text);
+                debugLog('Raw save response', text.substring(0, 500));
+                
+                let data;
                 try {
-                    return JSON.parse(text);
+                    data = JSON.parse(text);
                 } catch (e) {
                     throw new Error('Invalid JSON response: ' + text.substring(0, 200));
                 }
-            })
-            .then(data => {
-                debugLog('HomeKit network config save response', data);
-                if (data.success) {
+                
+                debugLog('Parsed save response', data);
+                
+                // Check for both 'success' and 'status' fields
+                if (data.success || data.status === 'OK') {
                     showMessage('✓ HomeKit network config saved. Restarting service...', 'success');
                     // Restart the service to apply changes
                     setTimeout(() => {
                         restartService();
                     }, 1000);
                 } else {
-                    showMessage('Error saving HomeKit network config: ' + (data.error || 'Unknown error'), 'error');
+                    const errorMsg = data.error || data.message || 'Unknown error';
+                    showMessage('Error saving HomeKit network config: ' + errorMsg, 'error');
                 }
             })
             .catch(error => {
-                debugLog('Error saving HomeKit network config', { error: error.message });
+                debugLog('Error saving HomeKit network config', { 
+                    error: error.message,
+                    stack: error.stack 
+                });
                 showMessage('Error saving HomeKit network config: ' + error.message, 'error');
             })
             .finally(() => {

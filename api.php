@@ -976,7 +976,7 @@ function fppHomekitSaveConfig() {
     // Update HomeKit IP
     if (isset($_POST['homekit_ip'])) {
         $homekitIp = trim($_POST['homekit_ip']);
-        // Empty string means auto-detect
+        // Empty string means auto-detect, store it
         $config['homekit_ip'] = $homekitIp;
     }
     
