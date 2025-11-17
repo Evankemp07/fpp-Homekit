@@ -573,18 +573,24 @@ class FPPLightAccessory(Accessory):
         
         # Initialize MQTT client (MQTT only, no HTTP fallback)
         if not MQTT_AVAILABLE:
-            logger.error("MQTT support required but paho-mqtt not installed. Install with: pip install paho-mqtt")
-            raise RuntimeError("MQTT support required but paho-mqtt not installed")
-        
-        mqtt_config = get_mqtt_config()
-        self.mqtt_client = FPPMQTTClient(mqtt_config)
-        self.use_mqtt = True
+            logger.warning("MQTT not available - paho-mqtt not installed. Install with: pip install paho-mqtt --user")
+            logger.warning("HomeKit service will start but FPP control will not work until paho-mqtt is installed")
+            self.mqtt_client = None
+            self.use_mqtt = False
+        else:
+            mqtt_config = get_mqtt_config()
+            self.mqtt_client = FPPMQTTClient(mqtt_config)
+            self.use_mqtt = True
         
         # Try to connect to MQTT (will retry in background thread if fails)
-        mqtt_connected = self.mqtt_client.connect()
-        if not mqtt_connected:
-            logger.warning("Initial MQTT connection failed, will retry in background thread")
-            logger.warning("Service will start but control commands won't work until MQTT connects")
+        mqtt_connected = False
+        if self.use_mqtt and self.mqtt_client:
+            mqtt_connected = self.mqtt_client.connect()
+            if not mqtt_connected:
+                logger.warning("Initial MQTT connection failed, will retry in background thread")
+                logger.warning("Service will start but control commands won't work until MQTT connects")
+        else:
+            logger.warning("MQTT not available - service will start but FPP control will not work")
         
         # Add Light service with On characteristic
         service = self.add_preload_service('Lightbulb')
@@ -595,14 +601,16 @@ class FPPLightAccessory(Accessory):
         self.fpp_status_polling = True
         
         # Subscribe to FPP status updates via MQTT (if connected)
-        if mqtt_connected:
+        if self.use_mqtt and mqtt_connected and self.mqtt_client:
             self.subscribe_to_status()
         
-        # Start MQTT polling thread (handles reconnections and subscriptions)
-        self.poll_thread = threading.Thread(target=self.poll_fpp_status_mqtt, daemon=True)
-        self.poll_thread.start()
+        # Start MQTT polling thread (handles reconnections and subscriptions) - only if MQTT is available
+        if self.use_mqtt and self.mqtt_client:
+            self.poll_thread = threading.Thread(target=self.poll_fpp_status_mqtt, daemon=True)
+            self.poll_thread.start()
         
-        logger.info(f"FPP-Controller Accessory initialized with playlist: {self.playlist_name} (MQTT only, connected={mqtt_connected})")
+        mqtt_status = "MQTT available" if self.use_mqtt else "MQTT not available (paho-mqtt not installed)"
+        logger.info(f"FPP-Controller Accessory initialized with playlist: {self.playlist_name} ({mqtt_status}, connected={mqtt_connected})")
     
     def load_config(self):
         """Load configuration from JSON file"""
@@ -646,6 +654,10 @@ class FPPLightAccessory(Accessory):
     
     def subscribe_to_status(self):
         """Subscribe to FPP status updates via MQTT."""
+        if not self.use_mqtt or not self.mqtt_client:
+            logger.warning("Cannot subscribe to MQTT status: paho-mqtt not installed")
+            return
+        
         status_topic = f"{self.mqtt_client.topic_prefix}/status"
         
         def on_status_message(client, userdata, msg):
@@ -736,6 +748,11 @@ class FPPLightAccessory(Accessory):
             logger.warning("No playlist configured")
             return
         
+        if not self.use_mqtt or not self.mqtt_client:
+            logger.error(f"Cannot start playlist: paho-mqtt not installed. Install with: pip install paho-mqtt --user")
+            logger.error(f"Playlist: {self.playlist_name}")
+            return
+        
         if not self.mqtt_client.connected:
             logger.error(f"Cannot start playlist: MQTT not connected. Playlist: {self.playlist_name}")
             logger.error("MQTT connection will be retried automatically")
@@ -748,6 +765,10 @@ class FPPLightAccessory(Accessory):
     
     def stop_playlist(self):
         """Stop FPP playback via MQTT"""
+        if not self.use_mqtt or not self.mqtt_client:
+            logger.error("Cannot stop playback: paho-mqtt not installed. Install with: pip install paho-mqtt --user")
+            return
+        
         if not self.mqtt_client.connected:
             logger.error("Cannot stop playback: MQTT not connected")
             logger.error("MQTT connection will be retried automatically")
@@ -760,6 +781,10 @@ class FPPLightAccessory(Accessory):
     
     def poll_fpp_status_mqtt(self):
         """Keep MQTT connection alive and handle reconnections"""
+        if not self.use_mqtt or not self.mqtt_client:
+            logger.warning("MQTT polling thread started but paho-mqtt not available")
+            return
+        
         subscriptions_setup = False
         last_status_request = 0
         
