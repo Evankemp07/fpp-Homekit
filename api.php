@@ -1428,35 +1428,16 @@ function fppHomekitNetworkInterfaces() {
         }
     }
     
-    // Get network interfaces using 'ip' command (Linux)
-    if (command_exists('ip')) {
-        // Get all interfaces with their IPs (excluding loopback and IPv6)
-        $output = shell_exec('ip -4 addr show 2>/dev/null | grep -E "^[0-9]+:|inet " | sed "N;s/\n/ /"');
-        if ($output) {
-            $lines = explode("\n", trim($output));
-            foreach ($lines as $line) {
-                // Parse: "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP>     inet 192.168.1.100/24"
-                if (preg_match('/\d+:\s+(\S+):.*inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
-                    $ifname = $matches[1];
-                    $ip = $matches[2];
-                    // Skip loopback
-                    if ($ifname !== 'lo' && $ip !== '127.0.0.1') {
-                        $interfaces[] = array(
-                            'name' => $ifname,
-                            'ip' => $ip
-                        );
-                    }
-                }
-            }
-        }
-        
-        // Fallback: simpler parsing
-        if (empty($interfaces)) {
-            $output = shell_exec('ip -4 -o addr show scope global 2>/dev/null');
+    // Try multiple methods to get network interfaces
+    if (function_exists('shell_exec')) {
+        // Method 1: Use 'ip' command (Linux)
+        if (command_exists('ip')) {
+            $output = @shell_exec('ip -4 -o addr show 2>/dev/null | grep -v "127.0.0.1"');
             if ($output) {
                 $lines = explode("\n", trim($output));
                 foreach ($lines as $line) {
-                    if (preg_match('/\d+:\s+(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
+                    // Parse: "2: eth0    inet 192.168.1.100/24 ..."
+                    if (preg_match('/^\d+:\s+(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
                         $ifname = $matches[1];
                         $ip = $matches[2];
                         if ($ifname !== 'lo' && $ip !== '127.0.0.1') {
@@ -1469,34 +1450,61 @@ function fppHomekitNetworkInterfaces() {
                 }
             }
         }
-    }
-    
-    // Fallback: try ifconfig (macOS/BSD)
-    if (empty($interfaces) && command_exists('ifconfig')) {
-        $output = shell_exec('ifconfig -a 2>/dev/null');
-        if ($output) {
-            $lines = explode("\n", $output);
-            $currentIface = null;
-            foreach ($lines as $line) {
-                // New interface
-                if (preg_match('/^(\S+):/', $line, $matches)) {
-                    $currentIface = $matches[1];
-                }
-                // IP address line
-                if ($currentIface && preg_match('/inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
-                    $ip = $matches[1];
-                    if ($currentIface !== 'lo' && $currentIface !== 'lo0' && $ip !== '127.0.0.1') {
-                        $interfaces[] = array(
-                            'name' => $currentIface,
-                            'ip' => $ip
-                        );
+        
+        // Method 2: Try hostname command
+        if (empty($interfaces) && command_exists('hostname')) {
+            $ip = @shell_exec('hostname -I 2>/dev/null | awk \'{print $1}\'');
+            if ($ip && trim($ip) && trim($ip) !== '127.0.0.1') {
+                $interfaces[] = array(
+                    'name' => 'Primary',
+                    'ip' => trim($ip)
+                );
+            }
+        }
+        
+        // Method 3: Try ifconfig (macOS/BSD)
+        if (empty($interfaces) && command_exists('ifconfig')) {
+            $output = @shell_exec('ifconfig 2>/dev/null | grep -A 1 "^[a-z]" | grep "inet " | grep -v "127.0.0.1"');
+            if ($output) {
+                $lines = explode("\n", trim($output));
+                $index = 1;
+                foreach ($lines as $line) {
+                    if (preg_match('/inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
+                        $ip = $matches[1];
+                        if ($ip !== '127.0.0.1') {
+                            $interfaces[] = array(
+                                'name' => 'Interface ' . $index,
+                                'ip' => $ip
+                            );
+                            $index++;
+                        }
                     }
                 }
             }
         }
     }
     
-    // Remove duplicates (same IP on multiple interfaces)
+    // Method 4: PHP socket method (most reliable)
+    if (empty($interfaces)) {
+        try {
+            $sock = @socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
+            if ($sock) {
+                @socket_connect($sock, '8.8.8.8', 53);
+                @socket_getsockname($sock, $ip);
+                @socket_close($sock);
+                if ($ip && $ip !== '127.0.0.1') {
+                    $interfaces[] = array(
+                        'name' => 'Primary Interface',
+                        'ip' => $ip
+                    );
+                }
+            }
+        } catch (Exception $e) {
+            // Ignore socket errors
+        }
+    }
+    
+    // Remove duplicates
     $seen = array();
     $uniqueInterfaces = array();
     foreach ($interfaces as $iface) {
@@ -1508,10 +1516,20 @@ function fppHomekitNetworkInterfaces() {
     }
     $interfaces = $uniqueInterfaces;
     
-    // If no current IP set and we have interfaces, don't set a default (let it be empty for auto-detect)
-    // Current IP will be empty string or the saved value
+    // Ensure we always have at least something
+    if (empty($interfaces)) {
+        // Last resort: Try to get server IP
+        if (isset($_SERVER['SERVER_ADDR']) && $_SERVER['SERVER_ADDR'] !== '127.0.0.1') {
+            $interfaces[] = array(
+                'name' => 'Server IP',
+                'ip' => $_SERVER['SERVER_ADDR']
+            );
+        }
+    }
+    
+    // Current IP defaults to empty (auto-detect)
     if ($currentIp === null) {
-        $currentIp = ''; // Empty means auto-detect
+        $currentIp = '';
     }
     
     $result = array(
