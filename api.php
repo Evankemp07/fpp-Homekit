@@ -161,17 +161,17 @@ function fppHomekitBuildApiEndpoints() {
         $hosts[] = '127.0.0.1';
     }
     
-    // Add common fallback ports if none found (prioritize FPP default)
+    // ALWAYS ensure 32320 is in the ports list (FPP default)
+    // Even if detected ports exist, 32320 should be tried first
+    if (!in_array(32320, $ports)) {
+        array_unshift($ports, 32320);
+    }
+    
+    // Add common fallback ports if none found
     if (empty($ports)) {
         $ports[] = 32320; // Default FPP port (most common)
         $ports[] = 80;    // Standard HTTP
         $ports[] = 8080;  // Alternative HTTP
-    } else {
-        // Ensure 32320 is tried first if we found other ports
-        // (FPP default is most likely to work)
-        if (!in_array(32320, $ports)) {
-            array_unshift($ports, 32320);
-        }
     }
     
     $hosts = array_values(array_unique(array_filter($hosts)));
