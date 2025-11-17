@@ -377,50 +377,82 @@ function fppHomekitStatus() {
         }
     }
     
-    // Try HTTP API
-    $apiUrl = "http://{$fppApiHost}:{$fppApiPort}/api/status";
-    $context = stream_context_create(array(
-        'http' => array(
-            'timeout' => 2,
-            'ignore_errors' => true
-        )
-    ));
+    // Try HTTP API - test multiple ports and hosts
+    $apiHosts = array('localhost', '127.0.0.1');
+    $apiPorts = array($fppApiPort, 32320, 80);
     
-    $apiResponse = @file_get_contents($apiUrl, false, $context);
-    if ($apiResponse) {
-        $apiData = @json_decode($apiResponse, true);
-        if ($apiData && is_array($apiData)) {
-            // Got status from HTTP API
-            $fppStatus['status_name'] = $apiData['status_name'] ?? 'unknown';
-            $fppStatus['current_playlist'] = $apiData['current_playlist'] ?? '';
-            $fppStatus['current_sequence'] = $apiData['current_sequence'] ?? '';
-            $fppStatus['seconds_elapsed'] = $apiData['seconds_played'] ?? 0;
-            $fppStatus['seconds_remaining'] = $apiData['seconds_remaining'] ?? 0;
-            $fppStatus['volume'] = $apiData['volume'] ?? 0;
+    $apiResponse = null;
+    $apiData = null;
+    $lastError = '';
+    
+    foreach ($apiHosts as $host) {
+        foreach ($apiPorts as $port) {
+            $apiUrl = "http://{$host}:{$port}/api/status";
+            $context = stream_context_create(array(
+                'http' => array(
+                    'timeout' => 2,
+                    'ignore_errors' => true
+                )
+            ));
             
-            // Determine playing state
-            $statusCode = $apiData['status'] ?? 0;
-            $statusName = strtolower($fppStatus['status_name']);
-            $fppStatus['playing'] = ($statusCode == 1 || $statusName === 'playing');
-            
-            $fppStatus['status_text'] = 'FPP Available';
-            $fppStatus['error_detail'] = '';
-            
-            $result['fpp_status'] = $fppStatus;
-            $result['control_method'] = 'MQTT';
-            
-            // Get configured playlist
-            $playlist = '';
-            if (file_exists($configFile)) {
-                $config = @json_decode(file_get_contents($configFile), true);
-                if ($config && isset($config['playlist_name'])) {
-                    $playlist = $config['playlist_name'];
+            $response = @file_get_contents($apiUrl, false, $context);
+            if ($response !== false && !empty($response)) {
+                $decoded = @json_decode($response, true);
+                if ($decoded && is_array($decoded) && isset($decoded['status_name'])) {
+                    $apiResponse = $response;
+                    $apiData = $decoded;
+                    break 2; // Break out of both loops
                 }
+            } else {
+                $lastError = "Failed to connect to {$host}:{$port}";
             }
-            $result['playlist'] = $playlist;
-            
-            return json($result);
         }
+    }
+    
+    if ($apiResponse && $apiData) {
+        // Got status from HTTP API
+        $fppStatus['status_name'] = $apiData['status_name'] ?? 'unknown';
+        
+        // Handle current_playlist - can be string or object
+        $currentPlaylist = $apiData['current_playlist'] ?? '';
+        if (is_array($currentPlaylist)) {
+            $fppStatus['current_playlist'] = $currentPlaylist['playlist'] ?? $currentPlaylist['name'] ?? '';
+        } else {
+            $fppStatus['current_playlist'] = $currentPlaylist;
+        }
+        
+        $fppStatus['current_sequence'] = $apiData['current_sequence'] ?? '';
+        $fppStatus['seconds_elapsed'] = $apiData['seconds_played'] ?? $apiData['seconds_elapsed'] ?? 0;
+        $fppStatus['seconds_remaining'] = $apiData['seconds_remaining'] ?? 0;
+        $fppStatus['volume'] = $apiData['volume'] ?? 0;
+        
+        // Determine playing state - check multiple fields
+        $statusCode = $apiData['status'] ?? 0;
+        $statusName = strtolower($fppStatus['status_name']);
+        $isPlaying = $apiData['playing'] ?? false;
+        
+        $fppStatus['playing'] = ($statusCode == 1 || 
+                                 $statusName === 'playing' || 
+                                 $isPlaying === true ||
+                                 strpos($statusName, 'play') !== false);
+        
+        $fppStatus['status_text'] = 'FPP Available';
+        $fppStatus['error_detail'] = '';
+        
+        $result['fpp_status'] = $fppStatus;
+        $result['control_method'] = 'MQTT';
+        
+        // Get configured playlist
+        $playlist = '';
+        if (file_exists($configFile)) {
+            $config = @json_decode(file_get_contents($configFile), true);
+            if ($config && isset($config['playlist_name'])) {
+                $playlist = $config['playlist_name'];
+            }
+        }
+        $result['playlist'] = $playlist;
+        
+        return json($result);
     }
     
     // Fallback to MQTT if HTTP API failed
