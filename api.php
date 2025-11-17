@@ -680,7 +680,7 @@ function fppHomekitStatus() {
         $connectivityTest = @shell_exec("timeout 2 bash -c 'echo > /dev/tcp/$mqttBroker/$mqttPort' 2>/dev/null && echo 'CONNECTED' || echo 'FAILED'");
 
         if (trim($connectivityTest) === 'CONNECTED') {
-            $lastError = 'Can connect to MQTT broker, but Python/paho-mqtt issue. Tried commands: ' . implode('; ', array_slice($triedCommands, 0, 2));
+            $lastError = 'Can connect to MQTT broker, but no status received. Ensure FPP MQTT is enabled and the broker/hostname is set to localhost. Commands tried: ' . implode('; ', array_slice($triedCommands, 0, 2));
         } else {
             $lastError = 'Cannot connect to MQTT broker at ' . $mqttBroker . ':' . $mqttPort . '. Start mosquitto: sudo systemctl start mosquitto';
         }
