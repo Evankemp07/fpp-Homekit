@@ -117,12 +117,18 @@ try:
 except ImportError:
     QR_AVAILABLE = False
 
-# Configure logging
+# Configure logging with more verbose output for HomeKit
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Changed to DEBUG for more detailed logs
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Enable debug logging for HAP-python components
+logging.getLogger('pyhap').setLevel(logging.DEBUG)
+logging.getLogger('pyhap.accessory_driver').setLevel(logging.DEBUG)
+logging.getLogger('pyhap.hap_protocol').setLevel(logging.DEBUG)
+logging.getLogger('pyhap.characteristic').setLevel(logging.DEBUG)
 
 # Get plugin directory
 PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
