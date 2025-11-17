@@ -693,6 +693,10 @@ class FPPLightAccessory(Accessory):
         # Also subscribe to playlist status
         playlist_topic = f"{self.mqtt_client.topic_prefix}/playlist/status"
         self.mqtt_client.subscribe(playlist_topic, on_status_message)
+        
+        # Request initial status from FPP
+        logger.info(f"Requesting initial FPP status via MQTT topic: {self.mqtt_client.topic_prefix}/command/GetStatus")
+        self.mqtt_client.publish_command("GetStatus")
     
     def start_playlist(self):
         """Start the configured FPP playlist via MQTT"""
@@ -725,6 +729,7 @@ class FPPLightAccessory(Accessory):
     def poll_fpp_status_mqtt(self):
         """Keep MQTT connection alive and handle reconnections"""
         subscriptions_setup = False
+        last_status_request = 0
         
         while self.fpp_status_polling:
             try:
