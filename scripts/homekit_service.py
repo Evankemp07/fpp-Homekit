@@ -871,11 +871,22 @@ def main():
                         # Try to get setup_id from state first
                         setup_id = _as_str(getattr(driver.state, 'setup_id', ''), '')
                         
-                        if not setup_id:
-                            # Generate setup_id from MAC (standard approach)
-                            setup_id = mac[-4:].upper() if mac and len(mac) >= 4 else 'HOME'
+                        # Clean setup_id - remove colons, take only alphanumeric
+                        setup_id = ''.join(c for c in setup_id if c.isalnum())
                         
-                        logger.info(f"Using setup ID: {setup_id}")
+                        if not setup_id or len(setup_id) != 4:
+                            # Generate setup_id from MAC (standard approach - last 4 chars, no colons)
+                            if mac and len(mac) >= 4:
+                                # Remove colons and take last 4 chars
+                                mac_clean = ''.join(c for c in mac if c.isalnum())
+                                setup_id = mac_clean[-4:].upper() if len(mac_clean) >= 4 else 'HOME'
+                            else:
+                                setup_id = 'HOME'
+                        
+                        # Ensure it's uppercase and exactly 4 chars
+                        setup_id = setup_id.upper()[:4].ljust(4, '0')
+                        
+                        logger.info(f"Using setup ID: {setup_id} (cleaned)")
                         
                         # Generate QR code with HAP-python's built-in function
                         qr_code_data = qr.get_qr_code(setup_code, setup_id)

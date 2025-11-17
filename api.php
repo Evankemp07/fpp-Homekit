@@ -427,12 +427,17 @@ except Exception as e:
     print(json.dumps({"error": str(e), "available": False}))
 PYCODE;
     
-    $command = "timeout 3 python3 -W ignore -c " . escapeshellarg($pythonStatusScript) . " " . 
-               escapeshellarg($mqttBroker) . " " . 
-               escapeshellarg($mqttPort) . " " . 
-               escapeshellarg($mqttTopicPrefix) . " 2>/dev/null";
-    
-    $output = shell_exec($command);
+    // Check if we can execute commands
+    if (!function_exists('shell_exec')) {
+        $fppStatus['status_text'] = 'Shell Exec Disabled';
+        $fppStatus['error_detail'] = 'PHP shell_exec is disabled. Cannot check FPP status.';
+    } else {
+        $command = "timeout 3 python3 -W ignore -c " . escapeshellarg($pythonStatusScript) . " " . 
+                   escapeshellarg($mqttBroker) . " " . 
+                   escapeshellarg($mqttPort) . " " . 
+                   escapeshellarg($mqttTopicPrefix) . " 2>&1";
+        
+        $output = @shell_exec($command);
     
     if ($output) {
         $mqttStatus = @json_decode(trim($output), true);
@@ -454,10 +459,15 @@ PYCODE;
                 $fppStatus['status_text'] = 'MQTT Error';
                 $fppStatus['error_detail'] = $mqttStatus['error'];
             }
+        } else {
+            // Failed to parse JSON - might be a Python error
+            $fppStatus['status_text'] = 'Status Check Error';
+            $fppStatus['error_detail'] = 'MQTT check failed. Output: ' . substr($output, 0, 100);
         }
     } else {
         $fppStatus['status_text'] = 'Status Check Failed';
-        $fppStatus['error_detail'] = 'Could not check FPP status via MQTT.';
+        $fppStatus['error_detail'] = 'Could not check FPP status via MQTT. Check if mosquitto is running: sudo systemctl status mosquitto';
+    }
     }
     
     $result['fpp_status'] = $fppStatus;
@@ -1483,7 +1493,10 @@ function fppHomekitNetworkInterfaces() {
 }
 
 function command_exists($cmd) {
-    $return = shell_exec(sprintf("which %s 2>/dev/null", escapeshellarg($cmd)));
+    if (!function_exists('shell_exec')) {
+        return false;
+    }
+    $return = @shell_exec(sprintf("which %s 2>/dev/null", escapeshellarg($cmd)));
     return !empty($return);
 }
 
