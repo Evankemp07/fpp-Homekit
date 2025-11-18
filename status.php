@@ -17,7 +17,14 @@ if (file_exists($cssPath)) {
 
 <div class="homekit-container">
     <div class="homekit-card">
-        <h2>FPP Homekit</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0;">FPP Homekit</h2>
+            <button class="info-button" onclick="showMqttInfo()" title="MQTT Setup Information">
+                <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
+                    <path d="M440-280h80v-240h-80v240Zm40-320q17 0 28.5-11.5T520-640q0-17-11.5-28.5T480-680q-17 0-28.5 11.5T440-640q0 17 11.5 28.5T480-600Zm0 520q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/>
+                </svg>
+            </button>
+        </div>
         
         <div id="message-container"></div>
         
@@ -32,7 +39,6 @@ if (file_exists($cssPath)) {
                                 <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
                                     <path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/>
                                 </svg>
-                                <span class="restart-btn-text">Restart Service</span>
                             </button>
                         </div>
                         <span class="status-dot-large" id="service-status-dot"></span>
@@ -169,6 +175,31 @@ if (file_exists($cssPath)) {
     </div>
 </div>
 
+<!-- MQTT Info Modal -->
+<div id="mqtt-info-modal" class="info-modal" style="display: none;">
+    <div class="info-modal-overlay" onclick="hideMqttInfo()"></div>
+    <div class="info-modal-content">
+        <div class="info-modal-header">
+            <h3>MQTT Setup Instructions</h3>
+            <button class="info-modal-close" onclick="hideMqttInfo()" aria-label="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
+                    <path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/>
+                </svg>
+            </button>
+        </div>
+        <div class="info-modal-body">
+            <p><strong>To configure MQTT settings in FPP:</strong></p>
+            <ol>
+                <li>Enable <strong>Developer Mode</strong> in FPP settings to see MQTT configuration options</li>
+                <li>In MQTT settings, add <strong>'#'</strong> to the subscriptions list</li>
+                <li>Set the value to <strong>1</strong> for updates on everything</li>
+                <li>Use <strong>localhost</strong> as the hostname</li>
+                <li>If you changed the MQTT port from the default (1883), you can adjust it in this plugin's MQTT Configuration section</li>
+            </ol>
+        </div>
+    </div>
+</div>
+
 <script>
 (function() {
     const API_BASE = '/api/plugin/<?php echo $plugin; ?>';
@@ -219,6 +250,52 @@ if (file_exists($cssPath)) {
         }
     }
     
+    // Show MQTT info modal
+    window.showMqttInfo = function() {
+        const modal = document.getElementById('mqtt-info-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            // Animate in
+            requestAnimationFrame(() => {
+                const content = modal.querySelector('.info-modal-content');
+                if (content) {
+                    content.style.opacity = '0';
+                    content.style.transform = 'scale(0.95)';
+                    requestAnimationFrame(() => {
+                        content.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                        content.style.opacity = '1';
+                        content.style.transform = 'scale(1)';
+                    });
+                }
+            });
+        }
+    };
+    
+    // Hide MQTT info modal
+    window.hideMqttInfo = function() {
+        const modal = document.getElementById('mqtt-info-modal');
+        if (modal) {
+            const content = modal.querySelector('.info-modal-content');
+            if (content) {
+                content.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                content.style.opacity = '0';
+                content.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    modal.style.display = 'none';
+                }, 200);
+            } else {
+                modal.style.display = 'none';
+            }
+        }
+    };
+    
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            hideMqttInfo();
+        }
+    });
+    
     // Toggle debug section
     window.toggleDebug = function() {
         const debugMessages = document.getElementById('debug-messages');
@@ -245,22 +322,35 @@ if (file_exists($cssPath)) {
         const msgDiv = document.createElement('div');
         msgDiv.className = 'message ' + type;
         msgDiv.innerHTML = escapeHtml(message);
-        msgDiv.style.opacity = '0';
-        msgDiv.style.transform = 'translateY(-20px)';
+        
+        // Clear existing messages
         container.innerHTML = '';
         container.appendChild(msgDiv);
         
-        setTimeout(() => {
-            msgDiv.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-            msgDiv.style.opacity = '1';
-            msgDiv.style.transform = 'translateY(0)';
-        }, 10);
+        // Start hidden, positioned above viewport
+        msgDiv.style.opacity = '0';
+        msgDiv.style.transform = 'translateY(-100%)';
+        msgDiv.style.transition = 'none';
         
+        // Animate in from top
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                msgDiv.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                msgDiv.style.opacity = '1';
+                msgDiv.style.transform = 'translateY(0)';
+            });
+        });
+        
+        // Auto-hide success messages after 5 seconds with slide-out animation
         if (type === 'success') {
             setTimeout(() => {
                 msgDiv.style.opacity = '0';
-                msgDiv.style.transform = 'translateY(-20px)';
-                setTimeout(() => msgDiv.remove(), 500);
+                msgDiv.style.transform = 'translateY(-100%)';
+                setTimeout(() => {
+                    if (msgDiv.parentNode) {
+                        msgDiv.remove();
+                    }
+                }, 300);
             }, 5000);
         }
     }
@@ -460,13 +550,19 @@ if (file_exists($cssPath)) {
             .then(data => {
                 debugLog('Status updated', { playing: data.fpp_status?.playing, status: data.fpp_status?.status_name });
                 updateStatusDisplay(data);
-                // Clear any error messages on successful update
+                // Clear any error messages on successful update with slide-out animation
                 const messageContainer = document.getElementById('message-container');
                 if (messageContainer) {
                     const errorMessages = messageContainer.querySelectorAll('.message.error');
                     errorMessages.forEach(msg => {
                         if (msg.textContent.includes('Error loading status')) {
-                            msg.remove();
+                            msg.style.opacity = '0';
+                            msg.style.transform = 'translateY(-100%)';
+                            setTimeout(() => {
+                                if (msg.parentNode) {
+                                    msg.remove();
+                                }
+                            }, 300);
                         }
                     });
                 }
@@ -787,7 +883,7 @@ if (file_exists($cssPath)) {
                 btn.disabled = false;
                 btn.classList.remove('restarting');
                 // Restore original button content
-                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg><span class="restart-btn-text">Restart Service</span>';
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg>';
             }, 5000);
         })
         .catch(error => {
@@ -796,7 +892,7 @@ if (file_exists($cssPath)) {
             btn.disabled = false;
             btn.classList.remove('restarting');
             // Restore original button content
-            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg><span class="restart-btn-text">Restart Service</span>';
+            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg>';
         });
     };
     

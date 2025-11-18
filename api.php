@@ -1091,7 +1091,7 @@ function fppHomekitRestart() {
     $startScript = $pluginDir . '/scripts/postStart.sh';
 
     try {
-        // Stop service
+        // Stop service using PID file first
         if (file_exists($pidFile)) {
             $pid = trim(file_get_contents($pidFile));
             if ($pid) {
@@ -1118,6 +1118,17 @@ function fppHomekitRestart() {
             }
             @unlink($pidFile);
         }
+        
+        // Fallback: kill all instances by process name to catch any orphaned processes
+        // This handles cases where the PID file is stale or missing
+        // Use pkill if available (most reliable)
+        @exec("pkill -f homekit_service.py 2>&1", $pkillOutput, $pkillReturn);
+        if ($pkillReturn !== 0) {
+            // If pkill fails, try killall
+            @exec("killall homekit_service.py 2>&1", $killallOutput, $killallReturn);
+        }
+        // Give processes time to terminate
+        sleep(1);
 
         // Start service using postStart.sh script for consistency
         if (file_exists($startScript)) {
