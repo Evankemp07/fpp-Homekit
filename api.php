@@ -2267,7 +2267,7 @@ function fppHomekitEmulate() {
         $action = 'stop';
     }
 
-    // Try multiple topic formats (same logic as the service)
+    // Try multiple topic formats (same logic as the HomeKit service publish_command method)
     $topics_to_try = array(
         "{$mqttConfig['topic_prefix']}/command/{$command}",
         "FPP/command/{$command}",
@@ -2277,10 +2277,10 @@ function fppHomekitEmulate() {
     $success = false;
     $errors = array();
 
-    // Try to publish to MQTT broker
+    // Try to publish to MQTT broker using mosquitto_pub
     if (function_exists('shell_exec')) {
         foreach ($topics_to_try as $topic) {
-            // Use mosquitto_pub if available, otherwise try python script
+            // Use mosquitto_pub to send empty payload (same as HomeKit service)
             $mosquitto_cmd = "mosquitto_pub -h '{$mqttConfig['broker']}' -p '{$mqttConfig['port']}' -t '{$topic}' -m '' 2>/dev/null";
             $result = shell_exec($mosquitto_cmd);
 
@@ -2299,7 +2299,12 @@ function fppHomekitEmulate() {
             'action' => $action,
             'command' => $command,
             'playlist' => $playlistName,
-            'topics_tried' => $topics_to_try
+            'topics_tried' => $topics_to_try,
+            'mqtt_config' => array(
+                'broker' => $mqttConfig['broker'],
+                'port' => $mqttConfig['port'],
+                'prefix' => $mqttConfig['topic_prefix']
+            )
         ));
     } else {
         return json(array(
@@ -2307,7 +2312,13 @@ function fppHomekitEmulate() {
             'error' => 'Failed to send MQTT command. Check MQTT broker connection.',
             'action' => $action,
             'command' => $command,
-            'errors' => $errors
+            'topics_tried' => $topics_to_try,
+            'errors' => $errors,
+            'mqtt_config' => array(
+                'broker' => $mqttConfig['broker'],
+                'port' => $mqttConfig['port'],
+                'prefix' => $mqttConfig['topic_prefix']
+            )
         ));
     }
 }
