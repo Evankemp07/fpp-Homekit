@@ -26,9 +26,8 @@ if (file_exists($cssPath)) {
                 <div class="status-card">
                     <div class="status-card-label">HomeKit Service</div>
                     <div class="status-card-value" id="service-status" style="display: flex; align-items: center; justify-content: space-between;">
-                        <span id="service-status-text">Loading...</span>
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <span class="status-dot-large" id="service-status-dot"></span>
+                            <span id="service-status-text">Loading...</span>
                             <button class="restart-icon-btn" onclick="restartService()" id="restart-btn" title="Restart Service">
                                 <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
                                     <path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/>
@@ -36,6 +35,7 @@ if (file_exists($cssPath)) {
                                 <span class="restart-btn-text">Restart Service</span>
                             </button>
                         </div>
+                        <span class="status-dot-large" id="service-status-dot"></span>
                     </div>
                 </div>
                 
@@ -534,7 +534,7 @@ if (file_exists($cssPath)) {
         let fppStatusDetails = '';
         
         if (playing || statusName === 'playing') {
-            fppStatusText = 'Playing';
+            fppStatusText = '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M160-160v-320h160v320H160Zm240 0v-640h160v640H400Zm240 0v-440h160v440H640Z"/></svg>Playing';
             fppDotClass = 'playing';
             // Add playlist and sequence details
             if (fppCurrentPlaylist) {
@@ -607,7 +607,7 @@ if (file_exists($cssPath)) {
         const fppStatusDotEl = document.getElementById('fpp-status-dot');
         const fppStatusCard = document.getElementById('fpp-status-card');
         if (fppStatusTextEl) {
-            fppStatusTextEl.textContent = fppStatusText;
+            fppStatusTextEl.innerHTML = fppStatusText;
         }
         if (fppStatusDotEl) {
             fppStatusDotEl.className = 'status-dot-large ' + fppDotClass;
