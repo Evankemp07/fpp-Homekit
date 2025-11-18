@@ -501,19 +501,29 @@ class FPPMQTTClient:
         if not self.connected or not self.client:
             logger.error("MQTT not connected, cannot publish command")
             return False
-        
-        topic = f"{self.topic_prefix}/command/{command}"
-        try:
-            result = self.client.publish(topic, payload, qos=1)
-            if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                logger.info(f"Published MQTT command: {topic} = {payload}")
-                return True
-            else:
-                logger.error(f"Failed to publish MQTT command: {topic} (rc={result.rc})")
-                return False
-        except Exception as e:
-            logger.error(f"Error publishing MQTT command: {e}")
-            return False
+
+        # Try multiple topic formats that FPP might listen on
+        topics_to_try = [
+            f"{self.topic_prefix}/command/{command}",  # Primary: configured prefix
+            f"FPP/command/{command}",                  # Fallback: default FPP prefix
+            f"fpp/command/{command}",                  # Alternative: lowercase fpp
+        ]
+
+        success = False
+        for topic in topics_to_try:
+            try:
+                result = self.client.publish(topic, payload, qos=1)
+                if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                    logger.info(f"Published MQTT command: {topic} = {payload}")
+                    success = True
+                else:
+                    logger.debug(f"Failed to publish to {topic} (rc={result.rc})")
+            except Exception as e:
+                logger.debug(f"Error publishing to {topic}: {e}")
+
+        if not success:
+            logger.error(f"Failed to publish MQTT command to any topic: {command}")
+        return success
     
     def subscribe(self, topic: str, callback=None, qos=1):
         """Subscribe to an MQTT topic."""
