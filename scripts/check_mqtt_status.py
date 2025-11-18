@@ -45,22 +45,15 @@ def main() -> None:
         nonlocal connection_established, connection_error
         if rc == 0:
             connection_established = True
-            # Subscribe to essential FPP status topics only (performance optimization)
-            # Avoid wildcard subscriptions which can be expensive
-            status_topics = [
-                f"{prefix}/status",           # Main status topic
-                f"{prefix}/playlist/status",  # Playlist status
-                'FPP/status',                 # Default FPP status
-                'FPP/playlist/status',        # Default FPP playlist status
-            ]
+            # Subscribe to everything to catch all FPP status messages
+            client.subscribe('#', qos=1)
 
-            for topic in status_topics:
-                client.subscribe(topic, qos=1)
-
-            # Request status updates (limit to essential commands for performance)
+            # Request status updates from multiple possible topics
             request_topics = [
                 f"{prefix}/command/GetStatus",
-                'FPP/command/GetStatus',  # Default FPP command
+                f"{prefix}/command/GetPlaylistStatus",
+                'FPP/command/GetStatus',
+                'FPP/command/GetPlaylistStatus',
             ]
 
             for topic in request_topics:

@@ -509,14 +509,6 @@ function fppHomekitApiRequest($method, $path, $options = array()) {
 
 // GET /api/plugin/fpp-Homekit/status
 function fppHomekitStatus() {
-    // Cache status for 10 seconds to reduce expensive operations
-    static $cached = null;
-    static $cache_time = 0;
-    $cache_ttl = 10; // 10 seconds
-
-    if ($cached !== null && (time() - $cache_time) < $cache_ttl) {
-        return json($cached);
-    }
 
     $pluginDir = dirname(__FILE__);
     $pidFile = $pluginDir . '/scripts/homekit_service.pid';
@@ -962,10 +954,6 @@ function fppHomekitStatus() {
         }
     }
     $result['playlist'] = $playlist;
-
-    // Cache the result
-    $cached = $result;
-    $cache_time = time();
 
     return json($result);
 }
@@ -2033,14 +2021,6 @@ PYCODE;
 
 // GET /api/plugin/fpp-Homekit/network-interfaces
 function fppHomekitNetworkInterfaces() {
-    // Cache network interfaces for 2 minutes to improve performance
-    static $cached = null;
-    static $cache_time = 0;
-    $cache_ttl = 120; // 2 minutes
-
-    if ($cached !== null && (time() - $cache_time) < $cache_ttl) {
-        return json($cached);
-    }
 
     $interfaces = array();
     $currentIp = null;
@@ -2190,10 +2170,6 @@ function fppHomekitNetworkInterfaces() {
         'current_ip' => $currentIp,
         'default_is_ethernet' => !empty($currentIp)
     );
-
-    // Cache the result
-    $cached = $result;
-    $cache_time = time();
 
     return json($result);
 }
