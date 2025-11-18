@@ -65,6 +65,18 @@ if (file_exists($cssPath)) {
                     <div class="status-card-label">Configured Playlist</div>
                     <div class="status-card-value" id="playlist-status">Loading...</div>
                 </div>
+
+                <div class="status-card">
+                    <div class="status-card-label">HomeKit Emulation</div>
+                    <div class="status-card-value" style="display: flex; gap: 8px;">
+                        <button class="homekit-button" style="font-size: 14px; padding: 8px 16px; background: #34c759;" onclick="emulateHomeKit(true)" id="emulate-on-btn">
+                            Emulate ON
+                        </button>
+                        <button class="homekit-button secondary" style="font-size: 14px; padding: 8px 16px;" onclick="emulateHomeKit(false)" id="emulate-off-btn">
+                            Emulate OFF
+                        </button>
+                    </div>
+                </div>
             </div>
             
             <div class="config-layout">
@@ -895,7 +907,53 @@ if (file_exists($cssPath)) {
             btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg>';
         });
     };
-    
+
+    // Emulate HomeKit commands for testing
+    window.emulateHomeKit = function(on) {
+        const action = on ? 'ON' : 'OFF';
+        const btnId = on ? 'emulate-on-btn' : 'emulate-off-btn';
+        const btn = document.getElementById(btnId);
+
+        // Disable button temporarily
+        btn.disabled = true;
+        const originalText = btn.textContent;
+        btn.textContent = `Sending ${action}...`;
+
+        debugLog(`Emulating HomeKit ${action} command`);
+
+        fetch(API_BASE + '/emulate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'value=' + (on ? '1' : '0')
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+            return response.json();
+        })
+        .then(data => {
+            debugLog(`HomeKit ${action} emulation successful`, data);
+            showMessage(`✓ HomeKit ${action} command emulated successfully`, 'success');
+
+            // Refresh status after a short delay
+            setTimeout(() => {
+                loadStatus();
+            }, 1000);
+        })
+        .catch(error => {
+            debugLog(`Error emulating HomeKit ${action}`, error.message);
+            showMessage(`✗ Failed to emulate HomeKit ${action}: ${error.message}`, 'error');
+        })
+        .finally(() => {
+            // Re-enable button
+            btn.disabled = false;
+            btn.textContent = originalText;
+        });
+    };
+
     function capitalize(str) {
         return str.charAt(0).toUpperCase() + str.slice(1);
     }

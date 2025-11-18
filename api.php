@@ -58,6 +58,12 @@ function getEndpointsfppHomekit() {
     array_push($result, $ep);
 
     $ep = array(
+        'method' => 'POST',
+        'endpoint' => 'emulate',
+        'callback' => 'fppHomekitEmulate');
+    array_push($result, $ep);
+
+    $ep = array(
         'method' => 'GET',
         'endpoint' => 'network-interfaces',
         'callback' => 'fppHomekitNetworkInterfaces');
@@ -508,6 +514,15 @@ function fppHomekitApiRequest($method, $path, $options = array()) {
 
 // GET /api/plugin/fpp-Homekit/status
 function fppHomekitStatus() {
+    // Cache status for 5 seconds to improve loading performance
+    static $cached = null;
+    static $cache_time = 0;
+    $cache_ttl = 5; // 5 seconds
+
+    if ($cached !== null && (time() - $cache_time) < $cache_ttl) {
+        return json($cached);
+    }
+
     $pluginDir = dirname(__FILE__);
     $pidFile = $pluginDir . '/scripts/homekit_service.pid';
     $configFile = $pluginDir . '/scripts/homekit_config.json';
@@ -671,7 +686,10 @@ function fppHomekitStatus() {
                     'playing' => $isPlaying
                 );
             } elseif (isset($mqttStatus['timeout']) && $mqttStatus['timeout']) {
-                $lastError = 'FPP MQTT status timeout - FPP may not be publishing status updates';
+                $lastError = 'FPP not responding to MQTT status requests. Check FPP MQTT settings and ensure FPP is publishing status updates.';
+                if (isset($mqttStatus['topics_subscribed'])) {
+                    $lastError .= ' Subscribed to topics: ' . implode(', ', $mqttStatus['topics_subscribed']);
+                }
             } elseif (isset($mqttStatus['error'])) {
                 $errorMsg = $mqttStatus['error'];
                 if (strpos($errorMsg, 'Connection refused') !== false) {
@@ -908,7 +926,10 @@ function fppHomekitStatus() {
                     $fppStatus['error_detail'] = '';
                 } elseif (isset($mqttStatus['timeout']) && $mqttStatus['timeout']) {
                     $fppStatus['status_text'] = 'FPP Not Responding';
-                    $fppStatus['error_detail'] = 'MQTT broker reachable but FPP not publishing status.';
+                    $fppStatus['error_detail'] = 'FPP not publishing MQTT status updates. Check FPP MQTT settings.';
+                    if (isset($mqttStatus['topics_subscribed'])) {
+                        $fppStatus['error_detail'] .= ' Listening on: ' . implode(', ', $mqttStatus['topics_subscribed']);
+                    }
                 } elseif (isset($mqttStatus['error'])) {
                     $fppStatus['status_text'] = 'MQTT Connection Failed';
                     $errorMsg = $mqttStatus['error'];
@@ -931,8 +952,8 @@ function fppHomekitStatus() {
             }
         } else {
             // No output - command might have failed
-            $fppStatus['status_text'] = 'Status Check Failed';
-            $fppStatus['error_detail'] = 'HTTP API failed: ' . $lastError . '. MQTT check also failed. Check if FPP is running and API is accessible.';
+            $fppStatus['status_text'] = 'Unable to Check Status';
+            $fppStatus['error_detail'] = 'Cannot connect to FPP. Check that: 1) FPP is running, 2) MQTT broker is accessible, 3) Network connectivity is working.';
         }
     } elseif (!$apiData) {
         // HTTP API failed and shell_exec disabled
@@ -952,6 +973,10 @@ function fppHomekitStatus() {
         }
     }
     $result['playlist'] = $playlist;
+
+    // Cache the result
+    $cached = $result;
+    $cache_time = time();
 
     return json($result);
 }
@@ -2151,6 +2176,98 @@ function command_exists($cmd) {
     }
     $return = @shell_exec(sprintf("which %s 2>/dev/null", escapeshellarg($cmd)));
     return !empty($return);
+}
+
+// POST /api/plugin/fpp-Homekit/emulate
+function fppHomekitEmulate() {
+    // Get the value from POST data
+    $value = isset($_POST['value']) ? intval($_POST['value']) : 0;
+
+    // Load plugin configuration
+    $pluginDir = dirname(__FILE__);
+    $scriptsDir = $pluginDir . '/scripts';
+    $configFile = $scriptsDir . '/homekit_config.json';
+
+    $playlistName = '';
+    $mqttConfig = array(
+        'broker' => 'localhost',
+        'port' => 1883,
+        'topic_prefix' => 'FPP'
+    );
+
+    // Load configuration
+    if (file_exists($configFile)) {
+        $config = @json_decode(file_get_contents($configFile), true);
+        if ($config) {
+            $playlistName = $config['playlist_name'] ?? '';
+            if (isset($config['mqtt'])) {
+                $mqttConfig = array_merge($mqttConfig, $config['mqtt']);
+            }
+        }
+    }
+
+    // Validate playlist is configured
+    if (empty($playlistName)) {
+        return json(array(
+            'success' => false,
+            'error' => 'No playlist configured. Please set a playlist in the plugin configuration.'
+        ));
+    }
+
+    // Determine command based on value
+    if ($value === 1) {
+        // Emulate ON - start playlist
+        $command = "StartPlaylist/{$playlistName}";
+        $action = 'start';
+    } else {
+        // Emulate OFF - stop playback
+        $command = "Stop";
+        $action = 'stop';
+    }
+
+    // Try multiple topic formats (same logic as the service)
+    $topics_to_try = array(
+        "{$mqttConfig['topic_prefix']}/command/{$command}",
+        "FPP/command/{$command}",
+        "fpp/command/{$command}"
+    );
+
+    $success = false;
+    $errors = array();
+
+    // Try to publish to MQTT broker
+    if (function_exists('shell_exec')) {
+        foreach ($topics_to_try as $topic) {
+            // Use mosquitto_pub if available, otherwise try python script
+            $mosquitto_cmd = "mosquitto_pub -h '{$mqttConfig['broker']}' -p '{$mqttConfig['port']}' -t '{$topic}' -m '' 2>/dev/null";
+            $result = shell_exec($mosquitto_cmd);
+
+            if ($result === null) { // Command succeeded (no output)
+                $success = true;
+                break;
+            } else {
+                $errors[] = "Failed to publish to {$topic}";
+            }
+        }
+    }
+
+    if ($success) {
+        return json(array(
+            'success' => true,
+            'action' => $action,
+            'command' => $command,
+            'playlist' => $playlistName,
+            'topics_tried' => $topics_to_try
+        ));
+    } else {
+        return json(array(
+            'success' => false,
+            'error' => 'Failed to send MQTT command. Check MQTT broker connection.',
+            'action' => $action,
+            'command' => $command,
+            'errors' => $errors
+        ));
+    }
 }
 
 ?>

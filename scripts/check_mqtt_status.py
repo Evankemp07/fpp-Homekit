@@ -250,14 +250,31 @@ def main() -> None:
             }))
             return
 
-        # Wait for status response (up to 8 seconds after connection)
-        for _ in range(80):
+        # Wait for status response (up to 5 seconds after connection for better responsiveness)
+        for _ in range(50):
             if status_data.get("available"):
                 break
             time.sleep(0.1)
 
         client.loop_stop()
         client.disconnect()
+
+        # If we didn't get a status update, provide a more informative response
+        if not status_data.get("available"):
+            status_data = {
+                "available": False,
+                "timeout": True,
+                "error": f"No FPP status received within timeout. FPP may not be publishing to expected MQTT topics.",
+                "topics_subscribed": [
+                    f"{prefix}/status",
+                    f"{prefix}/playlist/status",
+                    f"{prefix}/fppd_status",
+                    'FPP/status',
+                    'FPP/playlist/status',
+                    'FPP/fppd_status'
+                ]
+            }
+
         print(json.dumps(status_data))
     except ConnectionRefusedError:
         print(json.dumps({
