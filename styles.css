@@ -66,35 +66,58 @@
     color: var(--text-primary);
 }
 
-.status-main-layout {
-    display: flex;
-    gap: 24px;
-    align-items: flex-start;
-    margin-bottom: 24px;
-}
-
 .status-cards-container {
     display: flex;
     gap: 16px;
+    margin-bottom: 24px;
     flex-wrap: wrap;
+}
+
+.config-layout {
+    display: flex;
+    gap: 24px;
+    align-items: stretch;
+}
+
+.config-left {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.config-right {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+@media (max-width: 900px) {
+    .config-layout {
+        flex-direction: column;
+    }
+}
+
+.info-debug-layout {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+}
+
+.info-section {
     flex: 1;
     min-width: 0;
 }
 
-.qr-sidebar {
-    flex-shrink: 0;
-    min-width: 300px;
-    max-width: 320px;
+.debug-section {
+    flex: 1;
+    min-width: 0;
 }
 
 @media (max-width: 900px) {
-    .status-main-layout {
+    .info-debug-layout {
         flex-direction: column;
-    }
-    
-    .qr-sidebar {
-        min-width: 100%;
-        max-width: 100%;
     }
 }
 
@@ -107,6 +130,14 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+
+.pairing-card {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
 }
 
 .status-card-label {
@@ -196,6 +227,19 @@
     animation: spin 1s linear infinite;
 }
 
+.restart-icon-btn.restarting {
+    color: #34c759;
+}
+
+.restart-icon-btn.restarting svg {
+    animation: rotateOnce 5s linear;
+}
+
+@keyframes rotateOnce {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(-360deg); }
+}
+
 .status-row {
     display: flex;
     justify-content: space-between;
@@ -279,6 +323,15 @@
 
 .homekit-button.secondary {
     background: var(--text-secondary);
+}
+
+#save-playlist-btn {
+    background: #007aff !important;
+    color: white !important;
+}
+
+#save-playlist-btn:hover {
+    background: #0051d5 !important;
 }
 
 .playlist-config {
@@ -415,7 +468,7 @@
     border-radius: 10px;
     border: 1px solid var(--border-color);
     background: var(--bg-primary);
-    color: #000000;
+    color: var(--text-primary);
     font-size: 15px;
     font-family: inherit;
     appearance: none;
@@ -427,9 +480,15 @@
     transition: border-color 0.2s;
 }
 
+@media (prefers-color-scheme: dark) {
+    .form-select {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23f5f5f7' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    }
+}
+
 .form-select option {
-    color: #000000;
-    background: #ffffff;
+    color: var(--text-primary);
+    background: var(--bg-primary);
 }
 
 .form-select:hover {

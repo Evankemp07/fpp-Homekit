@@ -22,142 +22,148 @@ if (file_exists($cssPath)) {
         <div id="message-container"></div>
         
         <div id="status-content">
-            <div class="status-main-layout">
-                <div class="status-cards-container">
-                    <div class="status-card">
-                        <div class="status-card-label">HomeKit Service</div>
-                        <div class="status-card-value" id="service-status" style="display: flex; align-items: center; justify-content: space-between;">
-                            <span id="service-status-text">Loading...</span>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span class="status-dot-large" id="service-status-dot"></span>
-                                <button class="restart-icon-btn" onclick="restartService()" id="restart-btn" title="Restart Service">
-                                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M9 3V1M9 3C7.93913 3 6.92172 3.42143 6.17157 4.17157C5.42143 4.92172 5 5.93913 5 7C5 7.53043 4.78929 8.03914 4.41421 8.41421C4.03914 8.78929 3.53043 9 3 9H1M9 15V17M9 15C10.0609 15 11.0783 14.5786 11.8284 13.8284C12.5786 13.0783 13 12.0609 13 11C13 10.4696 13.2107 9.96086 13.5858 9.58579C13.9609 9.21071 14.4696 9 15 9H17M1 9L3 7L1 5M17 9L15 11L17 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                                    </svg>
-                                    <span class="restart-btn-text">Restart Service</span>
-                                </button>
-                            </div>
+            <div class="status-cards-container">
+                <div class="status-card">
+                    <div class="status-card-label">HomeKit Service</div>
+                    <div class="status-card-value" id="service-status" style="display: flex; align-items: center; justify-content: space-between;">
+                        <span id="service-status-text">Loading...</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="status-dot-large" id="service-status-dot"></span>
+                            <button class="restart-icon-btn" onclick="restartService()" id="restart-btn" title="Restart Service">
+                                <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
+                                    <path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/>
+                                </svg>
+                                <span class="restart-btn-text">Restart Service</span>
+                            </button>
                         </div>
-                    </div>
-                    
-                    <div class="status-card">
-                        <div class="status-card-label">Pairing Status</div>
-                        <div class="status-card-value" id="pairing-status" style="display: flex; align-items: center; justify-content: space-between;">
-                            <span id="pairing-status-text">Loading...</span>
-                            <span class="status-dot-large" id="pairing-status-dot"></span>
-                        </div>
-                    </div>
-                    
-                    <div class="status-card" id="fpp-status-card">
-                        <div class="status-card-label">FPP Status</div>
-                        <div class="status-card-value" id="fpp-status" style="display: flex; align-items: center; justify-content: space-between;">
-                            <span id="fpp-status-text">Loading...</span>
-                            <span class="status-dot-large" id="fpp-status-dot"></span>
-                        </div>
-                    </div>
-                    
-                    <div class="status-card" id="playlist-status-card">
-                        <div class="status-card-label">Configured Playlist</div>
-                        <div class="status-card-value" id="playlist-status">Loading...</div>
                     </div>
                 </div>
                 
-                <div class="qr-sidebar">
-                    <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Pair with HomeKit</h3>
-                    <div id="pairing-section">
-                        <div class="qr-container">
-                            <div id="qr-loading" style="display: none;">
-                                <p class="info-text">Generating QR code...</p>
-                            </div>
-                            <div id="qr-content" style="display: none;">
-                                <div class="qr-code">
-                                    <img id="qr-image" alt="HomeKit QR Code" style="max-width: 280px; display: block;" />
-                                </div>
-                                <div class="setup-code">
-                                    <span class="setup-code-label">Setup Code</span>
-                                    <div class="setup-code-value">
-                                        <span id="setup-code-text"></span>
-                                        <button class="copy-btn" onclick="copySetupCode()" title="Copy Setup Code" id="copy-btn">
-                                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M5.5 2.5H11.5C12.0523 2.5 12.5 2.94772 12.5 3.5V9.5C12.5 10.0523 12.0523 10.5 11.5 10.5H9.5V12.5C9.5 13.0523 9.05228 13.5 8.5 13.5H2.5C1.94772 13.5 1.5 13.0523 1.5 12.5V6.5C1.5 5.94772 1.94772 5.5 2.5 5.5H4.5V3.5C4.5 2.94772 4.94772 2.5 5.5 2.5Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M4.5 5.5H8.5C9.05228 5.5 9.5 5.94772 9.5 6.5V10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            <div id="qr-error" style="display: none;">
-                                <p style="color: var(--error-color);">Service is not running. Please start the service to generate QR code.</p>
-                            </div>
+                <div class="status-card">
+                    <div class="status-card-label">Pairing Status</div>
+                    <div class="status-card-value" id="pairing-status" style="display: flex; align-items: center; justify-content: space-between;">
+                        <span id="pairing-status-text">Loading...</span>
+                        <span class="status-dot-large" id="pairing-status-dot"></span>
+                    </div>
+                </div>
+                
+                <div class="status-card" id="fpp-status-card">
+                    <div class="status-card-label">FPP Status</div>
+                    <div class="status-card-value" id="fpp-status" style="display: flex; align-items: center; justify-content: space-between;">
+                        <span id="fpp-status-text">Loading...</span>
+                        <span class="status-dot-large" id="fpp-status-dot"></span>
+                    </div>
+                </div>
+                
+                <div class="status-card" id="playlist-status-card">
+                    <div class="status-card-label">Configured Playlist</div>
+                    <div class="status-card-value" id="playlist-status">Loading...</div>
+                </div>
+            </div>
+            
+            <div class="config-layout">
+                <div class="config-left">
+                    <div class="playlist-config">
+                        <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">Playlist Configuration</h3>
+                        <div class="playlist-config-controls">
+                            <select class="form-select" id="playlist-select" aria-label="Select playlist to start">
+                                <option value="">-- Loading playlists... --</option>
+                            </select>
+                            <button class="homekit-button" type="button" id="save-playlist-btn">Save Playlist</button>
                         </div>
                     </div>
                     
-                    <div id="paired-section" style="display: none;">
-                        <p class="success-message">✓ Successfully paired with HomeKit</p>
-                        <p class="info-text">You can now control FPP from the Home app on your iOS devices.</p>
+                    <div class="playlist-config" style="margin-top: 24px;">
+                        <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">MQTT Configuration</h3>
+                        <div class="playlist-config-controls" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <label for="mqtt-broker" style="font-weight: 500; color: var(--text-secondary);">Broker:</label>
+                                <input type="text" class="form-select" id="mqtt-broker" placeholder="localhost" style="width: 120px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <label for="mqtt-port" style="font-weight: 500; color: var(--text-secondary);">Port:</label>
+                                <input type="number" class="form-select" id="mqtt-port" placeholder="1883" min="1" max="65535" style="width: 100px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
+                            </div>
+                            <button class="homekit-button" type="button" id="save-mqtt-btn">Save MQTT</button>
+                            <button class="homekit-button secondary" type="button" id="test-mqtt-btn">Test MQTT</button>
+                        </div>
+                    </div>
+                    
+                    <div class="playlist-config" style="margin-top: 24px;">
+                        <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">HomeKit Network</h3>
+                        <div class="playlist-config-controls" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <label for="homekit-ip" style="font-weight: 500; color: var(--text-secondary);">Listen Address:</label>
+                                <select class="form-select" id="homekit-ip" style="min-width: 220px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
+                                    <option value="">Auto-detect (Primary Interface)</option>
+                                    <option value="0.0.0.0">All Interfaces (0.0.0.0)</option>
+                                </select>
+                            </div>
+                            <button class="homekit-button" type="button" id="save-homekit-network-btn">Save & Restart</button>
+                        </div>
+                        <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+                            Select which network interface HomeKit should listen on. Choose a specific interface if you get "not reachable" errors.
+                        </div>
                     </div>
                 </div>
-            </div>
-            
-            <div class="playlist-config">
-                <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">Playlist Configuration</h3>
-                <div class="playlist-config-controls">
-                    <select class="form-select" id="playlist-select" aria-label="Select playlist to start">
-                        <option value="">-- Loading playlists... --</option>
-                    </select>
-                    <button class="homekit-button" type="button" id="save-playlist-btn">Save Playlist</button>
-                </div>
-            </div>
-            
-            <div class="playlist-config" style="margin-top: 24px;">
-                <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">MQTT Configuration</h3>
-                <div class="playlist-config-controls" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <label for="mqtt-broker" style="font-weight: 500; color: var(--text-secondary);">Broker:</label>
-                        <input type="text" class="form-select" id="mqtt-broker" placeholder="localhost" style="width: 120px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
+                
+                <div class="config-right">
+                    <div class="status-card pairing-card">
+                        <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Pair with HomeKit</h3>
+                        <div id="pairing-section">
+                            <div class="qr-container">
+                                <div id="qr-loading" style="display: none;">
+                                    <p class="info-text">Generating QR code...</p>
+                                </div>
+                                <div id="qr-content" style="display: none;">
+                                    <div class="qr-code">
+                                        <img id="qr-image" alt="HomeKit QR Code" style="max-width: 280px; display: block;" />
+                                    </div>
+                                    <div class="setup-code">
+                                        <span class="setup-code-label">Setup Code</span>
+                                        <div class="setup-code-value">
+                                            <span id="setup-code-text"></span>
+                                            <button class="copy-btn" onclick="copySetupCode()" title="Copy Setup Code" id="copy-btn">
+                                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M5.5 2.5H11.5C12.0523 2.5 12.5 2.94772 12.5 3.5V9.5C12.5 10.0523 12.0523 10.5 11.5 10.5H9.5V12.5C9.5 13.0523 9.05228 13.5 8.5 13.5H2.5C1.94772 13.5 1.5 13.0523 1.5 12.5V6.5C1.5 5.94772 1.94772 5.5 2.5 5.5H4.5V3.5C4.5 2.94772 4.94772 2.5 5.5 2.5Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                    <path d="M4.5 5.5H8.5C9.05228 5.5 9.5 5.94772 9.5 6.5V10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="qr-error" style="display: none;">
+                                    <p style="color: var(--error-color);">Service is not running. Please start the service to generate QR code.</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="paired-section" style="display: none;">
+                            <p class="success-message">✓ Successfully paired with HomeKit</p>
+                            <p class="info-text">You can now control FPP from the Home app on your iOS devices.</p>
+                        </div>
                     </div>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <label for="mqtt-port" style="font-weight: 500; color: var(--text-secondary);">Port:</label>
-                        <input type="number" class="form-select" id="mqtt-port" placeholder="1883" min="1" max="65535" style="width: 100px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
-                    </div>
-                    <button class="homekit-button" type="button" id="save-mqtt-btn">Save MQTT</button>
-                    <button class="homekit-button secondary" type="button" id="test-mqtt-btn">Test MQTT</button>
-                </div>
-            </div>
-            
-            <div class="playlist-config" style="margin-top: 24px;">
-                <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">HomeKit Network</h3>
-                <div class="playlist-config-controls" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <label for="homekit-ip" style="font-weight: 500; color: var(--text-secondary);">Listen Address:</label>
-                        <select class="form-select" id="homekit-ip" style="min-width: 220px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
-                            <option value="">Auto-detect (Primary Interface)</option>
-                            <option value="0.0.0.0">All Interfaces (0.0.0.0)</option>
-                        </select>
-                    </div>
-                    <button class="homekit-button" type="button" id="save-homekit-network-btn">Save & Restart</button>
-                </div>
-                <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
-                    Select which network interface HomeKit should listen on. Choose a specific interface if you get "not reachable" errors.
                 </div>
             </div>
             
         </div>
         
-        <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-color);">
-            <h3>Information</h3>
-            <p class="info-text"><strong>Accessory Name:</strong> FPP-Controller</p>
-            <p class="info-text"><strong>Accessory Type:</strong> Light</p>
-            <p class="info-text"><strong>Control:</strong> Turning the light ON will start the configured playlist. Turning it OFF will stop playback.</p>
-        </div>
-        
-        <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-color);">
-            <h4 class="debug-header" onclick="toggleDebug()" style="margin: 0 0 16px 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-weight: 600;">
-                <span class="debug-toggle-icon" id="debug-toggle-icon" style="display: inline-block; transition: transform 0.2s; transform: rotate(-90deg);">▼</span>
-                Debug Messages
-            </h4>
-            <div class="debug-messages" id="debug-messages" style="display: none; color: var(--text-secondary); line-height: 1.6; max-height: 300px; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace; font-size: 12px;">
-                <div>No debug messages yet...</div>
+        <div class="info-debug-layout" style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-color);">
+            <div class="info-section">
+                <h3>Information</h3>
+                <p class="info-text"><strong>Accessory Name:</strong> FPP-Controller</p>
+                <p class="info-text"><strong>Accessory Type:</strong> Light</p>
+                <p class="info-text"><strong>Control:</strong> Turning the light ON will start the configured playlist. Turning it OFF will stop playback.</p>
+            </div>
+            
+            <div class="debug-section">
+                <h4 class="debug-header" onclick="toggleDebug()" style="margin: 0 0 16px 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-weight: 600;">
+                    <span class="debug-toggle-icon" id="debug-toggle-icon" style="display: inline-block; transition: transform 0.2s; transform: rotate(-90deg);">▼</span>
+                    Debug Messages
+                </h4>
+                <div class="debug-messages" id="debug-messages" style="display: none; color: var(--text-secondary); line-height: 1.6; max-height: 300px; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace; font-size: 12px;">
+                    <div>No debug messages yet...</div>
+                </div>
             </div>
         </div>
     </div>
@@ -739,7 +745,13 @@ if (file_exists($cssPath)) {
         debugLog('Restarting service...');
         const btn = document.getElementById('restart-btn');
         btn.disabled = true;
-        btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" class="spinning"><path d="M9 3V1M9 3C7.93913 3 6.92172 3.42143 6.17157 4.17157C5.42143 4.92172 5 5.93913 5 7C5 7.53043 4.78929 8.03914 4.41421 8.41421C4.03914 8.78929 3.53043 9 3 9H1M9 15V17M9 15C10.0609 15 11.0783 14.5786 11.8284 13.8284C12.5786 13.0783 13 12.0609 13 11C13 10.4696 13.2107 9.96086 13.5858 9.58579C13.9609 9.21071 14.4696 9 15 9H17M1 9L3 7L1 5M17 9L15 11L17 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        btn.classList.add('restarting');
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg>';
+        
+        // Remove the restarting class after 5 seconds
+        setTimeout(() => {
+            btn.classList.remove('restarting');
+        }, 5000);
         
         fetch(API_BASE + '/restart', {
             method: 'POST'
@@ -773,16 +785,18 @@ if (file_exists($cssPath)) {
             setTimeout(() => {
                 loadStatus();
                 btn.disabled = false;
+                btn.classList.remove('restarting');
                 // Restore original button content
-                btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3V1M9 3C7.93913 3 6.92172 3.42143 6.17157 4.17157C5.42143 4.92172 5 5.93913 5 7C5 7.53043 4.78929 8.03914 4.41421 8.41421C4.03914 8.78929 3.53043 9 3 9H1M9 15V17M9 15C10.0609 15 11.0783 14.5786 11.8284 13.8284C12.5786 13.0783 13 12.0609 13 11C13 10.4696 13.2107 9.96086 13.5858 9.58579C13.9609 9.21071 14.4696 9 15 9H17M1 9L3 7L1 5M17 9L15 11L17 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="restart-btn-text">Restart Service</span>';
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg><span class="restart-btn-text">Restart Service</span>';
             }, 5000);
         })
         .catch(error => {
             debugLog('Error restarting service', error.message);
             showMessage('Error restarting service: ' + error.message, 'error');
             btn.disabled = false;
+            btn.classList.remove('restarting');
             // Restore original button content
-            btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3V1M9 3C7.93913 3 6.92172 3.42143 6.17157 4.17157C5.42143 4.92172 5 5.93913 5 7C5 7.53043 4.78929 8.03914 4.41421 8.41421C4.03914 8.78929 3.53043 9 3 9H1M9 15V17M9 15C10.0609 15 11.0783 14.5786 11.8284 13.8284C12.5786 13.0783 13 12.0609 13 11C13 10.4696 13.2107 9.96086 13.5858 9.58579C13.9609 9.21071 14.4696 9 15 9H17M1 9L3 7L1 5M17 9L15 11L17 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="restart-btn-text">Restart Service</span>';
+            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg><span class="restart-btn-text">Restart Service</span>';
         });
     };
     
