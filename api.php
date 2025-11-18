@@ -1060,16 +1060,14 @@ function fppHomekitQRCode() {
             return json(array('error' => 'Invalid setup code format'));
         }
         
-        // Setup ID should already be hex (4 chars), pad to 8 if needed
+        // Setup ID should be 4 chars for HomeKit QR codes, pad to 8 for X-HM format
         $setupIDHex = strtoupper($setupID);
+        // Remove any non-alphanumeric characters first
+        $setupIDHex = preg_replace('/[^A-Z0-9]/', '', $setupIDHex);
+
         if (strlen($setupIDHex) < 8) {
-            // If setup ID is shorter, pad with zeros or use MAC address
-            if (strlen($setupIDHex) === 4) {
-                // Common case: 4-char setup ID, duplicate it
-                $setupIDHex = $setupIDHex . $setupIDHex;
-            } else {
-                $setupIDHex = str_pad($setupIDHex, 8, '0', STR_PAD_LEFT);
-            }
+            // If setup ID is shorter than 8, pad with zeros
+            $setupIDHex = str_pad($setupIDHex, 8, '0', STR_PAD_LEFT);
         }
         $setupIDHex = substr($setupIDHex, 0, 8);
         

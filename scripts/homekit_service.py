@@ -964,11 +964,11 @@ def main():
                         
                         # Clean setup_id - remove colons, take only alphanumeric
                         setup_id = ''.join(c for c in setup_id if c.isalnum())
-                        
+
                         if not setup_id or len(setup_id) != 4:
                             # Generate setup_id from MAC (standard approach - last 4 chars, no colons)
-                            if mac and len(mac) >= 4:
-                                # Remove colons and take last 4 chars
+                            if mac:
+                                # Remove ALL non-alphanumeric chars from MAC, then take last 4 chars
                                 mac_clean = ''.join(c for c in mac if c.isalnum())
                                 setup_id = mac_clean[-4:].upper() if len(mac_clean) >= 4 else 'HOME'
                             else:
@@ -994,11 +994,19 @@ def main():
                     logger.warning(f"Setup code: {setup_code}")
                     import traceback
                     logger.warning(traceback.format_exc())
-                    # Create a basic setup_id from MAC as last resort
-                    setup_id = mac[-4:].upper() if mac and len(mac) >= 4 else 'HOME'
+                    # Create a basic setup_id from MAC as last resort (remove non-alphanumeric)
+                    if mac:
+                        mac_clean = ''.join(c for c in mac if c.isalnum())
+                        setup_id = mac_clean[-4:].upper() if len(mac_clean) >= 4 else 'HOME'
+                    else:
+                        setup_id = 'HOME'
             else:
-                # No QR module, just generate setup_id from MAC
-                setup_id = mac[-4:].upper() if mac and len(mac) >= 4 else 'HOME'
+                # No QR module, just generate setup_id from MAC (remove non-alphanumeric)
+                if mac:
+                    mac_clean = ''.join(c for c in mac if c.isalnum())
+                    setup_id = mac_clean[-4:].upper() if len(mac_clean) >= 4 else 'HOME'
+                else:
+                    setup_id = 'HOME'
             
             # Save to a JSON file for PHP to read
             info_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_pairing_info.json')

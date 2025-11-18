@@ -935,9 +935,10 @@ if (file_exists($cssPath)) {
                     loadQRCode();
                 }
             } else {
-                document.getElementById('qr-loading').style.display = 'none';
+                // Show placeholder QR code instead of error message
+                document.getElementById('qr-loading').style.display = 'block';
                 document.getElementById('qr-content').style.display = 'none';
-                document.getElementById('qr-error').style.display = 'block';
+                document.getElementById('qr-error').style.display = 'none';
                 qrLoaded = false;
             }
         }
