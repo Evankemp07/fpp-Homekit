@@ -723,11 +723,28 @@ class FPPLightAccessory(Accessory):
                     
                     logger.info(f"FPP status parsed: code={status_code}, name={status_name}, playlist={playlist_name}, sequence={current_sequence}")
                     
-                    # Status code 1 means playing, or status_name contains 'playing'
-                    fpp_playing = (status_code == 1 or 
-                                 status_name.lower() == 'playing' or 
+                    # More robust status detection for playlist end
+                    # Status code 1 = playing, 0 = idle, 2 = paused, etc.
+                    is_idle = (status_code == 0 or
+                              status_name.lower() in ['idle', 'stopped', 'finished'] or
+                              'idle' in status_name.lower() or
+                              'stopped' in status_name.lower() or
+                              'finished' in status_name.lower())
+
+                    # Check if actively playing
+                    fpp_playing = (status_code == 1 or
+                                 status_name.lower() == 'playing' or
                                  'playing' in status_name.lower() or
                                  status_data.get('playing', False))
+
+                    # Override: if status indicates idle/stopped, definitely not playing
+                    if is_idle:
+                        fpp_playing = False
+
+                    # Additional check: if playlist has no current sequence and status is idle, definitely stopped
+                    if is_idle and not current_sequence and not playlist_name:
+                        fpp_playing = False
+                        logger.info("Playlist ended: no current sequence or playlist detected")
                     
                     logger.info(f"Determined playing state: {fpp_playing} (code={status_code}, name='{status_name}')")
                 else:
@@ -835,16 +852,20 @@ class FPPLightAccessory(Accessory):
                     subscriptions_setup = True
                     logger.info("MQTT status subscriptions set up")
                 else:
-                    # Connected - periodically request status updates (every 10 seconds)
+                    # Connected - request status updates more frequently when playing
                     import time as time_module
                     current_time = time_module.time()
-                    if current_time - last_status_request > 10:
+
+                    # Request status every 3 seconds when playing, every 10 seconds when idle
+                    interval = 3 if self.is_on else 10
+
+                    if current_time - last_status_request > interval:
                         try:
                             self.mqtt_client.publish_command("GetStatus")
                             last_status_request = current_time
                         except Exception as e:
                             logger.debug(f"Could not request status update: {e}")
-                
+
                 time.sleep(1)  # Check connection every second
             except Exception as e:
                 logger.error(f"Error in MQTT status polling: {e}")

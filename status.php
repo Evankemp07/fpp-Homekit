@@ -176,6 +176,7 @@ if (file_exists($cssPath)) {
                         <div id="paired-section" style="display: none;">
                             <p class="success-message">✓ Successfully paired with HomeKit</p>
                             <p class="info-text">You can now control FPP from the Home app on your iOS devices.</p>
+                            <p class="info-text" id="last-command-text" style="display: none;">Last command: <span id="last-command-time">none</span></p>
                         </div>
                     </div>
                 </div>
@@ -1075,6 +1076,18 @@ if (file_exists($cssPath)) {
         });
     };
 
+    // Update last command timestamp and type
+    function updateLastCommandTime(commandType) {
+        const now = new Date();
+        const timeString = now.toLocaleTimeString();
+        const timeElement = document.getElementById('last-command-time');
+        const textElement = document.getElementById('last-command-text');
+        if (timeElement && textElement) {
+            timeElement.textContent = `${commandType} at ${timeString}`;
+            textElement.style.display = 'block';
+        }
+    }
+
     // Emulate HomeKit commands for testing
     window.emulateHomeKit = function(on) {
         const action = on ? 'ON' : 'OFF';
@@ -1104,6 +1117,10 @@ if (file_exists($cssPath)) {
         .then(data => {
             debugLog(`HomeKit ${action} emulation successful`, data);
             showMessage(`✓ HomeKit ${action} command emulated successfully`, 'success');
+
+            // Update last command timestamp and type
+            const commandType = on ? 'start' : 'stop';
+            updateLastCommandTime(commandType);
 
             // Refresh status after a short delay
             setTimeout(() => {
