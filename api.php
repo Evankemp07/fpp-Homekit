@@ -259,15 +259,14 @@ function fppHomekitDetectHostIPs() {
 }
 
 function fppHomekitBuildApiEndpoints() {
-    // Cache endpoints for 5 minutes to improve performance
-    // Recalculate if cache is stale or doesn't exist
-    static $cached = null;
-    static $cache_time = 0;
-    $cache_ttl = 300; // 5 minutes
-
-    if ($cached !== null && (time() - $cache_time) < $cache_ttl) {
-        return $cached;
-    }
+    // Caching is disabled to ensure endpoint order is recalculated on each request
+    // This guarantees that port 32320 (the preferred port) is always tried first
+    // after plugin updates or configuration changes
+    // Note: Caching can be re-enabled once endpoint discovery order stabilizes
+    // static $cached = null;
+    // if ($cached !== null) {
+    //     return $cached;
+    // }
     
     $pluginDir = dirname(__FILE__);
     $apiConfigFile = $pluginDir . '/scripts/fpp_api_config.json';
@@ -421,9 +420,9 @@ function fppHomekitBuildApiEndpoints() {
         $endpoints[] = 'http://localhost/api';
     }
 
-    $cached = array_values(array_unique($endpoints));
-    $cache_time = time(); // Update cache timestamp
-    return $cached;
+    // $cached = array_values(array_unique($endpoints));
+    // return $cached;
+    return array_values(array_unique($endpoints));
 }
 
 function fppHomekitApiRequest($method, $path, $options = array()) {
@@ -509,7 +508,6 @@ function fppHomekitApiRequest($method, $path, $options = array()) {
 
 // GET /api/plugin/fpp-Homekit/status
 function fppHomekitStatus() {
-
     $pluginDir = dirname(__FILE__);
     $pidFile = $pluginDir . '/scripts/homekit_service.pid';
     $configFile = $pluginDir . '/scripts/homekit_config.json';
@@ -963,24 +961,6 @@ function fppHomekitQRCode() {
     $pluginDir = dirname(__FILE__);
     $infoFile = $pluginDir . '/scripts/homekit_pairing_info.json';
     $stateFile = $pluginDir . '/scripts/homekit_accessory.state';
-    $qrCacheFile = $pluginDir . '/scripts/homekit_qr_cache.json';
-
-    // Check for cached QR code data first (cache for 24 hours)
-    if (file_exists($qrCacheFile)) {
-        $cacheData = @json_decode(@file_get_contents($qrCacheFile), true);
-        if ($cacheData && isset($cacheData['qr_data']) && isset($cacheData['timestamp'])) {
-            $cacheAge = time() - $cacheData['timestamp'];
-            if ($cacheAge < 86400) { // 24 hours
-                // Return cached data
-                return json(array(
-                    'qr_data' => $cacheData['qr_data'],
-                    'setup_code' => $cacheData['setup_code'],
-                    'setup_id' => $cacheData['setup_id'],
-                    'cached' => true
-                ));
-            }
-        }
-    }
 
     // Try to get setup code and setup ID from pairing info file first
     $setupCode = '123-45-678';
@@ -1056,14 +1036,6 @@ function fppHomekitQRCode() {
         $qrData = "X-HM://" . $setupIDHex . $setupCodeClean;
     }
     
-    // Cache the QR data for future requests
-    $cacheData = array(
-        'qr_data' => $qrData,
-        'setup_code' => $setupCode,
-        'setup_id' => $setupID,
-        'timestamp' => time()
-    );
-    @file_put_contents($qrCacheFile, json_encode($cacheData));
 
     // Use Python to generate QR code image
     $pythonScript = <<<'PYCODE'
@@ -2021,7 +1993,6 @@ PYCODE;
 
 // GET /api/plugin/fpp-Homekit/network-interfaces
 function fppHomekitNetworkInterfaces() {
-
     $interfaces = array();
     $currentIp = null;
 

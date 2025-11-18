@@ -117,18 +117,18 @@ try:
 except ImportError:
     QR_AVAILABLE = False
 
-# Configure logging with appropriate level for performance
+# Configure logging with more verbose output for HomeKit
 logging.basicConfig(
-    level=logging.INFO,  # Use INFO level for production (reduce DEBUG spam)
+    level=logging.DEBUG,  # Changed to DEBUG for more detailed logs
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Set appropriate logging levels for HAP-python components (INFO level for performance)
-logging.getLogger('pyhap').setLevel(logging.INFO)
-logging.getLogger('pyhap.accessory_driver').setLevel(logging.WARNING)  # Only warnings/errors
-logging.getLogger('pyhap.hap_protocol').setLevel(logging.WARNING)
-logging.getLogger('pyhap.characteristic').setLevel(logging.WARNING)
+# Enable debug logging for HAP-python components
+logging.getLogger('pyhap').setLevel(logging.DEBUG)
+logging.getLogger('pyhap.accessory_driver').setLevel(logging.DEBUG)
+logging.getLogger('pyhap.hap_protocol').setLevel(logging.DEBUG)
+logging.getLogger('pyhap.characteristic').setLevel(logging.DEBUG)
 
 # Get plugin directory
 PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -722,17 +722,9 @@ class FPPLightAccessory(Accessory):
                 import traceback
                 logger.error(traceback.format_exc())
         
-        # Subscribe to key FPP status topics only
-        topics_to_subscribe = [
-            status_topic,  # Main status topic (e.g., "FPP/status")
-            f"{self.mqtt_client.topic_prefix}/playlist/status",  # Playlist status
-            'FPP/status',  # Default FPP status
-            'FPP/playlist/status',  # Default FPP playlist status
-        ]
-
-        for topic in topics_to_subscribe:
-            logger.debug(f"Subscribing to MQTT topic: {topic}")
-            self.mqtt_client.subscribe(topic, on_status_message)
+        # Subscribe to everything to catch all FPP status messages
+        self.mqtt_client.subscribe('#', qos=1)
+        logger.debug("Subscribed to all MQTT topics (#) for comprehensive FPP status monitoring")
         
         # Request initial status from FPP
         logger.info(f"Requesting initial FPP status via MQTT topic: {self.mqtt_client.topic_prefix}/command/GetStatus")
@@ -817,17 +809,17 @@ class FPPLightAccessory(Accessory):
                     subscriptions_setup = True
                     logger.info("MQTT status subscriptions set up")
                 else:
-                    # Connected - periodically request status updates (every 30 seconds for performance)
+                    # Connected - periodically request status updates (every 10 seconds)
                     import time as time_module
                     current_time = time_module.time()
-                    if current_time - last_status_request > 30:
+                    if current_time - last_status_request > 10:
                         try:
                             self.mqtt_client.publish_command("GetStatus")
                             last_status_request = current_time
                         except Exception as e:
                             logger.debug(f"Could not request status update: {e}")
                 
-                time.sleep(2)  # Check connection every 2 seconds for better performance
+                time.sleep(1)  # Check connection every second
             except Exception as e:
                 logger.error(f"Error in MQTT status polling: {e}")
                 time.sleep(5)
