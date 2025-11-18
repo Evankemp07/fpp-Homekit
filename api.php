@@ -2264,14 +2264,12 @@ function fppHomekitEmulate() {
     } else {
         // Emulate OFF - stop playback
         $command = "Stop";
-        $action = 'stop';
+        $action = 'stop/now';
     }
 
-    // Try multiple topic formats (same logic as the HomeKit service publish_command method)
+    // Use correct FPP MQTT topic format with doubled prefix
     $topics_to_try = array(
-        "{$mqttConfig['topic_prefix']}/command/{$command}",
-        "FPP/command/{$command}",
-        "fpp/command/{$command}"
+        "{$mqttConfig['topic_prefix']}/{$mqttConfig['topic_prefix']}/set/playlist/{$playlistName}/{$action}"
     );
 
     $success = false;

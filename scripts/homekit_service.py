@@ -502,12 +502,28 @@ class FPPMQTTClient:
             logger.error("MQTT not connected, cannot publish command")
             return False
 
-        # Try multiple topic formats that FPP might listen on
-        topics_to_try = [
-            f"{self.topic_prefix}/command/{command}",  # Primary: configured prefix
-            f"FPP/command/{command}",                  # Fallback: default FPP prefix
-            f"fpp/command/{command}",                  # Alternative: lowercase fpp
-        ]
+        # Use correct FPP MQTT topic format with doubled prefix
+        # FPP expects: {prefix}/{prefix}/set/playlist/{name}/{action}
+        if command.startswith("StartPlaylist/"):
+            playlist_name = command.split("/", 1)[1]
+            topics_to_try = [f"{self.topic_prefix}/{self.topic_prefix}/set/playlist/{playlist_name}/start"]
+        elif command == "Stop":
+            # For stop, we need the current playlist name - get it from config for now
+            # In a real implementation, this should get the currently playing playlist
+            import os
+            config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'homekit_config.json')
+            current_playlist = 'Christmas-2024'  # Default fallback
+            try:
+                with open(config_file, 'r') as f:
+                    import json
+                    config = json.load(f)
+                    current_playlist = config.get('playlist_name', 'Christmas-2024')
+            except:
+                pass
+            topics_to_try = [f"{self.topic_prefix}/{self.topic_prefix}/set/playlist/{current_playlist}/stop/now"]
+        else:
+            # Fallback for other commands
+            topics_to_try = [f"{self.topic_prefix}/{self.topic_prefix}/set/command/{command}"]
 
         success = False
         for topic in topics_to_try:

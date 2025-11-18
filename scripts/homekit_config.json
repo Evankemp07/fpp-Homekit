@@ -1,8 +1,8 @@
 {
-  "playlist_name": "TestPlaylist",
+  "playlist_name": "Christmas-2024",
   "mqtt": {
     "broker": "localhost",
     "port": 1883,
-    "topic_prefix": "FPP"
+    "topic_prefix": "falcon/player/FPP2"
   }
 }
