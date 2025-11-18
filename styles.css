@@ -606,16 +606,30 @@
         background-repeat: no-repeat;
         background-position: right 12px center;
     }
-    
+
     .form-select option {
         background: var(--bg-secondary);
         color: var(--text-primary);
     }
+
+    /* Fix for selected item visibility in dropdown */
+    .form-select option:checked {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+    }
 }
 
-.form-select option {
+
+/* Ensure proper contrast for select dropdowns in all modes */
+.form-select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+}
+
+/* Ensure select elements have proper text color in all modes */
+.form-select {
     color: var(--text-primary);
-    background: var(--bg-primary);
 }
 
 .form-select:hover {
