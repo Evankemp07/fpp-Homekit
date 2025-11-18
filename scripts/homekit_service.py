@@ -723,7 +723,6 @@ class FPPLightAccessory(Accessory):
                     
                     logger.info(f"FPP status parsed: code={status_code}, name={status_name}, playlist={playlist_name}, sequence={current_sequence}")
                     
-                    # More robust status detection for playlist end
                     # Status code 1 = playing, 0 = idle, 2 = paused, etc.
                     is_idle = (status_code == 0 or
                               status_name.lower() in ['idle', 'stopped', 'finished'] or
@@ -740,11 +739,6 @@ class FPPLightAccessory(Accessory):
                     # Override: if status indicates idle/stopped, definitely not playing
                     if is_idle:
                         fpp_playing = False
-
-                    # Additional check: if playlist has no current sequence and status is idle, definitely stopped
-                    if is_idle and not current_sequence and not playlist_name:
-                        fpp_playing = False
-                        logger.info("Playlist ended: no current sequence or playlist detected")
                     
                     logger.info(f"Determined playing state: {fpp_playing} (code={status_code}, name='{status_name}')")
                 else:
@@ -852,14 +846,10 @@ class FPPLightAccessory(Accessory):
                     subscriptions_setup = True
                     logger.info("MQTT status subscriptions set up")
                 else:
-                    # Connected - request status updates more frequently when playing
+                    # Connected - periodically request status updates (every 10 seconds)
                     import time as time_module
                     current_time = time_module.time()
-
-                    # Request status every 3 seconds when playing, every 10 seconds when idle
-                    interval = 3 if self.is_on else 10
-
-                    if current_time - last_status_request > interval:
+                    if current_time - last_status_request > 10:
                         try:
                             self.mqtt_client.publish_command("GetStatus")
                             last_status_request = current_time

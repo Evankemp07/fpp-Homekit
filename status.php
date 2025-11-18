@@ -818,9 +818,6 @@ if (file_exists($cssPath)) {
             if (fppCurrentSequence) {
                 fppStatusDetails += '<div style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">Sequence: ' + escapeHtml(fppCurrentSequence) + '</div>';
             }
-        } else if (statusName === 'paused') {
-            fppStatusText = 'Paused';
-            fppDotClass = 'paused';
         } else if (statusName === 'testing') {
             fppStatusText = 'Testing';
             fppDotClass = 'testing';
@@ -828,8 +825,14 @@ if (file_exists($cssPath)) {
             fppStatusText = 'Running';
             fppDotClass = 'running';
         } else if (statusText.includes('Available') || (!errorDetail && statusName !== 'unknown' && statusName !== '')) {
-            fppStatusText = '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="#e3e3e3" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Zm400-80h80v-400h-80v400Zm-320 0h80v-400h-80v400Zm0-400v400-400Zm320 0v400-400Z"/></svg>idle';
-            fppDotClass = 'running';
+            // Check if FPP is paused (status code 2) vs truly idle
+            const isPaused = statusCode === 2 || statusName === 'paused' || statusName.toLowerCase().includes('paused');
+            const idleText = isPaused ? 'Paused' : 'idle';
+            const idleIcon = isPaused ?
+                '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="#e3e3e3" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M560-200v-560h160v560H560Zm-320 0v-560h160v560H240Z"/></svg>' :
+                '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="#e3e3e3" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Zm400-80h80v-400h-80v400Zm-320 0h80v-400h-80v400Zm0-400v400-400Zm320 0v400-400Z"/></svg>';
+            fppStatusText = idleIcon + idleText;
+            fppDotClass = isPaused ? 'paused' : 'running';
             // Show error detail if available
             if (errorDetail) {
                 const errorParts = errorDetail.split('. ').filter(part => part.trim());
