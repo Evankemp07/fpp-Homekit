@@ -732,17 +732,9 @@ class FPPLightAccessory(Accessory):
                 import traceback
                 logger.error(traceback.format_exc())
         
-        # Subscribe to key FPP status topics only (optimized for performance)
-        topics_to_subscribe = [
-            status_topic,  # Main status topic (e.g., "FPP/status")
-            f"{self.mqtt_client.topic_prefix}/playlist/status",  # Playlist status
-            'FPP/status',  # Default FPP status
-            'FPP/playlist/status',  # Default FPP playlist status
-        ]
-
-        for topic in topics_to_subscribe:
-            logger.debug(f"Subscribing to MQTT topic: {topic}")
-            self.mqtt_client.subscribe(topic, on_status_message)
+        # Subscribe to everything to catch all FPP status messages (original working approach)
+        self.mqtt_client.subscribe('#', qos=1)
+        logger.debug("Subscribed to all MQTT topics (#) for comprehensive FPP status monitoring")
         
         # Request initial status from FPP
         logger.info(f"Requesting initial FPP status via MQTT topic: {self.mqtt_client.topic_prefix}/command/GetStatus")

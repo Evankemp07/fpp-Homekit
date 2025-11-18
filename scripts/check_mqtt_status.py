@@ -45,31 +45,18 @@ def main() -> None:
         nonlocal connection_established, connection_error
         if rc == 0:
             connection_established = True
-            # Subscribe to FPP status topics using the provided prefix
-            topics_to_subscribe = [
-                f"{prefix}/status",           # Main status topic
-                f"{prefix}/playlist/status",  # Playlist status
-                f"{prefix}/fppd_status",      # FPP daemon status
-                'FPP/status',                 # Default FPP status
-                'FPP/playlist/status',        # Default FPP playlist status
-                'FPP/fppd_status',            # Default FPP daemon status
-            ]
+            # Subscribe to everything to catch all FPP status messages (original working approach)
+            client.subscribe('#', qos=1)
 
-            for topic in topics_to_subscribe:
-                client.subscribe(topic, qos=1)
+            # Request status updates using FPP's MQTT command format
+            # FPP expects commands on "fpp/command" topic with command as payload
+            client.publish('fpp/command', 'GetStatus', qos=1)
+            client.publish('fpp/command', 'GetPlaylistStatus', qos=1)
 
-            # Request status updates from multiple possible topics
-            request_topics = [
-                f"{prefix}/command/GetStatus",
-                f"{prefix}/command/GetPlaylistStatus",
-                'FPP/command/GetStatus',
-                'FPP/command/GetPlaylistStatus',
-                'fpp/command/GetStatus',
-                'fpp/command/GetPlaylistStatus',
-            ]
-
-            for topic in request_topics:
-                client.publish(topic, '', qos=1)
+            # Also try the topic-based format that the HomeKit service uses
+            if prefix and prefix != 'fpp':
+                client.publish(f'{prefix}/command', 'GetStatus', qos=1)
+                client.publish(f'{prefix}/command', 'GetPlaylistStatus', qos=1)
         else:
             # Connection failed
             error_codes = {
@@ -250,8 +237,8 @@ def main() -> None:
             }))
             return
 
-        # Wait for status response (up to 5 seconds after connection for better responsiveness)
-        for _ in range(50):
+        # Wait for status response (up to 8 seconds after connection)
+        for _ in range(80):
             if status_data.get("available"):
                 break
             time.sleep(0.1)
@@ -264,14 +251,13 @@ def main() -> None:
             status_data = {
                 "available": False,
                 "timeout": True,
-                "error": f"No FPP status received within timeout. FPP may not be publishing to expected MQTT topics.",
+                "error": f"No FPP status received within timeout. Check: 1) FPP MQTT Input is enabled, 2) FPP is running, 3) MQTT broker settings match FPP's configuration.",
+                "commands_sent": [
+                    "fpp/command:GetStatus",
+                    "fpp/command:GetPlaylistStatus"
+                ],
                 "topics_subscribed": [
-                    f"{prefix}/status",
-                    f"{prefix}/playlist/status",
-                    f"{prefix}/fppd_status",
-                    'FPP/status',
-                    'FPP/playlist/status',
-                    'FPP/fppd_status'
+                    "# (all topics)"
                 ]
             }
 

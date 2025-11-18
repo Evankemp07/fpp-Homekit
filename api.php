@@ -686,9 +686,9 @@ function fppHomekitStatus() {
                     'playing' => $isPlaying
                 );
             } elseif (isset($mqttStatus['timeout']) && $mqttStatus['timeout']) {
-                $lastError = 'FPP not responding to MQTT status requests. Check FPP MQTT settings and ensure FPP is publishing status updates.';
-                if (isset($mqttStatus['topics_subscribed'])) {
-                    $lastError .= ' Subscribed to topics: ' . implode(', ', $mqttStatus['topics_subscribed']);
+                $lastError = 'FPP not responding to MQTT status requests. This worked before our optimizations - MQTT Input may need to be re-enabled.';
+                if (isset($mqttStatus['commands_sent'])) {
+                    $lastError .= ' Commands sent: ' . implode(', ', $mqttStatus['commands_sent']);
                 }
             } elseif (isset($mqttStatus['error'])) {
                 $errorMsg = $mqttStatus['error'];
@@ -926,9 +926,9 @@ function fppHomekitStatus() {
                     $fppStatus['error_detail'] = '';
                 } elseif (isset($mqttStatus['timeout']) && $mqttStatus['timeout']) {
                     $fppStatus['status_text'] = 'FPP Not Responding';
-                    $fppStatus['error_detail'] = 'FPP not publishing MQTT status updates. Check FPP MQTT settings.';
-                    if (isset($mqttStatus['topics_subscribed'])) {
-                        $fppStatus['error_detail'] .= ' Listening on: ' . implode(', ', $mqttStatus['topics_subscribed']);
+                    $fppStatus['error_detail'] = 'FPP not responding to MQTT commands. This worked before optimizations - MQTT Input may need re-enabling.';
+                    if (isset($mqttStatus['commands_sent'])) {
+                        $fppStatus['error_detail'] .= ' Commands sent: ' . implode(', ', $mqttStatus['commands_sent']);
                     }
                 } elseif (isset($mqttStatus['error'])) {
                     $fppStatus['status_text'] = 'MQTT Connection Failed';
@@ -956,9 +956,24 @@ function fppHomekitStatus() {
             $fppStatus['error_detail'] = 'Cannot connect to FPP. Check that: 1) FPP is running, 2) MQTT broker is accessible, 3) Network connectivity is working.';
         }
     } elseif (!$apiData) {
-        // HTTP API failed and shell_exec disabled
-        $fppStatus['status_text'] = 'Status Check Disabled';
-        $fppStatus['error_detail'] = 'HTTP API failed: ' . $lastError . '. PHP shell_exec is disabled, cannot try MQTT fallback.';
+        // HTTP API failed and shell_exec disabled - try direct HTTP API call
+        $directApiUrl = 'http://localhost:32320/api/system/status';
+        $directApiData = @file_get_contents($directApiUrl);
+        if ($directApiData) {
+            $directStatus = @json_decode($directApiData, true);
+            if ($directStatus && isset($directStatus['status'])) {
+                $fppStatus['status_text'] = 'FPP Available';
+                $fppStatus['status_name'] = $directStatus['status'];
+                $fppStatus['playing'] = ($directStatus['status'] === 'playing');
+                $fppStatus['error_detail'] = '';
+            } else {
+                $fppStatus['status_text'] = 'Status Check Failed';
+                $fppStatus['error_detail'] = 'Direct HTTP API call succeeded but returned invalid data.';
+            }
+        } else {
+            $fppStatus['status_text'] = 'Status Check Disabled';
+            $fppStatus['error_detail'] = 'HTTP API failed: ' . $lastError . '. PHP shell_exec is disabled, cannot try MQTT fallback.';
+        }
     }
     
     $result['fpp_status'] = $fppStatus;
@@ -1288,6 +1303,15 @@ function fppHomekitPairingInfo() {
 
 // GET /api/plugin/fpp-Homekit/playlists
 function fppHomekitPlaylists() {
+    // Cache playlists for 30 seconds (they don't change often)
+    static $cached = null;
+    static $cache_time = 0;
+    $cache_ttl = 30; // 30 seconds
+
+    if ($cached !== null && (time() - $cache_time) < $cache_ttl) {
+        return json($cached);
+    }
+
     $playlists = array();
     
     // Read playlists directly from filesystem (MQTT-only, no HTTP API)
@@ -1322,11 +1346,25 @@ function fppHomekitPlaylists() {
     sort($playlists);
     
     $result = array('playlists' => $playlists);
+
+    // Cache the result
+    $cached = $result;
+    $cache_time = time();
+
     return json($result);
 }
 
 // GET /api/plugin/fpp-Homekit/config
 function fppHomekitGetConfig() {
+    // Cache config for 10 seconds (configuration doesn't change often)
+    static $cached = null;
+    static $cache_time = 0;
+    $cache_ttl = 10; // 10 seconds
+
+    if ($cached !== null && (time() - $cache_time) < $cache_ttl) {
+        return json($cached);
+    }
+
     $pluginDir = dirname(__FILE__);
     $scriptsDir = $pluginDir . '/scripts';
     $configFile = $scriptsDir . '/homekit_config.json';
@@ -1436,7 +1474,11 @@ PYCODE;
             }
         }
     }
-    
+
+    // Cache the result
+    $cached = $result;
+    $cache_time = time();
+
     return json($result);
 }
 

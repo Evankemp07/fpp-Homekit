@@ -222,6 +222,7 @@ if (file_exists($cssPath)) {
     let qrLoaded = false;
     let autoStartAttempted = false;
     let playlistFetchInProgress = false;
+    let lastStatusUpdate = 0;
     
     const playlistSelect = document.getElementById('playlist-select');
     const savePlaylistBtn = document.getElementById('save-playlist-btn');
@@ -549,7 +550,14 @@ if (file_exists($cssPath)) {
         if (isUpdating) {
             return;
         }
-        
+
+        // Debounce rapid successive calls (within 1 second)
+        const now = Date.now();
+        if (lastStatusUpdate && (now - lastStatusUpdate) < 1000) {
+            return;
+        }
+        lastStatusUpdate = now;
+
         isUpdating = true;
         debugLog('Loading status...');
         fetch(API_BASE + '/status')
@@ -1274,10 +1282,11 @@ if (file_exists($cssPath)) {
             saveHomekitNetworkBtn.addEventListener('click', saveHomekitNetwork);
         }
         
+        // Stagger initial API calls to prevent overwhelming the server
         loadPlaylists(true);
-        loadHomekitNetworkConfig();
-        loadStatus();
-        loadMQTTConfig();
+        setTimeout(() => loadHomekitNetworkConfig(), 100);
+        setTimeout(() => loadStatus(), 200);
+        setTimeout(() => loadMQTTConfig(), 300);
         
         if (refreshInterval) {
             clearInterval(refreshInterval);
@@ -1287,7 +1296,7 @@ if (file_exists($cssPath)) {
             if (!playlistFetchInProgress) {
                 loadPlaylists();
             }
-        }, 10000);
+        }, 15000); // Increased from 10s to 15s to reduce server load
         
         document.addEventListener('click', function(evt) {
             if (evt.target.closest('button')) {
