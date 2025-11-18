@@ -1,0 +1,8 @@
+{
+  "playlist_name": "TestPlaylist",
+  "mqtt": {
+    "broker": "localhost",
+    "port": 1883,
+    "topic_prefix": "FPP"
+  }
+}
