@@ -826,6 +826,7 @@ if (file_exists($cssPath)) {
             fppDotClass = 'running';
         } else if (statusText.includes('Available') || (!errorDetail && statusName !== 'unknown' && statusName !== '')) {
             // Check if FPP is paused (status code 2) vs truly idle
+            const statusCode = fppStatus.status || 0;
             const isPaused = statusCode === 2 || statusName === 'paused' || statusName.toLowerCase().includes('paused');
             const idleText = isPaused ? 'Paused' : 'idle';
             const idleIcon = isPaused ?
