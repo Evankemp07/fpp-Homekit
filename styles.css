@@ -499,18 +499,6 @@ input:checked + .toggle-slider:before {
     flex-shrink: 0;
 }
 
-.restart-btn-text {
-    font-size: 13px;
-    font-weight: 500;
-    white-space: nowrap;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-    pointer-events: none;
-}
-
-.restart-icon-btn:hover .restart-btn-text {
-    opacity: 0;
-}
 
 .restart-icon-btn .spinning {
     animation: spin 1s linear infinite;
