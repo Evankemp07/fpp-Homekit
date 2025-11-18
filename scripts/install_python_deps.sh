@@ -1,11 +1,23 @@
 #!/bin/bash
-
-# Install Python dependencies for fpp-Homekit plugin
-# Simplified workflow that always uses python -m pip
+#
+# install_python_deps.sh
+# Installs Python dependencies required by the FPP HomeKit plugin
+#
+# Usage: install_python_deps.sh <plugin_dir> <python3_executable> [pip_command]
+#
+# Arguments:
+#   plugin_dir:        Full path to the plugin directory
+#   python3_executable: Path to Python 3 executable
+#   pip_command:       Optional pip command (defaults to python3 -m pip)
+#
+# This script installs dependencies from requirements.txt using pip with
+# the --break-system-packages flag, which is required for Python 3.11+
+# on Debian/Ubuntu systems with PEP 668 system package isolation.
 
 PLUGIN_DIR="${1}"
 PYTHON3="${2}"
-PIP_CMD="${3:-$PYTHON3 -m pip}"  # Allow pip command to be passed, default to python3 -m pip
+# Allow pip command to be overridden, default to python3 -m pip
+PIP_CMD="${3:-$PYTHON3 -m pip}"
 REQUIREMENTS_FILE="${PLUGIN_DIR}/scripts/requirements.txt"
 INSTALL_LOG="${PLUGIN_DIR}/scripts/install.log"
 
@@ -27,24 +39,28 @@ echo "Detailed log: ${INSTALL_LOG}"
 echo "Using pip command: $PIP_CMD" | tee -a "${INSTALL_LOG}"
 $PIP_CMD --version >> "${INSTALL_LOG}" 2>&1 || true
 
-# Best-effort pip upgrade (try --user first, then system-wide)
+# Attempt to upgrade pip to latest version before installing dependencies
+# This helps ensure compatibility with the latest package formats
+# Try --user first to avoid system-wide changes, fallback to system-wide if needed
 echo "Upgrading pip (best effort)..." | tee -a "${INSTALL_LOG}"
 if ! $PIP_CMD install --upgrade pip --user >> "${INSTALL_LOG}" 2>&1; then
     if ! $PIP_CMD install --upgrade pip >> "${INSTALL_LOG}" 2>&1; then
-        echo "Warning: Could not upgrade pip, continuing..." | tee -a "${INSTALL_LOG}"
+        echo "Warning: Could not upgrade pip, continuing with existing version..." | tee -a "${INSTALL_LOG}"
     fi
 fi
 
+# Helper function to install dependencies with specified pip flags
+# Args: Space-separated string of pip install flags (e.g., "--user --upgrade")
 install_with() {
-    # Split the incoming string of extra args into an array (if provided)
     local args=()
+    # Convert space-separated flags string into array for proper argument passing
     if [ -n "$1" ]; then
         # shellcheck disable=SC2206
         args=($1)
     fi
 
     if $PIP_CMD install -r "${REQUIREMENTS_FILE}" "${args[@]}" >> "${INSTALL_LOG}" 2>&1; then
-        echo "✓ Dependencies installed (${1:-default flags})" | tee -a "${INSTALL_LOG}"
+        echo "✓ Dependencies installed successfully (${1:-default flags})" | tee -a "${INSTALL_LOG}"
         return 0
     fi
 
@@ -53,22 +69,12 @@ install_with() {
 
 INSTALL_SUCCESS=0
 
-# Try --user first (cleanest, doesn't break system package management)
-echo "Trying installation with --user (recommended)..." | tee -a "${INSTALL_LOG}"
-if install_with "--user --upgrade"; then
+# Install dependencies using --break-system-packages flag
+# This flag is required for Python 3.11+ on Debian/Ubuntu systems where
+# system package isolation is enforced by default
+echo "Installing with --break-system-packages..." | tee -a "${INSTALL_LOG}"
+if install_with "--upgrade --break-system-packages"; then
     INSTALL_SUCCESS=1
-else
-    # Fallback to system-wide if --user fails
-    echo "Retrying installation system-wide..." | tee -a "${INSTALL_LOG}"
-    if install_with "--upgrade"; then
-        INSTALL_SUCCESS=1
-    else
-        # Last resort: --break-system-packages (only if everything else fails)
-        echo "Attempting installation with --break-system-packages (last resort)..." | tee -a "${INSTALL_LOG}"
-        if install_with "--upgrade --break-system-packages"; then
-            INSTALL_SUCCESS=1
-        fi
-    fi
 fi
 
 if [ $INSTALL_SUCCESS -eq 0 ]; then
@@ -76,18 +82,19 @@ if [ $INSTALL_SUCCESS -eq 0 ]; then
     echo "Last 30 lines of error output:" | tee -a "${INSTALL_LOG}"
     tail -30 "${INSTALL_LOG}" || true
     echo ""
-    echo "Try manual install with one of:" | tee -a "${INSTALL_LOG}"
-    echo "  $PIP_CMD install -r ${REQUIREMENTS_FILE} --user --upgrade"
-    echo "  $PIP_CMD install -r ${REQUIREMENTS_FILE} --upgrade"
+    echo "Try manual install with:" | tee -a "${INSTALL_LOG}"
     echo "  $PIP_CMD install -r ${REQUIREMENTS_FILE} --upgrade --break-system-packages"
     exit 1
 fi
 
-# Verify critical dependencies using the same Python that will run the service
+# Verify that all critical dependencies are importable
+# Use the same Python executable that will run the service to ensure compatibility
 echo ""
 echo "Verifying installed dependencies with $PYTHON3..." | tee -a "${INSTALL_LOG}"
 MISSING_DEPS=0
 
+# Determine Python site-packages locations for debugging purposes
+# This helps identify where packages were installed if verification fails
 PYTHON_SITE=$($PYTHON3 - <<'PY'
 import site
 paths = []

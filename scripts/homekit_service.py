@@ -919,10 +919,11 @@ def main():
             setup_code = _as_str(driver.state.pincode, '000-00-000')
             mac = _as_str(getattr(driver.state, 'mac', ''), '')
             
-            # Validate setup code format (should be XXX-XX-XXX = 8 digits)
+            # Validate setup code format: XXX-XX-XXX (display) = 8 digits (encoded)
+            # HomeKit setup codes must be exactly 8 numeric digits when dashes are removed
             setup_code_clean = setup_code.replace('-', '')
             if len(setup_code_clean) != 8 or not setup_code_clean.isdigit():
-                logger.error(f"Invalid setup code format: {setup_code} (expected XXX-XX-XXX)")
+                logger.error(f"Invalid setup code format: {setup_code} (expected format: XXX-XX-XXX)")
                 logger.error(f"This usually means the state file is corrupted. Please restart the service.")
             
             # Generate QR code data using HAP-python's method

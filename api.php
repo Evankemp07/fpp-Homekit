@@ -259,9 +259,10 @@ function fppHomekitDetectHostIPs() {
 }
 
 function fppHomekitBuildApiEndpoints() {
-    // Disable caching temporarily to ensure fresh endpoint order after updates
-    // This ensures 32320 is always tried first
-    // TODO: Re-enable caching once endpoint order is stable
+    // Caching is disabled to ensure endpoint order is recalculated on each request
+    // This guarantees that port 32320 (the preferred port) is always tried first
+    // after plugin updates or configuration changes
+    // Note: Caching can be re-enabled once endpoint discovery order stabilizes
     // static $cached = null;
     // if ($cached !== null) {
     //     return $cached;
@@ -1008,8 +1009,9 @@ function fppHomekitQRCode() {
     
     // If not available, generate QR code data
     if (!$qrData) {
-        // Format: X-HM://[8-char hex setup ID][setup code without dashes]
-        // Setup code should be 8 digits: XXX-XX-XXX -> XXXXXXXX
+        // HomeKit QR code format: X-HM://[8-character hex setup ID][8-digit setup code]
+        // Setup code format: XXX-XX-XXX (display) -> XXXXXXXX (encoded, no dashes)
+        // Example: 123-45-678 becomes 12345678 in the QR code
         $setupCodeClean = str_replace('-', '', $setupCode);
         if (strlen($setupCodeClean) !== 8) {
             // Invalid setup code format
