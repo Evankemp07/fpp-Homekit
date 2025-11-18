@@ -19,11 +19,16 @@ if (file_exists($cssPath)) {
     <div class="homekit-card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h2 style="margin: 0;">FPP Homekit</h2>
-            <button class="info-button" onclick="showMqttInfo()" title="MQTT Setup Information">
-                <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
-                    <path d="M440-280h80v-240h-80v240Zm40-320q17 0 28.5-11.5T520-640q0-17-11.5-28.5T480-680q-17 0-28.5 11.5T440-640q0 17 11.5 28.5T480-600Zm0 520q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/>
-                </svg>
-            </button>
+            <div style="display: flex; gap: 8px;">
+                <button class="settings-button" onclick="showMqttSettings()" id="settings-btn" title="MQTT Settings">
+                    <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm70-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z"/></svg>
+                </button>
+                <button class="info-button" onclick="showMqttInfo()" title="MQTT Setup Information">
+                    <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
+                        <path d="M440-280h80v-240h-80v240Zm40-320q17 0 28.5-11.5T520-640q0-17-11.5-28.5T480-680q-17 0-28.5 11.5T440-640q0 17 11.5 28.5T480-600Zm0 520q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/>
+                    </svg>
+                </button>
+            </div>
         </div>
         
         <div id="message-container"></div>
@@ -66,7 +71,7 @@ if (file_exists($cssPath)) {
                     <div class="status-card-value" id="playlist-status">Loading...</div>
                 </div>
 
-                <div class="status-card">
+                <div class="status-card" id="emulation-section">
                     <div class="status-card-label">HomeKit Emulation</div>
                     <div class="status-card-value" style="display: flex; gap: 8px;">
                         <button class="homekit-button" style="font-size: 14px; padding: 8px 16px; background: #34c759;" onclick="emulateHomeKit(true)" id="emulate-on-btn">
@@ -91,7 +96,7 @@ if (file_exists($cssPath)) {
                         </div>
                     </div>
                     
-                    <div class="playlist-config" style="margin-top: 24px;">
+                    <div class="playlist-config" style="margin-top: 24px;" id="mqtt-config-section">
                         <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">MQTT Configuration</h3>
                         <div class="playlist-config-controls" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                             <div style="display: flex; gap: 8px; align-items: center;">
@@ -130,23 +135,35 @@ if (file_exists($cssPath)) {
                         <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Pair with HomeKit</h3>
                         <div id="pairing-section">
                             <div class="qr-container">
-                                <div id="qr-loading" style="display: none;">
-                                    <p class="info-text">Generating QR code...</p>
+                                <div id="qr-loading" style="display: block;">
+                                    <div class="qr-code-box">
+                                        <div class="qr-placeholder">
+                                            <div class="qr-placeholder-grid"></div>
+                                        </div>
+                                        <div class="setup-code-placeholder">
+                                            <span class="setup-code-label">Setup Code</span>
+                                            <div class="setup-code-value">
+                                                <span>XXX-XX-XXX</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div id="qr-content" style="display: none;">
-                                    <div class="qr-code">
-                                        <img id="qr-image" alt="HomeKit QR Code" style="max-width: 280px; display: block;" />
-                                    </div>
-                                    <div class="setup-code">
-                                        <span class="setup-code-label">Setup Code</span>
-                                        <div class="setup-code-value">
-                                            <span id="setup-code-text"></span>
-                                            <button class="copy-btn" onclick="copySetupCode()" title="Copy Setup Code" id="copy-btn">
-                                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <path d="M5.5 2.5H11.5C12.0523 2.5 12.5 2.94772 12.5 3.5V9.5C12.5 10.0523 12.0523 10.5 11.5 10.5H9.5V12.5C9.5 13.0523 9.05228 13.5 8.5 13.5H2.5C1.94772 13.5 1.5 13.0523 1.5 12.5V6.5C1.5 5.94772 1.94772 5.5 2.5 5.5H4.5V3.5C4.5 2.94772 4.94772 2.5 5.5 2.5Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                    <path d="M4.5 5.5H8.5C9.05228 5.5 9.5 5.94772 9.5 6.5V10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                </svg>
-                                            </button>
+                                    <div class="qr-code-box">
+                                        <div class="qr-code">
+                                            <img id="qr-image" alt="HomeKit QR Code" />
+                                        </div>
+                                        <div class="setup-code">
+                                            <span class="setup-code-label">Setup Code</span>
+                                            <div class="setup-code-value">
+                                                <span id="setup-code-text"></span>
+                                                <button class="copy-btn" onclick="copySetupCode()" title="Copy Setup Code" id="copy-btn">
+                                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                        <path d="M5.5 2.5H11.5C12.0523 2.5 12.5 2.94772 12.5 3.5V9.5C12.5 10.0523 12.0523 10.5 11.5 10.5H9.5V12.5C9.5 13.0523 9.05228 13.5 8.5 13.5H2.5C1.94772 13.5 1.5 13.0523 1.5 12.5V6.5C1.5 5.94772 1.94772 5.5 2.5 5.5H4.5V3.5C4.5 2.94772 4.94772 2.5 5.5 2.5Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                        <path d="M4.5 5.5H8.5C9.05228 5.5 9.5 5.94772 9.5 6.5V10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                    </svg>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -208,6 +225,58 @@ if (file_exists($cssPath)) {
                 <li>Use <strong>localhost</strong> as the hostname</li>
                 <li>If you changed the MQTT port from the default (1883), you can adjust it in this plugin's MQTT Configuration section</li>
             </ol>
+        </div>
+    </div>
+</div>
+
+<!-- MQTT Settings Modal -->
+<div id="mqtt-settings-modal" class="info-modal" style="display: none;">
+    <div class="info-modal-overlay" onclick="hideMqttSettings()"></div>
+    <div class="info-modal-content">
+        <div class="info-modal-header">
+            <h3>MQTT Configuration Settings</h3>
+            <button class="info-modal-close" onclick="hideMqttSettings(); event.stopPropagation();" aria-label="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
+                    <path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/>
+                </svg>
+            </button>
+        </div>
+        <div class="info-modal-body">
+            <p><strong>Section Visibility Settings</strong></p>
+
+            <div class="settings-toggle-container">
+                <div class="settings-toggle-row">
+                    <label for="emulation-visibility-toggle" class="settings-toggle-label">
+                        Show HomeKit Emulation Section
+                        <span id="emulation-visibility-text" class="settings-toggle-description">(currently hidden)</span>
+                    </label>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="emulation-visibility-toggle" checked onchange="toggleEmulationVisibility(this)">
+                        <label for="emulation-visibility-toggle" class="toggle-slider"></label>
+                    </div>
+                </div>
+                <p class="settings-description">
+                    Control whether the HomeKit emulation buttons are visible on the main page.
+                    Useful for testing playlist control without needing actual HomeKit devices.
+                </p>
+            </div>
+
+            <div class="settings-toggle-container">
+                <div class="settings-toggle-row">
+                    <label for="mqtt-visibility-toggle" class="settings-toggle-label">
+                        Show MQTT Configuration Section
+                        <span id="mqtt-visibility-text" class="settings-toggle-description">(currently hidden)</span>
+                    </label>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="mqtt-visibility-toggle" onchange="toggleMqttConfigVisibility(this)">
+                        <label for="mqtt-visibility-toggle" class="toggle-slider"></label>
+                    </div>
+                </div>
+                <p class="settings-description">
+                    Control whether the MQTT configuration section is visible on the main page.
+                    Advanced users can show it to modify broker settings, while basic users can keep it hidden for a cleaner interface.
+                </p>
+            </div>
         </div>
     </div>
 </div>
@@ -543,7 +612,96 @@ if (file_exists($cssPath)) {
             // Copy failed silently
         });
     };
-    
+
+    // Show MQTT settings modal
+    window.showMqttSettings = function() {
+        const modal = document.getElementById('mqtt-settings-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            // Animate in
+            requestAnimationFrame(() => {
+                const content = modal.querySelector('.info-modal-content');
+                if (content) {
+                    content.style.opacity = '0';
+                    content.style.transform = 'scale(0.95)';
+                    requestAnimationFrame(() => {
+                        content.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                        content.style.opacity = '1';
+                        content.style.transform = 'scale(1)';
+                    });
+                }
+            });
+        }
+    };
+
+    // Hide MQTT settings modal
+    window.hideMqttSettings = function() {
+        console.log('hideMqttSettings called');
+        const modal = document.getElementById('mqtt-settings-modal');
+        if (modal) {
+            console.log('modal found, hiding...');
+            const content = modal.querySelector('.info-modal-content');
+            if (content) {
+                content.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                content.style.opacity = '0';
+                content.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    modal.style.display = 'none';
+                }, 200);
+            } else {
+                console.log('content not found');
+            }
+        } else {
+            console.log('modal not found');
+        }
+    };
+
+    // Toggle emulation section visibility preference
+    window.toggleEmulationVisibility = function(checkbox) {
+        const showEmulation = checkbox.checked;
+        localStorage.setItem('fppHomekitShowEmulation', showEmulation);
+
+        const section = document.getElementById('emulation-section');
+        if (section) {
+            if (showEmulation) {
+                section.style.display = 'block';
+                section.style.opacity = '1';
+                section.style.transform = 'translateY(0)';
+            } else {
+                section.style.display = 'none';
+            }
+        }
+
+        // Update the toggle text
+        const toggleText = document.getElementById('emulation-visibility-text');
+        if (toggleText) {
+            toggleText.textContent = showEmulation ? 'Hide HomeKit Emulation Section' : 'Show HomeKit Emulation Section';
+        }
+    };
+
+    // Toggle MQTT config visibility preference
+    window.toggleMqttConfigVisibility = function(checkbox) {
+        const showMqtt = checkbox.checked;
+        localStorage.setItem('fppHomekitShowMqttConfig', showMqtt);
+
+        const section = document.getElementById('mqtt-config-section');
+        if (section) {
+            if (showMqtt) {
+                section.style.display = 'block';
+                section.style.opacity = '1';
+                section.style.transform = 'translateY(0)';
+            } else {
+                section.style.display = 'none';
+            }
+        }
+
+        // Update the toggle text
+        const toggleText = document.getElementById('mqtt-visibility-text');
+        if (toggleText) {
+            toggleText.textContent = showMqtt ? 'Hide MQTT Configuration' : 'Show MQTT Configuration';
+        }
+    };
+
     // Load status
     function loadStatus() {
         // Prevent concurrent updates
@@ -1287,6 +1445,41 @@ if (file_exists($cssPath)) {
         setTimeout(() => loadHomekitNetworkConfig(), 100);
         setTimeout(() => loadStatus(), 200);
         setTimeout(() => loadMQTTConfig(), 300);
+
+        // Initialize section visibility preferences
+        setTimeout(() => {
+            // Emulation section (show by default)
+            const showEmulation = localStorage.getItem('fppHomekitShowEmulation') !== 'false'; // Default to true
+            const emulationSection = document.getElementById('emulation-section');
+            const emulationToggle = document.getElementById('emulation-visibility-toggle');
+            const emulationText = document.getElementById('emulation-visibility-text');
+
+            if (emulationSection) {
+                emulationSection.style.display = showEmulation ? 'block' : 'none';
+            }
+            if (emulationToggle) {
+                emulationToggle.checked = showEmulation;
+            }
+            if (emulationText) {
+                emulationText.textContent = showEmulation ? 'Hide HomeKit Emulation Section' : 'Show HomeKit Emulation Section';
+            }
+
+            // MQTT config section (hide by default)
+            const showMqtt = localStorage.getItem('fppHomekitShowMqttConfig') === 'true';
+            const mqttSection = document.getElementById('mqtt-config-section');
+            const mqttToggle = document.getElementById('mqtt-visibility-toggle');
+            const mqttText = document.getElementById('mqtt-visibility-text');
+
+            if (mqttSection) {
+                mqttSection.style.display = showMqtt ? 'block' : 'none';
+            }
+            if (mqttToggle) {
+                mqttToggle.checked = showMqtt;
+            }
+            if (mqttText) {
+                mqttText.textContent = showMqtt ? 'Hide MQTT Configuration' : 'Show MQTT Configuration';
+            }
+        }, 500);
         
         if (refreshInterval) {
             clearInterval(refreshInterval);
