@@ -83,18 +83,27 @@ chmod +x "${SERVICE_SCRIPT}" 2>/dev/null
 echo "Ensuring no existing HomeKit service is running..."
 if command -v pkill >/dev/null 2>&1; then
     pkill -f homekit_service.py 2>/dev/null || true
+    sleep 2  # Give processes time to terminate gracefully
+    pkill -9 -f homekit_service.py 2>/dev/null || true  # Force kill if still running
 elif command -v killall >/dev/null 2>&1; then
     killall homekit_service.py 2>/dev/null || true
+    sleep 2
+    killall -9 homekit_service.py 2>/dev/null || true
 else
     # Fallback: loop through ps output
     ps aux | grep homekit_service.py | grep -v grep | awk '{print $2}' | while read -r pid; do
         kill "$pid" 2>/dev/null || true
+        sleep 1
         kill -9 "$pid" 2>/dev/null || true
     done
 fi
 
 # Remove stale PID file if present
 rm -f "${PID_FILE}"
+
+# Give system time to fully clean up async tasks from previous instance
+echo "Waiting for async cleanup..."
+sleep 5
 
 # Start the service in background with logging
 echo "Starting FPP HomeKit service..."
@@ -104,8 +113,11 @@ cd "${PLUGIN_DIR}/scripts"
 nohup "${PYTHON3}" "${SERVICE_SCRIPT}" >> "${LOG_FILE}" 2>&1 &
 START_PID=$!
 
-# Give it a moment to start
-sleep 3
+# Set up trap to clean up if script is interrupted
+trap 'echo "Interrupted, cleaning up..."; kill $START_PID 2>/dev/null || true; rm -f "${PID_FILE}"; exit 1' INT TERM
+
+# Give it more time to start up properly (asyncio needs time)
+sleep 5
 
 # Verify it started
 if [ -f "${PID_FILE}" ]; then

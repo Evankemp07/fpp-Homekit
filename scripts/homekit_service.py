@@ -1028,9 +1028,31 @@ def main():
             driver.start()
         except KeyboardInterrupt:
             logger.info("Keyboard interrupt received, stopping HomeKit service...")
+        except RuntimeError as e:
+            if "Event loop is closed" in str(e):
+                logger.warning("Event loop closed during startup - this may be due to unclean shutdown of previous instance")
+                logger.warning("Try waiting longer between restarts or check for zombie processes")
+            else:
+                logger.error(f"Runtime error during startup: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during HomeKit service startup: {e}")
+            raise
         finally:
-            driver.stop()
-            logger.info("HomeKit service stopped")
+            try:
+                logger.info("Stopping HomeKit service...")
+                driver.stop()
+                logger.info("HomeKit service stopped cleanly")
+            except Exception as e:
+                logger.warning(f"Error during service shutdown: {e}")
+                # Force cleanup even if stop() fails
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if not loop.is_closed():
+                        loop.close()
+                except:
+                    pass
             # Remove PID file
             try:
                 if os.path.exists(PID_FILE):
