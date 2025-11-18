@@ -515,15 +515,16 @@ class FPPMQTTClient:
             logger.error(f"Error publishing MQTT command: {e}")
             return False
     
-    def subscribe(self, topic: str, callback):
+    def subscribe(self, topic: str, callback=None, qos=1):
         """Subscribe to an MQTT topic."""
         if not self.connected or not self.client:
             logger.error("MQTT not connected, cannot subscribe")
             return False
-        
+
         try:
-            self.client.subscribe(topic, qos=1)
-            self.client.message_callback_add(topic, callback)
+            self.client.subscribe(topic, qos=qos)
+            if callback:
+                self.client.message_callback_add(topic, callback)
             logger.info(f"Subscribed to MQTT topic: {topic}")
             return True
         except Exception as e:
@@ -566,7 +567,7 @@ class FPPLightAccessory(Accessory):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
+
         # Load configuration
         self.config = self.load_config()
         self.playlist_name = self.config.get('playlist_name', '')
@@ -721,9 +722,17 @@ class FPPLightAccessory(Accessory):
                 import traceback
                 logger.error(traceback.format_exc())
         
-        # Subscribe to everything to catch all FPP status messages
-        self.mqtt_client.subscribe('#', qos=1)
-        logger.debug("Subscribed to all MQTT topics (#) for comprehensive FPP status monitoring")
+        # Subscribe to key FPP status topics only
+        topics_to_subscribe = [
+            status_topic,  # Main status topic (e.g., "FPP/status")
+            f"{self.mqtt_client.topic_prefix}/playlist/status",  # Playlist status
+            'FPP/status',  # Default FPP status
+            'FPP/playlist/status',  # Default FPP playlist status
+        ]
+
+        for topic in topics_to_subscribe:
+            logger.debug(f"Subscribing to MQTT topic: {topic}")
+            self.mqtt_client.subscribe(topic, on_status_message)
         
         # Request initial status from FPP
         logger.info(f"Requesting initial FPP status via MQTT topic: {self.mqtt_client.topic_prefix}/command/GetStatus")

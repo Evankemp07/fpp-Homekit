@@ -26,5 +26,3 @@ git log --oneline -1
 
 echo "=== Update complete ==="
 echo "If the HomeKit service is running, restart it from the plugin UI to apply changes."
-echo ""
-echo "made with ❤️ in PA"

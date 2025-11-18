@@ -45,8 +45,16 @@ def main() -> None:
         nonlocal connection_established, connection_error
         if rc == 0:
             connection_established = True
-            # Subscribe to everything to catch all FPP status messages
-            client.subscribe('#', qos=1)
+            # Subscribe to key FPP status topics only
+            topics_to_subscribe = [
+                f"{prefix}/status",  # Main status topic
+                f"{prefix}/playlist/status",  # Playlist status
+                'FPP/status',  # Default FPP status
+                'FPP/playlist/status',  # Default FPP playlist status
+            ]
+
+            for topic in topics_to_subscribe:
+                client.subscribe(topic, qos=1)
 
             # Request status updates from multiple possible topics
             request_topics = [
