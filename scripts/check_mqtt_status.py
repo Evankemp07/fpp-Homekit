@@ -45,70 +45,23 @@ def main() -> None:
         nonlocal connection_established, connection_error
         if rc == 0:
             connection_established = True
-            # Subscribe to all topics to catch FPP status messages regardless of topic structure
-            # FPP can publish to various topic patterns like:
-            # - FPP/status
-            # - falcon/player/FPP2/falcon/player/FPP2/fppd_status
-            # - {prefix}/status
-            # - {prefix}/fppd_status
-            # So we subscribe to everything and filter by content
-            client.subscribe('#', qos=1)
-            
-            # Also subscribe to specific patterns based on prefix
-            prefixes = {prefix, prefix.lower()}
-            status_topics = []
-            for base in prefixes:
-                if not base:
-                    continue
-                normalized = base.rstrip('/')
-                status_topics.extend([
-                    f"{normalized}/status",
-                    f"{normalized}/status/#",
-                    f"{normalized}/fppd_status",
-                    f"{normalized}/fppd_status/#",
-                    f"{normalized}/#",  # Subscribe to all topics under prefix
-                ])
-            
-            # Also subscribe to default FPP topics
-            status_topics.extend([
-                'FPP/status', 'FPP/status/#', 'FPP/fppd_status', 'FPP/fppd_status/#', 'FPP/#',
-                'fpp/status', 'fpp/status/#', 'fpp/fppd_status', 'fpp/fppd_status/#', 'fpp/#',
-                'falcon/#',  # Common FPP topic prefix
-            ])
-            
-            # Remove duplicates while preserving order
-            seen = set()
-            unique_topics = []
+            # Subscribe to essential FPP status topics only (performance optimization)
+            # Avoid wildcard subscriptions which can be expensive
+            status_topics = [
+                f"{prefix}/status",           # Main status topic
+                f"{prefix}/playlist/status",  # Playlist status
+                'FPP/status',                 # Default FPP status
+                'FPP/playlist/status',        # Default FPP playlist status
+            ]
+
             for topic in status_topics:
-                if topic not in seen:
-                    seen.add(topic)
-                    unique_topics.append(topic)
-            
-            for topic in unique_topics:
                 client.subscribe(topic, qos=1)
 
-            # Request status updates using various topic patterns
-            request_topics = set()
-            for base in prefixes:
-                if not base:
-                    continue
-                normalized = base.rstrip('/')
-                request_topics.update(
-                    {
-                        f"{normalized}/command/GetStatus",
-                        f"{normalized}/command/GetPlaylistStatus",
-                    }
-                )
-
-            # Add default FPP command topics
-            request_topics.update(
-                {
-                    'FPP/command/GetStatus',
-                    'FPP/command/GetPlaylistStatus',
-                    'fpp/command/GetStatus',
-                    'fpp/command/GetPlaylistStatus',
-                }
-            )
+            # Request status updates (limit to essential commands for performance)
+            request_topics = [
+                f"{prefix}/command/GetStatus",
+                'FPP/command/GetStatus',  # Default FPP command
+            ]
 
             for topic in request_topics:
                 client.publish(topic, '', qos=1)

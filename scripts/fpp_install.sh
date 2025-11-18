@@ -479,3 +479,6 @@ echo "3. Pair with the Home app and control playback from HomeKit"
 echo ""
 echo "Installation log saved to: ${INSTALL_LOG}"
 echo ""
+
+echo ""
+echo "made with ❤️ in PA"

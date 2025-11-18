@@ -1229,7 +1229,7 @@ if (file_exists($cssPath)) {
             if (!playlistFetchInProgress) {
                 loadPlaylists();
             }
-        }, 10000);
+        }, 30000); // Increased from 10s to 30s for better performance
         
         document.addEventListener('click', function(evt) {
             if (evt.target.closest('button')) {

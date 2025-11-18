@@ -259,14 +259,15 @@ function fppHomekitDetectHostIPs() {
 }
 
 function fppHomekitBuildApiEndpoints() {
-    // Caching is disabled to ensure endpoint order is recalculated on each request
-    // This guarantees that port 32320 (the preferred port) is always tried first
-    // after plugin updates or configuration changes
-    // Note: Caching can be re-enabled once endpoint discovery order stabilizes
-    // static $cached = null;
-    // if ($cached !== null) {
-    //     return $cached;
-    // }
+    // Cache endpoints for 5 minutes to improve performance
+    // Recalculate if cache is stale or doesn't exist
+    static $cached = null;
+    static $cache_time = 0;
+    $cache_ttl = 300; // 5 minutes
+
+    if ($cached !== null && (time() - $cache_time) < $cache_ttl) {
+        return $cached;
+    }
     
     $pluginDir = dirname(__FILE__);
     $apiConfigFile = $pluginDir . '/scripts/fpp_api_config.json';
@@ -419,8 +420,9 @@ function fppHomekitBuildApiEndpoints() {
         $endpoints[] = 'http://localhost:32320/api';
         $endpoints[] = 'http://localhost/api';
     }
-    
+
     $cached = array_values(array_unique($endpoints));
+    $cache_time = time(); // Update cache timestamp
     return $cached;
 }
 
@@ -507,11 +509,20 @@ function fppHomekitApiRequest($method, $path, $options = array()) {
 
 // GET /api/plugin/fpp-Homekit/status
 function fppHomekitStatus() {
+    // Cache status for 10 seconds to reduce expensive operations
+    static $cached = null;
+    static $cache_time = 0;
+    $cache_ttl = 10; // 10 seconds
+
+    if ($cached !== null && (time() - $cache_time) < $cache_ttl) {
+        return json($cached);
+    }
+
     $pluginDir = dirname(__FILE__);
     $pidFile = $pluginDir . '/scripts/homekit_service.pid';
     $configFile = $pluginDir . '/scripts/homekit_config.json';
     $stateFile = $pluginDir . '/scripts/homekit_accessory.state';
-    
+
     $result = array();
     
     // Check if service is running
@@ -951,7 +962,11 @@ function fppHomekitStatus() {
         }
     }
     $result['playlist'] = $playlist;
-    
+
+    // Cache the result
+    $cached = $result;
+    $cache_time = time();
+
     return json($result);
 }
 
@@ -960,11 +975,29 @@ function fppHomekitQRCode() {
     $pluginDir = dirname(__FILE__);
     $infoFile = $pluginDir . '/scripts/homekit_pairing_info.json';
     $stateFile = $pluginDir . '/scripts/homekit_accessory.state';
-    
+    $qrCacheFile = $pluginDir . '/scripts/homekit_qr_cache.json';
+
+    // Check for cached QR code data first (cache for 24 hours)
+    if (file_exists($qrCacheFile)) {
+        $cacheData = @json_decode(@file_get_contents($qrCacheFile), true);
+        if ($cacheData && isset($cacheData['qr_data']) && isset($cacheData['timestamp'])) {
+            $cacheAge = time() - $cacheData['timestamp'];
+            if ($cacheAge < 86400) { // 24 hours
+                // Return cached data
+                return json(array(
+                    'qr_data' => $cacheData['qr_data'],
+                    'setup_code' => $cacheData['setup_code'],
+                    'setup_id' => $cacheData['setup_id'],
+                    'cached' => true
+                ));
+            }
+        }
+    }
+
     // Try to get setup code and setup ID from pairing info file first
     $setupCode = '123-45-678';
     $setupID = 'HOME';
-    
+
     if (file_exists($infoFile)) {
         $infoData = @file_get_contents($infoFile);
         if ($infoData) {
@@ -994,7 +1027,7 @@ function fppHomekitQRCode() {
             }
         }
     }
-    
+
     // Check if QR code data is already in the info file
     $qrData = null;
     if (file_exists($infoFile)) {
@@ -1006,7 +1039,7 @@ function fppHomekitQRCode() {
             }
         }
     }
-    
+
     // If not available, generate QR code data
     if (!$qrData) {
         // HomeKit QR code format: X-HM://[8-character hex setup ID][8-digit setup code]
@@ -1035,6 +1068,15 @@ function fppHomekitQRCode() {
         $qrData = "X-HM://" . $setupIDHex . $setupCodeClean;
     }
     
+    // Cache the QR data for future requests
+    $cacheData = array(
+        'qr_data' => $qrData,
+        'setup_code' => $setupCode,
+        'setup_id' => $setupID,
+        'timestamp' => time()
+    );
+    @file_put_contents($qrCacheFile, json_encode($cacheData));
+
     // Use Python to generate QR code image
     $pythonScript = <<<'PYCODE'
 import sys
@@ -1064,7 +1106,7 @@ PYCODE;
 
     $command = "python3 -c " . escapeshellarg($pythonScript) . " " . escapeshellarg($qrData);
     $output = shell_exec($command);
-    
+
     if ($output) {
         $decoded = base64_decode(trim($output), true);
         if ($decoded !== false) {
@@ -1073,7 +1115,7 @@ PYCODE;
             return;
         }
     }
-    
+
     // Fallback: return QR code data as JSON
     $result = array(
         'qr_data' => $qrData,
@@ -1991,14 +2033,23 @@ PYCODE;
 
 // GET /api/plugin/fpp-Homekit/network-interfaces
 function fppHomekitNetworkInterfaces() {
+    // Cache network interfaces for 2 minutes to improve performance
+    static $cached = null;
+    static $cache_time = 0;
+    $cache_ttl = 120; // 2 minutes
+
+    if ($cached !== null && (time() - $cache_time) < $cache_ttl) {
+        return json($cached);
+    }
+
     $interfaces = array();
     $currentIp = null;
-    
+
     // Read current config
     $pluginDir = dirname(__FILE__);
     $scriptsDir = $pluginDir . '/scripts';
     $configFile = $scriptsDir . '/homekit_config.json';
-    
+
     if (file_exists($configFile)) {
         $configData = @file_get_contents($configFile);
         if ($configData) {
@@ -2008,8 +2059,8 @@ function fppHomekitNetworkInterfaces() {
             }
         }
     }
-    
-    // Try multiple methods to get network interfaces
+
+    // Try multiple methods to get network interfaces (with performance optimizations)
     if (function_exists('shell_exec')) {
         // Method 1: Use 'ip' command (Linux)
         if (command_exists('ip')) {
@@ -2139,7 +2190,11 @@ function fppHomekitNetworkInterfaces() {
         'current_ip' => $currentIp,
         'default_is_ethernet' => !empty($currentIp)
     );
-    
+
+    // Cache the result
+    $cached = $result;
+    $cache_time = time();
+
     return json($result);
 }
 
