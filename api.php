@@ -2302,39 +2302,114 @@ function fppHomekitEmulate() {
         ));
     }
 
+    $normalizedPrefix = isset($mqttConfig['topic_prefix']) ? trim($mqttConfig['topic_prefix'], '/') : '';
+
+    // Build list of MQTT prefix variations to maximize compatibility
+    $prefixCandidates = array();
+    $addCandidate = function ($candidate) use (&$prefixCandidates) {
+        $normalized = trim((string)$candidate, '/');
+        if (!in_array($normalized, $prefixCandidates, true)) {
+            $prefixCandidates[] = $normalized;
+        }
+    };
+
+    if ($normalizedPrefix !== '') {
+        $addCandidate($normalizedPrefix);
+        $addCandidate($normalizedPrefix . '/' . $normalizedPrefix);
+    }
+
+    foreach (array(
+        'falcon/player/FPP2',
+        'falcon/player/FPP2/falcon/player/FPP2',
+        'falcon/player/FPP',
+        'FPP',
+        'fpp',
+    ) as $fallbackPrefix) {
+        $addCandidate($fallbackPrefix);
+    }
+
+    if (!in_array('', $prefixCandidates, true)) {
+        $prefixCandidates[] = '';
+    }
+
+    $topics_to_try = array();
+    $addTopic = function ($basePrefix, $suffix) use (&$topics_to_try) {
+        $suffix = trim($suffix, '/');
+        if ($suffix === '') {
+            return;
+        }
+        $topic = $basePrefix !== '' ? trim($basePrefix . '/' . $suffix, '/') : $suffix;
+        $topic = preg_replace('#//+#', '/', $topic);
+        if (!in_array($topic, $topics_to_try, true)) {
+            $topics_to_try[] = $topic;
+        }
+    };
+
     // Determine command based on value
     if ($value === 1) {
         // Emulate ON - start playlist
         $command = "StartPlaylist/{$playlistName}";
         $action = 'start';
-        $topics_to_try = array(
-            "{$mqttConfig['topic_prefix']}/{$mqttConfig['topic_prefix']}/set/playlist/{$playlistName}/start"
-        );
+        foreach ($prefixCandidates as $base) {
+            $addTopic($base, "set/playlist/{$playlistName}/start");
+            $addTopic($base, "command/StartPlaylist/{$playlistName}");
+            $addTopic($base, "set/command/StartPlaylist/{$playlistName}");
+        }
     } else {
         // Emulate OFF - stop playback
         $command = "Stop";
         $action = 'stop';
-        $topics_to_try = array(
-            "{$mqttConfig['topic_prefix']}/{$mqttConfig['topic_prefix']}/set/playlist/{$playlistName}/stop/now",
-            "{$mqttConfig['topic_prefix']}/{$mqttConfig['topic_prefix']}/set/playlist/{$playlistName}/stop"
-        );
+        foreach ($prefixCandidates as $base) {
+            $addTopic($base, "set/playlist/{$playlistName}/stop/now");
+            $addTopic($base, "set/playlist/{$playlistName}/stop");
+            $addTopic($base, "command/Stop");
+            $addTopic($base, "set/command/Stop");
+        }
     }
 
     $success = false;
     $errors = array();
+    $payload = '';
+    $logFile = $scriptsDir . '/homekit_php.log';
 
-    if (function_exists('shell_exec')) {
+    if (function_exists('exec')) {
         foreach ($topics_to_try as $topic) {
-            $mosquitto_cmd = "mosquitto_pub -h '{$mqttConfig['broker']}' -p '{$mqttConfig['port']}' -t '{$topic}' -m '' 2>/dev/null";
-            $result = shell_exec($mosquitto_cmd);
+            $commandLine = sprintf(
+                "mosquitto_pub -h %s -p %s -t %s -m %s 2>&1",
+                escapeshellarg($mqttConfig['broker']),
+                escapeshellarg((string)$mqttConfig['port']),
+                escapeshellarg($topic),
+                escapeshellarg($payload)
+            );
 
-            if ($result === null) {
+            $output = array();
+            $exitCode = 1;
+            exec($commandLine, $output, $exitCode);
+
+            $outputText = trim(implode("\n", $output));
+            $logMessage = sprintf(
+                "[%s] MQTT publish attempt topic=\"%s\" exit=%d output=%s\n",
+                date('c'),
+                $topic,
+                $exitCode,
+                $outputText === '' ? 'none' : $outputText
+            );
+            @file_put_contents($logFile, $logMessage, FILE_APPEND);
+
+            if ($exitCode === 0) {
                 $success = true;
                 break;
             } else {
-                $errors[] = "Failed to publish to {$topic}";
+                $errors[] = sprintf(
+                    'Failed to publish to %s (exit=%d%s)',
+                    $topic,
+                    $exitCode,
+                    $outputText !== '' ? ', output=' . $outputText : ''
+                );
             }
         }
+    } else {
+        $errors[] = 'PHP exec() is disabled; cannot publish MQTT commands from PHP.';
     }
 
     if ($success) {

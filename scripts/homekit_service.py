@@ -605,14 +605,52 @@ class FPPMQTTClient:
             logger.error("MQTT not connected, cannot publish command")
             return False
 
-        # Use correct FPP MQTT topic format with doubled prefix
-        # FPP expects: {prefix}/{prefix}/set/playlist/{name}/{action}
+        prefix = (self.topic_prefix or '').strip('/')
+
+        # Build a list of prefix variations to maximize compatibility with different FPP MQTT configurations
+        prefix_candidates = []
+
+        def add_candidate(candidate: str):
+            normalized = (candidate or '').strip('/')
+            if normalized not in prefix_candidates:
+                prefix_candidates.append(normalized)
+
+        if prefix:
+            add_candidate(prefix)
+            add_candidate(f"{prefix}/{prefix}")
+
+        # Common fallbacks used across FPP installs
+        for fallback_prefix in (
+            'falcon/player/FPP2',
+            'falcon/player/FPP2/falcon/player/FPP2',
+            'falcon/player/FPP',
+            'FPP',
+            'fpp',
+        ):
+            add_candidate(fallback_prefix)
+
+        if '' not in prefix_candidates:
+            prefix_candidates.append('')
+
+        topics_to_try = []
+
+        def add_topic(base_prefix: str, suffix: str):
+            suffix = suffix.strip('/')
+            if not suffix:
+                return
+            topic = f"{base_prefix}/{suffix}".strip('/') if base_prefix else suffix
+            topic = topic.replace('//', '/')
+            if topic not in topics_to_try:
+                topics_to_try.append(topic)
+
         if command.startswith("StartPlaylist/"):
             playlist_name = command.split("/", 1)[1]
-            topics_to_try = [f"{self.topic_prefix}/{self.topic_prefix}/set/playlist/{playlist_name}/start"]
+            for base in prefix_candidates:
+                add_topic(base, f"set/playlist/{playlist_name}/start")
+                add_topic(base, f"command/StartPlaylist/{playlist_name}")
+                add_topic(base, f"set/command/StartPlaylist/{playlist_name}")
         elif command == "Stop":
             # For stop, we need the current playlist name - get it from config for now
-            # In a real implementation, this should get the currently playing playlist
             import os
             config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'homekit_config.json')
             current_playlist = 'Christmas-2024'  # Default fallback
@@ -623,13 +661,16 @@ class FPPMQTTClient:
                     current_playlist = config.get('playlist_name', 'Christmas-2024')
             except:
                 pass
-            topics_to_try = [
-                f"{self.topic_prefix}/{self.topic_prefix}/set/playlist/{current_playlist}/stop/now",
-                f"{self.topic_prefix}/{self.topic_prefix}/set/playlist/{current_playlist}/stop"
-            ]
+
+            for base in prefix_candidates:
+                add_topic(base, f"set/playlist/{current_playlist}/stop/now")
+                add_topic(base, f"set/playlist/{current_playlist}/stop")
+                add_topic(base, "command/Stop")
+                add_topic(base, "set/command/Stop")
         else:
-            # Fallback for other commands
-            topics_to_try = [f"{self.topic_prefix}/{self.topic_prefix}/set/command/{command}"]
+            for base in prefix_candidates:
+                add_topic(base, f"set/command/{command}")
+                add_topic(base, f"command/{command}")
 
         success = False
         for topic in topics_to_try:
@@ -639,6 +680,7 @@ class FPPMQTTClient:
                 if result.rc == mqtt.MQTT_ERR_SUCCESS:
                     logger.debug(f"Published MQTT command: {topic} = {payload}")
                     success = True
+                    break
                 else:
                     logger.debug(f"Failed to publish to {topic} (rc={result.rc})")
             except Exception as e:
