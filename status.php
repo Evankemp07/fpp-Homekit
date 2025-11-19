@@ -277,6 +277,23 @@ if (file_exists($cssPath)) {
                     Advanced users can show it to modify broker settings, while basic users can keep it hidden for a cleaner interface.
                 </p>
             </div>
+
+            <div class="settings-toggle-container">
+                <div class="settings-toggle-row">
+                    <label for="last-command-visibility-toggle" class="settings-toggle-label">
+                        Show Last Command Display
+                        <span id="last-command-visibility-text" class="settings-toggle-description">(currently shown)</span>
+                    </label>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="last-command-visibility-toggle" onchange="toggleLastCommandVisibility(this)" checked>
+                        <label for="last-command-visibility-toggle" class="toggle-slider"></label>
+                    </div>
+                </div>
+                <p class="settings-description">
+                    Control whether the "Last command" information is displayed in the paired section.
+                    Shows the most recent command received through HomeKit (both real HomeKit commands and emulated ones).
+                </p>
+            </div>
         </div>
     </div>
 </div>
@@ -360,22 +377,19 @@ if (file_exists($cssPath)) {
 
             case 'command_update':
                 if (data.data) {
-                    // Show command if recent (last hour)
-                    const now = Math.floor(Date.now() / 1000);
-                    const commandAge = now - data.data.timestamp;
-                    const oneHourAgo = 3600;
-                    
+                    // Show last command received (regardless of age)
+                    const showLastCommand = localStorage.getItem('fppHomekitShowLastCommand') !== 'false';
                     const timeElement = document.getElementById('last-command-time');
                     const textElement = document.getElementById('last-command-text');
 
-                    if (commandAge <= oneHourAgo && timeElement && textElement) {
+                    if (showLastCommand && timeElement && textElement) {
                         const date = new Date(data.data.timestamp * 1000);
                         const timeString = date.toLocaleTimeString();
                         const sourceText = data.data.source === 'homekit' ? 'HomeKit' : 'Emulate';
                         timeElement.textContent = `${data.data.action} (${sourceText}) at ${timeString}`;
                         textElement.style.display = 'block';
-                    } else if (textElement) {
-                        // Hide old commands
+                    } else if (textElement && !showLastCommand) {
+                        // Hide if disabled
                         textElement.style.display = 'none';
                     }
                 }
@@ -770,7 +784,7 @@ if (file_exists($cssPath)) {
         // Update the toggle text
         const toggleText = document.getElementById('emulation-visibility-text');
         if (toggleText) {
-            toggleText.textContent = showEmulation ? 'Hide HomeKit Emulation Section' : 'Show HomeKit Emulation Section';
+            toggleText.textContent = showEmulation ? '(currently shown)' : '(currently hidden)';
         }
     };
 
@@ -793,7 +807,32 @@ if (file_exists($cssPath)) {
         // Update the toggle text
         const toggleText = document.getElementById('mqtt-visibility-text');
         if (toggleText) {
-            toggleText.textContent = showMqtt ? 'Hide MQTT Configuration' : 'Show MQTT Configuration';
+            toggleText.textContent = showMqtt ? '(currently shown)' : '(currently hidden)';
+        }
+    };
+
+    // Toggle last command visibility preference
+    window.toggleLastCommandVisibility = function(checkbox) {
+        const showLastCommand = checkbox.checked;
+        localStorage.setItem('fppHomekitShowLastCommand', showLastCommand);
+
+        const textElement = document.getElementById('last-command-text');
+        if (textElement) {
+            if (!showLastCommand) {
+                textElement.style.display = 'none';
+            } else {
+                // Show if there's a recent command
+                const timeElement = document.getElementById('last-command-time');
+                if (timeElement && timeElement.textContent !== 'none') {
+                    textElement.style.display = 'block';
+                }
+            }
+        }
+
+        // Update the toggle text
+        const toggleText = document.getElementById('last-command-visibility-text');
+        if (toggleText) {
+            toggleText.textContent = showLastCommand ? '(currently shown)' : '(currently hidden)';
         }
     };
 
@@ -1178,29 +1217,27 @@ if (file_exists($cssPath)) {
             }
         }
 
-        // Update last command (show if recent, last hour)
+        // Update last command display (show last command received, regardless of age)
+        const showLastCommand = localStorage.getItem('fppHomekitShowLastCommand') !== 'false';
         const timeElement = document.getElementById('last-command-time');
         const textElement = document.getElementById('last-command-text');
         
-        if (data.recent_homekit_commands && data.recent_homekit_commands.length > 0) {
+        if (!showLastCommand && textElement) {
+            textElement.style.display = 'none';
+            return;
+        }
+        
+        // Show the last command from the array (most recent)
+        if (data.recent_homekit_commands && data.recent_homekit_commands.length > 0 && timeElement && textElement) {
+            // Get the last command (most recent)
             const lastCommand = data.recent_homekit_commands[data.recent_homekit_commands.length - 1];
-            const now = Math.floor(Date.now() / 1000);
-            const commandAge = now - lastCommand.timestamp;
-            const oneHourAgo = 3600;
-            
-            // Show if recent
-            if (commandAge <= oneHourAgo && timeElement && textElement) {
-                const date = new Date(lastCommand.timestamp * 1000);
-                const timeString = date.toLocaleTimeString();
-                const sourceText = lastCommand.source === 'homekit' ? 'HomeKit' : 'Emulate';
-                timeElement.textContent = `${lastCommand.action} (${sourceText}) at ${timeString}`;
-                textElement.style.display = 'block';
-            } else if (textElement) {
-                // Hide old
-                textElement.style.display = 'none';
-            }
+            const date = new Date(lastCommand.timestamp * 1000);
+            const timeString = date.toLocaleTimeString();
+            const sourceText = lastCommand.source === 'homekit' ? 'HomeKit' : 'Emulate';
+            timeElement.textContent = `${lastCommand.action} (${sourceText}) at ${timeString}`;
+            textElement.style.display = 'block';
         } else if (textElement) {
-            // Hide if none
+            // Hide if no commands
             textElement.style.display = 'none';
         }
     }
@@ -1793,6 +1830,50 @@ if (file_exists($cssPath)) {
             new Promise(resolve => setTimeout(() => { loadHomekitNetworkConfig(); resolve(); }, 100)),
             new Promise(resolve => setTimeout(() => { loadMQTTConfig(); resolve(); }, 200))
         ]);
+        
+        // Initialize visibility toggles
+        const emulationToggle = document.getElementById('emulation-visibility-toggle');
+        const mqttToggle = document.getElementById('mqtt-visibility-toggle');
+        const lastCommandToggle = document.getElementById('last-command-visibility-toggle');
+        
+        if (emulationToggle) {
+            const showEmulation = localStorage.getItem('fppHomekitShowEmulation') === 'true';
+            emulationToggle.checked = showEmulation;
+            if (showEmulation) {
+                const section = document.getElementById('emulation-section');
+                if (section) {
+                    section.style.display = 'block';
+                }
+            }
+            const emulationText = document.getElementById('emulation-visibility-text');
+            if (emulationText) {
+                emulationText.textContent = showEmulation ? '(currently shown)' : '(currently hidden)';
+            }
+        }
+        
+        if (mqttToggle) {
+            const showMqtt = localStorage.getItem('fppHomekitShowMqttConfig') === 'true';
+            mqttToggle.checked = showMqtt;
+            if (showMqtt) {
+                const section = document.getElementById('mqtt-config-section');
+                if (section) {
+                    section.style.display = 'block';
+                }
+            }
+            const mqttText = document.getElementById('mqtt-visibility-text');
+            if (mqttText) {
+                mqttText.textContent = showMqtt ? '(currently shown)' : '(currently hidden)';
+            }
+        }
+        
+        if (lastCommandToggle) {
+            const showLastCommand = localStorage.getItem('fppHomekitShowLastCommand') !== 'false';
+            lastCommandToggle.checked = showLastCommand;
+            const lastCommandText = document.getElementById('last-command-visibility-text');
+            if (lastCommandText) {
+                lastCommandText.textContent = showLastCommand ? '(currently shown)' : '(currently hidden)';
+            }
+        }
 
         setTimeout(() => {
             const showEmulation = localStorage.getItem('fppHomekitShowEmulation') === 'true';
@@ -1823,7 +1904,19 @@ if (file_exists($cssPath)) {
                 mqttToggle.checked = showMqtt;
             }
             if (mqttText) {
-                mqttText.textContent = showMqtt ? 'Hide MQTT Configuration' : 'Show MQTT Configuration';
+                mqttText.textContent = showMqtt ? '(currently shown)' : '(currently hidden)';
+            }
+
+            // Last command visibility (shown by default)
+            const showLastCommand = localStorage.getItem('fppHomekitShowLastCommand') !== 'false';
+            const lastCommandToggle = document.getElementById('last-command-visibility-toggle');
+            const lastCommandText = document.getElementById('last-command-visibility-text');
+
+            if (lastCommandToggle) {
+                lastCommandToggle.checked = showLastCommand;
+            }
+            if (lastCommandText) {
+                lastCommandText.textContent = showLastCommand ? '(currently shown)' : '(currently hidden)';
             }
         }, 500);
         

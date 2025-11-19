@@ -1,131 +1,187 @@
 # FPP HomeKit Plugin
 
-A HomeKit integration plugin for Falcon Player (FPP) that exposes FPP as a controllable light accessory in Apple HomeKit.
+A HomeKit integration plugin for Falcon Player (FPP) that enables seamless control of FPP playlists through Apple HomeKit. Built with [HAP-python](https://github.com/ikalchev/HAP-python), this plugin exposes FPP as a controllable light accessory in Apple's Home app.
+
+## Overview
+
+Transform your FPP installation into a HomeKit-compatible smart light. Turn the light **ON** to start your configured playlist, turn it **OFF** to stop playback. Perfect for integrating your holiday light displays into your smart home ecosystem.
 
 ## Features
 
-- **HomeKit Light Accessory**: Control FPP playlists through Apple Home app and HomeKit-enabled devices
-- **Lightning-Fast Response**: HomeKit commands respond instantly with background processing
-- **Optimized Performance**: 90% reduction in MQTT traffic, 87% faster UI updates
-- **MQTT Integration**: Real-time synchronization between FPP and HomeKit
-- **Auto-turn-off**: HomeKit light automatically turns off when playlists finish
-- **Virtual Environment**: Isolated Python environment for clean dependency management
-- **Web Interface**: Real-time status monitoring with command history
+- **Native HomeKit Integration**: Built on HAP-python for reliable, standards-compliant HomeKit support
+- **Instant Response**: HomeKit commands process in under 100ms with background thread handling
+- **Real-time Synchronization**: MQTT-based bidirectional status updates keep HomeKit and FPP in sync
+- **Auto-turn-off**: Light automatically turns off when playlists finish playing
+- **QR Code Pairing**: Easy setup with scannable QR codes displayed in the web interface
+- **Command History**: View the last command received (both real HomeKit and emulated commands)
+- **Modern Web Interface**: Beautiful Apple-style UI with real-time status monitoring
+- **Isolated Dependencies**: Python virtual environment ensures clean, conflict-free installation
+
+## How It Works
+
+This plugin uses [HAP-python](https://github.com/ikalchev/HAP-python) to implement the HomeKit Accessory Protocol (HAP). The service runs as a background Python process that:
+
+1. **Exposes FPP as a Light Accessory**: Your FPP instance appears as a controllable light in the Home app
+2. **Handles HomeKit Commands**: When you turn the light ON/OFF in Home app, commands are processed instantly
+3. **Communicates via MQTT**: Commands and status updates flow between HomeKit and FPP through MQTT
+4. **Auto-discovers on Network**: Uses mDNS/Bonjour for automatic discovery by iOS devices
 
 ## Installation
 
-### 1. Install Plugin Dependencies
+### Quick Start
 
-Run the automated setup script:
+1. **Install via FPP Plugin Manager**: Navigate to Content Setup → Plugins in FPP web interface
+2. **Configure Playlist**: Select which playlist should start when HomeKit turns the light ON
+3. **Pair with HomeKit**: Scan the QR code in the plugin interface with your iPhone/iPad Home app
+4. **Start Controlling**: Turn the light ON/OFF in Home app to control your FPP playlist
+
+### Manual Installation
+
+If installing manually:
+
 ```bash
 cd /home/fpp/media/plugins/fpp-Homekit/scripts
-chmod +x install_venv.sh
-./install_venv.sh
+bash fpp_install.sh
 ```
 
-This creates a Python virtual environment and installs required dependencies.
+The installation script automatically:
+- Creates a Python virtual environment
+- Installs HAP-python and all required dependencies
+- Sets up the HomeKit service
 
-### 2. Verify Installation
+## Requirements
 
-Check that everything is properly installed:
-```bash
-./verify_installation.sh
-```
-
-### 3. Configure Plugin
-
-1. Go to FPP web interface → Content Setup → Plugins
-2. Configure your playlist in the HomeKit plugin settings
-3. The service will automatically start with optimized performance
-
-### 3. Pair with HomeKit
-
-1. Open Apple Home app on your iOS device
-2. Tap "+" → "Add Accessory"
-3. Scan the QR code displayed in the plugin interface
-4. Enter the setup code when prompted
-
-## Performance Optimizations
-
-| **Metric** | **Before** | **After** | **Improvement** |
-|------------|------------|-----------|-----------------|
-| HomeKit Response Time | ~2-3 seconds | <100ms | **95% faster** |
-| UI Refresh Rate | 15 seconds | 2 seconds | **87% faster** |
-| MQTT Traffic | High (wildcard) | Minimal (targeted) | **90% reduction** |
-| CPU Usage | Higher polling | Optimized polling | **67% reduction** |
-| Memory Usage | Standard | Cached & efficient | **Better stability** |
+- **FPP**: Version 9.0 or later
+- **Python**: 3.6 or later (Python 3.11+ recommended)
+- **HAP-python**: Automatically installed via pip (version 4.5.0+)
+- **MQTT**: FPP must have MQTT configured and running
+- **mDNS/Bonjour**: avahi-daemon for network discovery
+- **iOS Device**: iPhone/iPad with Home app (iOS 10+)
 
 ## Usage
 
 ### Web Interface
-- **Status**: Real-time HomeKit service and FPP connection status
-- **Command History**: See last HomeKit and emulate button actions
-- **Emulate Buttons**: Test HomeKit commands without iOS device
-- **Playlist Configuration**: Select which playlist to control
-- **MQTT Settings**: Advanced MQTT broker configuration
+
+The plugin provides a comprehensive web interface accessible through FPP's plugin menu:
+
+- **Status Monitoring**: Real-time display of HomeKit service status, FPP connection, and pairing state
+- **Playlist Configuration**: Select which playlist starts when HomeKit turns the light ON
+- **QR Code Display**: Scan with Home app for easy pairing
+- **Command History**: View the last command received through HomeKit
+- **MQTT Settings**: Advanced configuration for MQTT broker connection
+- **Network Configuration**: Choose which network interface HomeKit should listen on
 
 ### HomeKit Control
-- **Lightning Response**: Commands respond instantly (<100ms)
-- **Turn ON**: Starts the configured playlist
-- **Turn OFF**: Stops current playback
-- **Auto-sync**: Light state reflects actual FPP playing status
+
+Once paired, control FPP directly from Apple's Home app:
+
+- **Turn Light ON**: Starts your configured playlist
+- **Turn Light OFF**: Stops current playback
+- **Status Sync**: Light state automatically reflects FPP's actual playing status
 - **Auto-turn-off**: Light turns off automatically when playlist finishes
 
 ## Architecture
 
 ```
-iOS Home App ↔ HomeKit Accessory (HAP-python) ↔ MQTT ↔ FPP
+iOS Home App
+    ↕
+HomeKit Accessory Protocol (HAP)
+    ↕
+HAP-python Library
+    ↕
+Python Service (homekit_service.py)
+    ↕
+MQTT
+    ↕
+FPP
 ```
 
-- **HomeKit Accessory**: Runs as Python service using HAP-python library
-- **MQTT Communication**: Bidirectional status updates and commands
-- **Virtual Environment**: Isolated Python environment in `plugin/venv/`
-- **Bonjour Discovery**: Automatic network discovery by iOS devices
+**Key Components:**
+- **HAP-python**: Provides HomeKit Accessory Protocol implementation
+- **homekit_service.py**: Main service that bridges HomeKit and FPP
+- **MQTT**: Communication layer for commands and status updates
+- **Virtual Environment**: Isolated Python dependencies in `venv/`
 
-## Files
+## Technical Details
 
-- `scripts/homekit_service.py`: Main HomeKit accessory service
-- `scripts/install_venv.sh`: Virtual environment setup script
-- `scripts/requirements.txt`: Python dependencies
+### Dependencies
+
+The plugin uses the following Python libraries (installed automatically):
+
+- **[HAP-python](https://github.com/ikalchev/HAP-python)**: HomeKit Accessory Protocol implementation
+- **paho-mqtt**: MQTT client for FPP communication
+- **requests**: HTTP client for FPP API calls
+- **qrcode[pil]**: QR code generation for pairing
+
+### File Structure
+
+- `scripts/homekit_service.py`: Main HomeKit accessory service (uses HAP-python)
+- `scripts/requirements.txt`: Python dependencies including HAP-python
+- `scripts/install_venv.sh`: Virtual environment setup
 - `api.php`: Web interface API endpoints
-- `status.php`: Web interface HTML/JavaScript
-- `styles.css`: Web interface styling
+- `status.php`: Web interface UI
+- `styles.css`: Modern Apple-style styling
 
 ## Troubleshooting
 
 ### Service Won't Start
+
 ```bash
 # Check service logs
 tail -f /home/fpp/media/plugins/fpp-Homekit/scripts/homekit_service.log
 
-# Restart service
-curl -X POST http://localhost/api/plugin/fpp-Homekit/restart
+# Verify Python dependencies
+cd /home/fpp/media/plugins/fpp-Homekit/scripts
+./verify_installation.sh
 ```
 
-### HomeKit Not Connecting
-- Ensure FPP and iOS device are on same network
-- Check firewall settings (port 51826 must be open)
-- Verify QR code and setup code are correct
+### Can't Pair with HomeKit
 
-### MQTT Issues
-- Check MQTT broker is running: `sudo systemctl status mosquitto`
-- Verify MQTT settings in FPP web interface
-- Check connection logs for broker address/port issues
+- Ensure FPP and iOS device are on the same network
+- Check that port 51826 is accessible (HomeKit default port)
+- Verify the QR code and setup code match
+- Ensure avahi-daemon is running: `sudo systemctl status avahi-daemon`
+
+### MQTT Connection Issues
+
+- Verify MQTT broker is running: `sudo systemctl status mosquitto`
+- Check MQTT settings in FPP web interface
+- Test MQTT connection using the "Test MQTT" button in plugin settings
+
+### Playlist Doesn't Start
+
+- Verify playlist name is correctly configured in plugin settings
+- Ensure playlist exists in FPP
+- Check MQTT connection status in plugin interface
 
 ## Development
 
+### Updating the Plugin
+
+```bash
+cd /home/fpp/media/plugins/fpp-Homekit
+bash scripts/update_plugin.sh
+bash scripts/fpp_install.sh
+```
+
 ### Adding Dependencies
-1. Add to `scripts/requirements.txt`
-2. Run `./install_venv.sh` to update environment
 
-### Modifying Service
+1. Add package to `scripts/requirements.txt`
+2. Run `bash scripts/fpp_install.sh` to update the virtual environment
+
+### Modifying the Service
+
 1. Edit `scripts/homekit_service.py`
-2. Restart service to apply changes
+2. Restart the service via web interface or:
+   ```bash
+   cd /home/fpp/media/plugins/fpp-Homekit/scripts
+   MEDIADIR=/home/fpp/media bash postStop.sh
+   MEDIADIR=/home/fpp/media bash postStart.sh
+   ```
 
-### Web Interface Changes
-1. Edit `status.php` for UI changes
-2. Edit `api.php` for backend logic
-3. Edit `styles.css` for styling
+## Credits
+
+Built with [HAP-python](https://github.com/ikalchev/HAP-python) by [ikalchev](https://github.com/ikalchev) - a Python implementation of the HomeKit Accessory Protocol.
 
 ## License
 

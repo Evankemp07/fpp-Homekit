@@ -851,18 +851,15 @@ function fppHomekitStatus() {
         }
         $result['playlist'] = $playlist;
 
-        // Get recent HomeKit commands for UI display
+        // Get recent HomeKit commands for UI display (always return last command regardless of age)
         $commandsFile = $pluginDir . '/scripts/homekit_commands.json';
         $recentCommands = array();
         if (file_exists($commandsFile)) {
             $commands = @json_decode(file_get_contents($commandsFile), true);
-            if (is_array($commands)) {
-                // Get last 5 commands from last 24 hours
-                $oneDayAgo = time() - 86400;
-                $recentCommands = array_filter($commands, function($cmd) use ($oneDayAgo) {
-                    return isset($cmd['timestamp']) && $cmd['timestamp'] > $oneDayAgo;
-                });
-                $recentCommands = array_slice(array_reverse($recentCommands), 0, 5);
+            if (is_array($commands) && count($commands) > 0) {
+                // Always return the last command (most recent), regardless of age
+                $lastCommand = end($commands);
+                $recentCommands = array($lastCommand);
             }
         }
         $result['recent_homekit_commands'] = array_values($recentCommands);
