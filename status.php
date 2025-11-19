@@ -154,12 +154,6 @@ if (file_exists($cssPath)) {
                                             <span class="setup-code-label">Setup Code</span>
                                             <div class="setup-code-value">
                                                 <span id="setup-code-text"></span>
-                                                <button class="copy-btn" onclick="copySetupCode()" id="copy-btn">
-                                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                        <path d="M5.5 2.5H11.5C12.0523 2.5 12.5 2.94772 12.5 3.5V9.5C12.5 10.0523 12.0523 10.5 11.5 10.5H9.5V12.5C9.5 13.0523 9.05228 13.5 8.5 13.5H2.5C1.94772 13.5 1.5 13.0523 1.5 12.5V6.5C1.5 5.94772 1.94772 5.5 2.5 5.5H4.5V3.5C4.5 2.94772 4.94772 2.5 5.5 2.5Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                        <path d="M4.5 5.5H8.5C9.05228 5.5 9.5 5.94772 9.5 6.5V10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                    </svg>
-                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -696,22 +690,6 @@ if (file_exists($cssPath)) {
         return div.innerHTML;
     }
     
-    // Copy setup code to clipboard
-    window.copySetupCode = function() {
-        const codeText = document.getElementById('setup-code-text').textContent;
-        if (!codeText) return;
-        
-        navigator.clipboard.writeText(codeText).then(() => {
-            const btn = document.getElementById('copy-btn');
-            const originalHTML = btn.innerHTML;
-            btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 8L6 11L13 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-            setTimeout(() => {
-                btn.innerHTML = originalHTML;
-            }, 2000);
-        }).catch(err => {
-            // Copy failed silently
-        });
-    };
 
     // Show MQTT settings modal
     window.showMqttSettings = function() {
@@ -860,11 +838,36 @@ if (file_exists($cssPath)) {
     }
     
     // Update status display
+    // Store last known good values to prevent UI from resetting on incomplete updates
+    let lastKnownStatus = {
+        service_running: false,
+        paired: false,
+        fpp_status: {},
+        playlist: ''
+    };
+    
     function updateStatusDisplay(data) {
-        const serviceRunning = data.service_running || false;
-        const paired = data.paired || false;
-        const fppStatus = data.fpp_status || {};
-        const playlist = data.playlist || '';
+        // Only update fields that are actually present in the response
+        // This prevents clearing valid data when an update is incomplete
+        if (data.service_running !== undefined) {
+            lastKnownStatus.service_running = data.service_running;
+        }
+        if (data.paired !== undefined) {
+            lastKnownStatus.paired = data.paired;
+        }
+        if (data.fpp_status !== undefined && data.fpp_status !== null) {
+            // Merge fpp_status to preserve existing fields if new data is incomplete
+            lastKnownStatus.fpp_status = Object.assign({}, lastKnownStatus.fpp_status, data.fpp_status);
+        }
+        if (data.playlist !== undefined) {
+            lastKnownStatus.playlist = data.playlist;
+        }
+        
+        // Use last known values (which may have been updated above)
+        const serviceRunning = lastKnownStatus.service_running;
+        const paired = lastKnownStatus.paired;
+        const fppStatus = lastKnownStatus.fpp_status || {};
+        const playlist = lastKnownStatus.playlist || '';
         
         // Update service status card
         const serviceStatusTextEl = document.getElementById('service-status-text');
@@ -1029,14 +1032,16 @@ if (file_exists($cssPath)) {
             }
         }
         
-        // Update playlist
-        const newPlaylist = playlist || '';
-        if (newPlaylist !== currentPlaylist) {
-            currentPlaylist = newPlaylist;
-            updatePlaylistStatusText(currentPlaylist);
-            // Update dropdown if it's loaded and the value changed
-            if (playlistSelect && playlistsLoaded) {
-                playlistSelect.value = currentPlaylist;
+        // Update playlist - only update if a new value is provided
+        if (playlist && playlist !== '') {
+            // Only update if we got a non-empty playlist value
+            if (playlist !== currentPlaylist) {
+                currentPlaylist = playlist;
+                updatePlaylistStatusText(currentPlaylist);
+                // Update dropdown if it's loaded and the value changed
+                if (playlistSelect && playlistsLoaded) {
+                    playlistSelect.value = currentPlaylist;
+                }
             }
         } else if (playlistSelect && playlistsLoaded && playlistSelect.value !== currentPlaylist) {
             // Ensure dropdown matches currentPlaylist even if playlist didn't change
@@ -1130,7 +1135,14 @@ if (file_exists($cssPath)) {
                 return response.json();
             })
             .then(data => {
-                const setupCode = data.setup_code || '0000-0000';
+                let setupCode = data.setup_code || '0000-0000';
+                
+                // Format setup code to XXXX-XXXX format
+                // Remove all dashes first, then add one dash in the middle
+                setupCode = setupCode.replace(/-/g, '');
+                if (setupCode.length === 8) {
+                    setupCode = setupCode.substring(0, 4) + '-' + setupCode.substring(4);
+                }
                 
                 document.getElementById('setup-code-text').textContent = setupCode;
                 
@@ -1286,9 +1298,16 @@ if (file_exists($cssPath)) {
             updateLastCommandTime(commandType);
 
             // Status will update via SSE automatically when FPP state changes
-            // Only refresh if SSE is not active
+            // Don't manually refresh status here - let SSE handle it to avoid clearing UI
+            // If SSE is not active, wait a bit longer before refreshing to let FPP state update
             if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
-                setTimeout(() => loadStatus(), 1000);
+                // Wait 2 seconds for FPP to process the command, then refresh
+                setTimeout(() => {
+                    // Only refresh if we still don't have SSE
+                    if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+                        loadStatus();
+                    }
+                }, 2000);
             }
         })
         .catch(error => {
