@@ -399,12 +399,13 @@ def get_mqtt_config() -> dict:
 
 class FPPMQTTClient:
     """MQTT client for controlling FPP via MQTT."""
-    
-    def __init__(self, config: dict):
+
+    def __init__(self, config: dict, accessory=None):
         self.config = config
         self.client = None
         self.connected = False
         self.topic_prefix = config.get('topic_prefix', 'FPP')
+        self.accessory = accessory  # Reference to HomeKit accessory for state updates
         
     def connect(self):
         """Connect to MQTT broker."""
@@ -554,14 +555,26 @@ class FPPMQTTClient:
                 logger.info(f"FPP status (text): '{status_name}', playing={fpp_playing}")
 
             # Always update HomeKit state to match FPP (even if same, to ensure sync)
-            logger.info(f"About to check status change: fpp_playing={fpp_playing}, self.is_on={self.is_on}")
-            if fpp_playing != self.is_on:
-                logger.info(f"FPP status changed via MQTT: {status_name} (playing={fpp_playing}, was={self.is_on})")
-                self.is_on = fpp_playing
-                self.on_char.set_value(fpp_playing)
-                logger.info(f"HomeKit light set to: {fpp_playing}")
+            if self.accessory:
+                logger.info(f"About to check status change: fpp_playing={fpp_playing}, accessory.is_on={self.accessory.is_on}")
+                if fpp_playing != self.accessory.is_on:
+                    logger.info(f"FPP status changed via MQTT: {status_name} (playing={fpp_playing}, was={self.accessory.is_on})")
+                    old_state = self.accessory.is_on
+                    self.accessory.is_on = fpp_playing
+                    try:
+                        self.accessory.on_char.set_value(fpp_playing)
+                        logger.info(f"HomeKit light set to: {fpp_playing} (was {old_state})")
+                        # Force notification to HomeKit clients
+                        self.accessory.on_char.notify()
+                        logger.info("HomeKit notification sent to clients")
+                    except Exception as e:
+                        logger.error(f"Failed to update HomeKit light state: {e}")
+                        import traceback
+                        logger.error(traceback.format_exc())
+                else:
+                    logger.debug(f"FPP status unchanged: {status_name} (playing={fpp_playing}, HomeKit already={self.accessory.is_on})")
             else:
-                logger.debug(f"FPP status unchanged: {status_name} (playing={fpp_playing}, HomeKit already={self.is_on})")
+                logger.warning("No accessory reference - cannot update HomeKit state")
         except Exception as e:
             logger.error(f"Error processing MQTT status message: {e}")
             import traceback
@@ -683,7 +696,7 @@ class FPPLightAccessory(Accessory):
             self.use_mqtt = False
         else:
             mqtt_config = get_mqtt_config()
-            self.mqtt_client = FPPMQTTClient(mqtt_config)
+            self.mqtt_client = FPPMQTTClient(mqtt_config, self)
             self.use_mqtt = True
         
         # Try to connect to MQTT (will retry in background thread if fails)
