@@ -70,7 +70,7 @@ if (file_exists($cssPath)) {
 
                 <div class="status-card" id="emulation-section" style="display: none;">
                     <div class="status-card-label">HomeKit Emulation</div>
-                    <div class="status-card-value" style="display: flex; gap: 8px;">
+                    <div class="status-card-value" style="display: flex; gap: 8px; padding-top: 4px;">
                         <button class="homekit-button" style="font-size: 14px; padding: 8px 16px; background: #34c759;" onclick="emulateHomeKit(true)" id="emulate-on-btn">
                             Emulate ON
                         </button>
