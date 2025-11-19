@@ -101,6 +101,12 @@ function getEndpointsfppHomekit() {
         'callback' => 'fppHomekitDiagnostics');
     array_push($result, $ep);
 
+    $ep = array(
+        'method' => 'GET',
+        'endpoint' => 'events',
+        'callback' => 'fppHomekitEvents');
+    array_push($result, $ep);
+
     return $result;
 }
 
@@ -2361,6 +2367,91 @@ function fppHomekitEmulate() {
                 'prefix' => $mqttConfig['topic_prefix']
             )
         ));
+    }
+}
+
+function fppHomekitEvents() {
+    // Server-Sent Events endpoint for real-time UI updates
+    $pluginDir = dirname(__FILE__);
+
+    // Set headers for SSE
+    header('Content-Type: text/event-stream');
+    header('Cache-Control: no-cache');
+    header('Connection: keep-alive');
+    header('Access-Control-Allow-Origin: *');
+    header('Access-Control-Allow-Headers: Cache-Control');
+
+    // Disable output buffering
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+
+    // Track last modification times
+    $lastStatusMod = 0;
+    $lastCommandsMod = 0;
+
+    $statusFile = $pluginDir . '/scripts/homekit_status.json';
+    $commandsFile = $pluginDir . '/scripts/homekit_commands.json';
+
+    // Send initial data
+    $initialData = array('type' => 'connected', 'timestamp' => time());
+    echo "data: " . json_encode($initialData) . "\n\n";
+    flush();
+
+    $iteration = 0;
+    while (true) {
+        $iteration++;
+
+        // Check for status updates
+        if (file_exists($statusFile)) {
+            $currentMod = filemtime($statusFile);
+            if ($currentMod > $lastStatusMod) {
+                $statusData = @json_decode(file_get_contents($statusFile), true);
+                if ($statusData) {
+                    $eventData = array(
+                        'type' => 'status_update',
+                        'data' => $statusData,
+                        'timestamp' => time()
+                    );
+                    echo "data: " . json_encode($eventData) . "\n\n";
+                    flush();
+                }
+                $lastStatusMod = $currentMod;
+            }
+        }
+
+        // Check for command updates
+        if (file_exists($commandsFile)) {
+            $currentMod = filemtime($commandsFile);
+            if ($currentMod > $lastCommandsMod) {
+                $commandsData = @json_decode(file_get_contents($commandsFile), true);
+                if ($commandsData && is_array($commandsData) && count($commandsData) > 0) {
+                    $lastCommand = end($commandsData);
+                    $eventData = array(
+                        'type' => 'command_update',
+                        'data' => $lastCommand,
+                        'timestamp' => time()
+                    );
+                    echo "data: " . json_encode($eventData) . "\n\n";
+                    flush();
+                }
+                $lastCommandsMod = $currentMod;
+            }
+        }
+
+        // Send heartbeat every 30 seconds to keep connection alive
+        if ($iteration % 30 == 0) {
+            echo "data: " . json_encode(array('type' => 'heartbeat', 'timestamp' => time())) . "\n\n";
+            flush();
+        }
+
+        // Sleep for 1 second before next check
+        sleep(1);
+
+        // Check if client disconnected (connection_aborted() in PHP)
+        if (connection_aborted()) {
+            break;
+        }
     }
 }
 

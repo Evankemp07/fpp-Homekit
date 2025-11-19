@@ -577,6 +577,9 @@ class FPPMQTTClient:
                         # Force notification to HomeKit clients
                         self.accessory.on_char.notify()
                         logger.info("HomeKit notification sent to clients")
+
+                        # Update status file for real-time UI updates
+                        self._update_status_file()
                     except Exception as e:
                         logger.error(f"Failed to update HomeKit light state: {e}")
                         import traceback
@@ -658,6 +661,28 @@ class FPPMQTTClient:
             logger.error(f"Error subscribing to {topic}: {e}")
             return False
     
+    def _update_status_file(self):
+        """Update status file for real-time UI updates"""
+        try:
+            import json
+            status_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'homekit_status.json')
+
+            # Get current status from accessory
+            status_data = {
+                'homekit_light_on': getattr(self.accessory, 'is_on', False),
+                'service_running': True,  # We're running if we can update this
+                'timestamp': int(time.time())
+            }
+
+            # Try to get MQTT connection status
+            status_data['mqtt_connected'] = self.connected
+
+            with open(status_file, 'w') as f:
+                json.dump(status_data, f)
+
+        except Exception as e:
+            logger.debug(f"Could not update status file: {e}")
+
     def disconnect(self):
         """Disconnect from MQTT broker."""
         if self.client:
@@ -988,8 +1013,22 @@ def get_accessory(driver):
     return FPPLightAccessory(driver, 'FPP-Controller')
 
 def main():
-    """Main entry point"""
+    """Main entry point with crash protection"""
     try:
+        # Set process priority to low to avoid interfering with FPP
+        import os
+        try:
+            os.nice(10)  # Lower priority
+        except:
+            pass
+
+        # Limit memory usage
+        import resource
+        try:
+            # Set memory limit to 100MB
+            resource.setrlimit(resource.RLIMIT_AS, (100 * 1024 * 1024, 150 * 1024 * 1024))
+        except:
+            pass
         # Create driver first
         state_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_accessory.state')
         logger.info(f"Creating HomeKit driver (state file: {state_file})")
@@ -1059,14 +1098,14 @@ def main():
                         return value.decode('utf-8', errors='ignore')
                 return value if isinstance(value, str) else default
 
-            setup_code = _as_str(driver.state.pincode, '000-00-000')
+            setup_code = _as_str(driver.state.pincode, '0000-0000')
             mac = _as_str(getattr(driver.state, 'mac', ''), '')
-            
-            # Validate setup code format: XXX-XX-XXX (display) = 8 digits (encoded)
+
+            # Validate setup code format: XXXX-XXXX (display) = 8 digits (encoded)
             # HomeKit setup codes must be exactly 8 numeric digits when dashes are removed
             setup_code_clean = setup_code.replace('-', '')
             if len(setup_code_clean) != 8 or not setup_code_clean.isdigit():
-                logger.error(f"Invalid setup code format: {setup_code} (expected format: XXX-XX-XXX)")
+                logger.error(f"Invalid setup code format: {setup_code} (expected format: XXXX-XXXX)")
                 logger.error(f"This usually means the state file is corrupted. Please restart the service.")
             
             # Generate QR code data using HAP-python's method
@@ -1166,9 +1205,21 @@ def main():
         # Start the driver
         logger.info("Starting HomeKit service...")
 
+        # Register signal handlers for clean shutdown
+        def signal_handler(signum, frame):
+            logger.info(f"Received signal {signum}, shutting down gracefully...")
+            try:
+                driver.stop()
+                logger.info("HomeKit service stopped cleanly")
+            except Exception as e:
+                logger.error(f"Error during shutdown: {e}")
+            finally:
+                sys.exit(0)
+
         try:
-            signal.signal(signal.SIGTERM, driver.signal_handler)
-            signal.signal(signal.SIGINT, driver.signal_handler)
+            signal.signal(signal.SIGTERM, signal_handler)
+            signal.signal(signal.SIGINT, signal_handler)
+            signal.signal(signal.SIGHUP, signal_handler)  # Handle terminal disconnect
             logger.debug("Signal handlers registered.")
         except Exception as e:
             logger.warning(f"Unable to register signal handlers: {e}")
@@ -1221,5 +1272,14 @@ def main():
         sys.exit(1)
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:
+        logger.critical(f"Fatal error in main(): {e}", exc_info=True)
+        # Ensure we don't crash the system - exit gracefully
+        try:
+            import sys
+            sys.exit(1)
+        except:
+            os._exit(1)  # Last resort exit
 

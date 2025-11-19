@@ -286,6 +286,7 @@ if (file_exists($cssPath)) {
 (function() {
     const API_BASE = '/api/plugin/<?php echo $plugin; ?>';
     let refreshInterval = null;
+    let eventSource = null;
     let isUpdating = false;
     let playlistsLoaded = false;
     let currentPlaylist = '';
@@ -296,7 +297,89 @@ if (file_exists($cssPath)) {
     
     const playlistSelect = document.getElementById('playlist-select');
     const savePlaylistBtn = document.getElementById('save-playlist-btn');
-    
+
+    // Initialize Server-Sent Events for real-time updates
+    function initializeEventSource() {
+        if (eventSource) {
+            eventSource.close();
+        }
+
+        eventSource = new EventSource(API_BASE + '/events');
+
+        eventSource.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                handleRealtimeUpdate(data);
+            } catch (e) {
+                debugLog('Error parsing SSE data', e.message);
+            }
+        };
+
+        eventSource.onopen = function() {
+            debugLog('Real-time connection established');
+        };
+
+        eventSource.onerror = function(event) {
+            debugLog('SSE connection error', event);
+            // Fallback to polling if SSE fails
+            if (!refreshInterval) {
+                debugLog('Falling back to polling mode');
+                refreshInterval = setInterval(function() {
+                    loadStatus();
+                    if (!playlistFetchInProgress) {
+                        loadPlaylists();
+                    }
+                }, 5000); // Slower polling as fallback
+            }
+        };
+    }
+
+    // Handle real-time updates from server
+    function handleRealtimeUpdate(data) {
+        debugLog('Real-time update received', data.type);
+
+        switch (data.type) {
+            case 'status_update':
+                if (data.data) {
+                    // Update status displays with real-time data
+                    updateStatusDisplay(data.data);
+                }
+                break;
+
+            case 'command_update':
+                if (data.data) {
+                    // Update last command display
+                    const timeElement = document.getElementById('last-command-time');
+                    const textElement = document.getElementById('last-command-text');
+
+                    if (timeElement && textElement) {
+                        const date = new Date(data.data.timestamp * 1000);
+                        const timeString = date.toLocaleTimeString();
+                        const sourceText = data.data.source === 'homekit' ? 'HomeKit' : 'Emulate';
+                        timeElement.textContent = `${data.data.action} (${sourceText}) at ${timeString}`;
+                        textElement.style.display = 'block';
+                    }
+                }
+                break;
+
+            case 'connected':
+                debugLog('Real-time connection confirmed');
+                // Load initial data
+                loadStatus();
+                if (!playlistFetchInProgress) {
+                    loadPlaylists();
+                }
+                break;
+
+            case 'heartbeat':
+                // Connection is alive, no action needed
+                break;
+
+            default:
+                debugLog('Unknown update type', data.type);
+        }
+    }
+
     // Basic debug logging (console + UI)
     function debugLog(message, data = null) {
         // Log to console
@@ -1518,15 +1601,8 @@ if (file_exists($cssPath)) {
             }
         }, 500);
         
-        if (refreshInterval) {
-            clearInterval(refreshInterval);
-        }
-        refreshInterval = setInterval(function() {
-            loadStatus();
-            if (!playlistFetchInProgress) {
-                loadPlaylists();
-            }
-        }, 2000); // Fast refresh for responsive UI
+        // Initialize Server-Sent Events for real-time updates (no polling!)
+        initializeEventSource();
         
         document.addEventListener('click', function(evt) {
             if (evt.target.closest('button')) {
