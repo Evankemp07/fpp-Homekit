@@ -294,6 +294,12 @@ if (file_exists($cssPath)) {
                     Shows the most recent command received through HomeKit (both real HomeKit commands and emulated ones).
                 </p>
             </div>
+
+            <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border-color);">
+                <button id="unpair-homekit-btn" onclick="unpairHomeKit()" style="width: 100%; padding: 14px 20px; background: #ff3b30; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 0.2s ease, opacity 0.2s ease;" onmouseover="this.style.background='#ff2d20'" onmouseout="this.style.background='#ff3b30'">
+                    UNPAIR HOMEKIT
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -1364,6 +1370,48 @@ if (file_exists($cssPath)) {
     }
     
     // Restart service
+    window.unpairHomeKit = function() {
+        if (!confirm('Are you sure you want to unpair HomeKit? This will remove all paired devices and generate a new pairing code. You will need to re-pair your iOS devices.')) {
+            return;
+        }
+        
+        debugLog('Unpairing HomeKit...');
+        const btn = document.getElementById('unpair-homekit-btn');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Unpairing...';
+        btn.style.opacity = '0.6';
+        
+        fetch(`${API_BASE}/unpair`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showMessage('HomeKit unpairing successful. Service is restarting with a new pairing code.', 'success');
+                // Refresh status after a delay
+                setTimeout(() => {
+                    loadStatus(true);
+                }, 2000);
+                // Close settings modal
+                hideMqttSettings();
+            } else {
+                showMessage('Error unpairing HomeKit: ' + (data.message || 'Unknown error'), 'error');
+            }
+        })
+        .catch(error => {
+            showMessage('Error unpairing HomeKit: ' + error.message, 'error');
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = originalText;
+            btn.style.opacity = '1';
+        });
+    };
+
     window.restartService = function() {
         if (!confirm('Are you sure you want to restart the HomeKit service?')) {
             return;

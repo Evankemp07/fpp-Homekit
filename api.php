@@ -104,6 +104,12 @@ function getEndpointsfppHomekit() {
         'callback' => 'fppHomekitEvents');
     array_push($result, $ep);
 
+    $ep = array(
+        'method' => 'POST',
+        'endpoint' => 'unpair',
+        'callback' => 'fppHomekitUnpair');
+    array_push($result, $ep);
+
     return $result;
 }
 
@@ -1317,6 +1323,61 @@ function fppHomekitPairingInfo() {
                 }
             }
         }
+    }
+    
+    return json($result);
+}
+
+// POST /api/plugin/fpp-Homekit/unpair
+function fppHomekitUnpair() {
+    $pluginDir = dirname(__FILE__);
+    $stateFile = $pluginDir . '/scripts/homekit_accessory.state';
+    
+    $result = array(
+        'success' => false,
+        'message' => ''
+    );
+    
+    // Stop the service first
+    $pidFile = $pluginDir . '/scripts/homekit_service.pid';
+    if (file_exists($pidFile)) {
+        $pid = trim(file_get_contents($pidFile));
+        if ($pid && is_numeric($pid)) {
+            // Send SIGTERM to gracefully stop
+            posix_kill($pid, SIGTERM);
+            sleep(2);
+            // Force kill if still running
+            if (file_exists($pidFile)) {
+                posix_kill($pid, SIGKILL);
+            }
+        }
+    }
+    
+    // Remove or clear the state file to unpair
+    if (file_exists($stateFile)) {
+        // Backup the state file before deleting
+        $backupFile = $stateFile . '.backup.' . time();
+        @copy($stateFile, $backupFile);
+        
+        // Delete the state file to remove pairing
+        if (@unlink($stateFile)) {
+            $result['success'] = true;
+            $result['message'] = 'HomeKit pairing removed successfully. Service will restart with new pairing code.';
+        } else {
+            $result['message'] = 'Failed to delete state file. Check file permissions.';
+        }
+    } else {
+        $result['success'] = true;
+        $result['message'] = 'No pairing found to remove.';
+    }
+    
+    // Restart the service to generate new pairing
+    $mediadir = getenv('MEDIADIR') ?: '/home/fpp/media';
+    $postStartScript = $pluginDir . '/scripts/postStart.sh';
+    if (file_exists($postStartScript)) {
+        // Start service in background
+        $cmd = "MEDIADIR={$mediadir} bash " . escapeshellarg($postStartScript) . " > /dev/null 2>&1 &";
+        @exec($cmd);
     }
     
     return json($result);
