@@ -112,24 +112,21 @@ if (file_exists($cssPath)) {
                     <div class="playlist-config" style="margin-top: 24px;">
                         <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">HomeKit Network</h3>
                         <div class="playlist-config-controls" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                <label for="homekit-ip" style="font-weight: 500; color: var(--text-secondary);">Listen Address:</label>
-                                <select class="form-select" id="homekit-ip" style="min-width: 220px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
-                                    <option value="">Auto-detect (Primary Interface)</option>
-                                    <option value="0.0.0.0">All Interfaces (0.0.0.0)</option>
-                                </select>
-                            </div>
+                            <select class="form-select" id="homekit-ip" aria-label="Select network interface">
+                                <option value="">Auto-detect (Primary Interface)</option>
+                                <option value="0.0.0.0">All Interfaces (0.0.0.0)</option>
+                            </select>
                             <button class="homekit-button" type="button" id="save-homekit-network-btn">Save & Restart</button>
                         </div>
                         <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
-                            Select which network interface HomeKit should listen on. Choose a specific interface if you get "not reachable" errors.
+                            Select which network interface HomeKit should listen on. Choose a different interface if you get "not reachable" errors.
                         </div>
                     </div>
                 </div>
                 
                 <div class="config-right">
                     <div class="status-card pairing-card">
-                        <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Pair with HomeKit</h3>
+                        <div class="status-card-label">Pair with HomeKit</div>
                         <div id="pairing-section">
                             <div class="qr-container">
                                 <div id="qr-loading" style="display: block;">
@@ -543,7 +540,8 @@ if (file_exists($cssPath)) {
             return;
         }
         if (name) {
-            playlistStatusEl.textContent = name;
+            const playlistIcon = '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="#e3e3e3" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M640-160q-50 0-85-35t-35-85q0-50 35-85t85-35q11 0 21 1.5t19 6.5v-328h200v80H760v360q0 50-35 85t-85 35ZM120-320v-80h320v80H120Zm0-160v-80h480v80H120Zm0-160v-80h480v80H120Z"/></svg>';
+            playlistStatusEl.innerHTML = playlistIcon + escapeHtml(name);
         } else {
             playlistStatusEl.textContent = 'Not configured';
         }
@@ -1019,6 +1017,7 @@ if (file_exists($cssPath)) {
         const errorDetail = fppStatus.error_detail || '';
         const fppCurrentPlaylist = fppStatus.current_playlist || '';
         const fppCurrentSequence = fppStatus.current_sequence || '';
+        const statusCode = fppStatus.status || 0;
         
         // Determine FPP status text and dot class
         let fppStatusText = 'Unknown';
@@ -1041,9 +1040,8 @@ if (file_exists($cssPath)) {
         } else if (statusText.includes('Running') && !statusText.includes('Not Running') && !statusText.includes('Unreachable')) {
             fppStatusText = 'Running';
             fppDotClass = 'running';
-        } else if (statusText.includes('Available') || (!errorDetail && statusName !== 'unknown' && statusName !== '')) {
+        } else if (statusText.includes('Available') || statusCode === 0 || statusName === 'idle' || (!errorDetail && statusName !== 'unknown' && statusName !== '')) {
             // Check if FPP is paused (status code 2) vs truly idle
-            const statusCode = fppStatus.status || 0;
             const isPaused = statusCode === 2 || statusName === 'paused' || statusName.toLowerCase().includes('paused');
             const idleText = isPaused ? 'Paused' : 'idle';
             const idleIcon = isPaused ?
