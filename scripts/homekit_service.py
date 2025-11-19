@@ -978,20 +978,27 @@ def main():
         logger.info(f"Creating HomeKit driver (state file: {state_file})")
         
         # Validate existing state file if it exists
+        # Only validate if the file is completely corrupted (can't be parsed as JSON)
+        # Don't delete pairing just because pincode format might be different
         if os.path.exists(state_file):
             try:
                 with open(state_file, 'r') as f:
                     state_data = json.load(f)
-                    pincode = state_data.get('pincode', '')
-                    if pincode:
-                        pincode_str = pincode.decode() if isinstance(pincode, bytes) else str(pincode)
-                        pincode_clean = pincode_str.replace('-', '')
-                        if len(pincode_clean) != 8 or not pincode_clean.isdigit():
-                            logger.warning(f"Invalid setup code in state file: {pincode_str}, regenerating state file")
-                            os.rename(state_file, state_file + '.backup')
-                            logger.info("Backed up invalid state file, will create new one")
+                    # Only check if paired_clients exist - if they do, preserve the pairing
+                    # Don't validate pincode format as HAP-python may store it differently
+                    if state_data.get('paired_clients'):
+                        logger.info("Found existing pairing in state file, preserving it")
+            except json.JSONDecodeError as e:
+                # Only backup if file is completely unparseable (corrupted)
+                logger.warning(f"State file is corrupted (not valid JSON): {e}, backing up and creating new one")
+                try:
+                    os.rename(state_file, state_file + '.backup')
+                    logger.info("Backed up corrupted state file, will create new one")
+                except Exception as rename_error:
+                    logger.error(f"Could not backup state file: {rename_error}")
             except Exception as e:
-                logger.warning(f"Could not validate state file: {e}")
+                # Other errors (permissions, etc.) - log but don't delete pairing
+                logger.warning(f"Could not read state file: {e}, but continuing anyway")
         
         # Get network configuration
         homekit_ip = None
