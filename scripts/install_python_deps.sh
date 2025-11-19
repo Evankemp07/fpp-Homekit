@@ -122,11 +122,18 @@ run_pip_with_timeout() {
         done
         
         # Execute with timeout using bash -c to properly handle command with spaces
-        if $TIMEOUT_CMD "$timeout_sec" bash -c "$cmd_str" >> "${INSTALL_LOG}" 2>&1; then
+        # Filter out verbose "Removing" messages from pip output, but preserve exit code
+        local pip_output
+        pip_output=$($TIMEOUT_CMD "$timeout_sec" bash -c "$cmd_str" 2>&1)
+        local exit_code=$?
+        
+        # Filter out "Removing" messages and append to log
+        echo "$pip_output" | grep -v "^Removing " >> "${INSTALL_LOG}"
+        
+        if [ $exit_code -eq 0 ]; then
             echo "[$(date '+%H:%M:%S')] ✓ Completed: $description" | tee -a "${INSTALL_LOG}"
             return 0
         else
-            local exit_code=$?
             if [ $exit_code -eq 124 ]; then
                 echo "[$(date '+%H:%M:%S')] ✗ TIMEOUT: $description (exceeded ${timeout_sec}s)" | tee -a "${INSTALL_LOG}"
             else
@@ -158,12 +165,20 @@ run_pip_with_timeout() {
             cmd_str="$cmd_str $(printf '%q' "$arg")"
         done
         # Execute using bash -c to properly handle command with spaces
-        if bash -c "$cmd_str" >> "${INSTALL_LOG}" 2>&1; then
+        # Filter out verbose "Removing" messages from pip output, but preserve exit code
+        local pip_output
+        pip_output=$(bash -c "$cmd_str" 2>&1)
+        local exit_code=$?
+        
+        # Filter out "Removing" messages and append to log
+        echo "$pip_output" | grep -v "^Removing " >> "${INSTALL_LOG}"
+        
+        if [ $exit_code -eq 0 ]; then
             echo "[$(date '+%H:%M:%S')] ✓ Completed: $description" | tee -a "${INSTALL_LOG}"
             return 0
         else
             echo "[$(date '+%H:%M:%S')] ✗ FAILED: $description" | tee -a "${INSTALL_LOG}"
-            return 1
+            return $exit_code
         fi
     fi
 }
@@ -197,7 +212,8 @@ install_with() {
     fi
     
     # Add non-interactive flags to prevent hanging and suppress verbose output
-    args+=("--no-input" "--disable-pip-version-check" "--quiet")
+    # Use --quiet to suppress most output, but also filter out "Removing" messages
+    args+=("--no-input" "--disable-pip-version-check" "--quiet" "--no-warn-script-location")
 
     if run_pip_with_timeout "$PIP_TIMEOUT" "dependency installation (${1:-default flags})" install -r "${REQUIREMENTS_FILE}" "${args[@]}"; then
         echo "✓ Dependencies installed successfully (${1:-default flags})" | tee -a "${INSTALL_LOG}"
