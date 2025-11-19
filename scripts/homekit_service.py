@@ -782,10 +782,42 @@ class FPPLightAccessory(Accessory):
         # Request initial status from FPP
         logger.info(f"Requesting initial FPP status via MQTT topic: {self.mqtt_client.topic_prefix}/command/GetStatus")
         self.mqtt_client.publish_command("GetStatus")
-        
+
         # Also try requesting playlist status
         logger.info(f"Requesting playlist status via MQTT topic: {self.mqtt_client.topic_prefix}/command/GetPlaylistStatus")
         self.mqtt_client.publish_command("GetPlaylistStatus")
+
+        # Sync initial HomeKit state with FPP after a short delay
+        import threading
+        def sync_initial_state():
+            time.sleep(3)  # Wait for MQTT connection and initial responses
+            try:
+                # Query FPP status via HTTP API as fallback
+                import requests
+                response = requests.get("http://localhost/api/system/status", timeout=5)
+                if response.status_code == 200:
+                    status_data = response.json()
+                    status_code = status_data.get('status', 0)
+                    status_name = status_data.get('status_name', 'idle')
+                    fpp_playing = status_code == 1 or status_name.lower() == 'playing' or 'playing' in status_name.lower()
+
+                    logger.info(f"Initial FPP sync: status={status_code} ({status_name}), playing={fpp_playing}, current HomeKit={self.is_on}")
+                    if fpp_playing != self.is_on:
+                        logger.info(f"Syncing HomeKit light to match FPP: {fpp_playing}")
+                        self.is_on = fpp_playing
+                        self.on_char.set_value(fpp_playing)
+                        self.on_char.notify()
+                        logger.info("Initial HomeKit state synced with FPP")
+                    else:
+                        logger.info("HomeKit state already matches FPP")
+                else:
+                    logger.warning("Could not query FPP status for initial sync")
+            except Exception as e:
+                logger.error(f"Error syncing initial state: {e}")
+
+        # Start initial sync in background
+        sync_thread = threading.Thread(target=sync_initial_state, daemon=True)
+        sync_thread.start()
     
     def start_playlist(self):
         """Start the configured FPP playlist via MQTT"""
