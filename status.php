@@ -89,7 +89,7 @@ if (file_exists($cssPath)) {
                             <select class="form-select" id="playlist-select" aria-label="Select playlist to start">
                                 <option value="">-- Loading playlists... --</option>
                             </select>
-                            <button class="homekit-button" type="button" id="save-playlist-btn">Save Playlist</button>
+                            <button class="homekit-button" type="button" id="save-playlist-btn" style="min-width: 140px;">Save Playlist</button>
                         </div>
                     </div>
                     
@@ -116,7 +116,7 @@ if (file_exists($cssPath)) {
                                 <option value="">Auto-detect (Primary Interface)</option>
                                 <option value="0.0.0.0">All Interfaces (0.0.0.0)</option>
                             </select>
-                            <button class="homekit-button" type="button" id="save-homekit-network-btn">Save & Restart</button>
+                            <button class="homekit-button" type="button" id="save-homekit-network-btn" style="min-width: 140px;">Save & Restart</button>
                         </div>
                         <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
                             Select which network interface HomeKit should listen on. Choose a different interface if you get "not reachable" errors.
@@ -175,9 +175,20 @@ if (file_exists($cssPath)) {
         <div class="info-debug-layout" style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-color);">
             <div class="info-section">
                 <h3>Information</h3>
-                <p class="info-text"><strong>Accessory Name:</strong> FPP-Controller</p>
-                <p class="info-text"><strong>Accessory Type:</strong> Light</p>
-                <p class="info-text"><strong>Control:</strong> Turning the light ON will start the configured playlist. Turning it OFF will stop playback.</p>
+                <div class="info-group">
+                    <div class="info-row">
+                        <div class="info-label">Accessory Name</div>
+                        <div class="info-value">FPP-Controller</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Accessory Type</div>
+                        <div class="info-value">Light</div>
+                    </div>
+                    <div class="info-row" style="align-items: flex-start;">
+                        <div class="info-label">Control</div>
+                        <div class="info-value" style="text-align: left; max-width: 60%;">Turning the light ON will start the configured playlist. Turning it OFF will stop playback.</div>
+                    </div>
+                </div>
             </div>
             
             <div class="debug-section">
@@ -291,7 +302,7 @@ if (file_exists($cssPath)) {
     const playlistSelect = document.getElementById('playlist-select');
     const savePlaylistBtn = document.getElementById('save-playlist-btn');
 
-    // Initialize Server-Sent Events for real-time updates
+    // Initialize SSE for real-time updates
     function initializeEventSource() {
         if (eventSource) {
             eventSource.close();
@@ -310,7 +321,7 @@ if (file_exists($cssPath)) {
 
         eventSource.onopen = function() {
             debugLog('Real-time connection established');
-            // SSE is active, disable any polling
+            // Disable polling when SSE is active
             if (refreshInterval) {
                 clearInterval(refreshInterval);
                 refreshInterval = null;
@@ -319,7 +330,7 @@ if (file_exists($cssPath)) {
 
         eventSource.onerror = function(event) {
             debugLog('SSE connection error', event);
-            // Close and try to reconnect after a delay
+            // Reconnect after delay
             eventSource.close();
             setTimeout(function() {
                 if (!refreshInterval) {
@@ -335,24 +346,24 @@ if (file_exists($cssPath)) {
         };
     }
 
-    // Handle real-time updates from server
+    // Handle SSE updates
     function handleRealtimeUpdate(data) {
         debugLog('Real-time update received', data.type);
 
         switch (data.type) {
             case 'status_update':
                 if (data.data) {
-                    // SSE now sends full status on initial connection
+                    // Full status sent on connection
                     updateStatusDisplay(data.data);
                 }
                 break;
 
             case 'command_update':
                 if (data.data) {
-                    // Update last command display - only if command is recent (within last hour)
+                    // Show command if recent (last hour)
                     const now = Math.floor(Date.now() / 1000);
                     const commandAge = now - data.data.timestamp;
-                    const oneHourAgo = 3600; // 1 hour in seconds
+                    const oneHourAgo = 3600;
                     
                     const timeElement = document.getElementById('last-command-time');
                     const textElement = document.getElementById('last-command-text');
@@ -364,7 +375,7 @@ if (file_exists($cssPath)) {
                         timeElement.textContent = `${data.data.action} (${sourceText}) at ${timeString}`;
                         textElement.style.display = 'block';
                     } else if (textElement) {
-                        // Hide if command is too old
+                        // Hide old commands
                         textElement.style.display = 'none';
                     }
                 }
@@ -372,11 +383,11 @@ if (file_exists($cssPath)) {
 
             case 'connected':
                 debugLog('Real-time connection confirmed');
-                // SSE already sent initial status, only load playlists if needed
+                // Load playlists if needed
                 if (!playlistFetchInProgress) {
                     loadPlaylists();
                 }
-                // Ensure QR code loads if service is running (fallback if status_update didn't trigger it)
+                // Fallback QR code load
                 setTimeout(function() {
                     if (!qrLoaded) {
                         loadStatus();
@@ -385,7 +396,7 @@ if (file_exists($cssPath)) {
                 break;
 
             case 'heartbeat':
-                // Connection is alive, no action needed
+                // Heartbeat - no action
                 break;
 
             default:
@@ -393,16 +404,16 @@ if (file_exists($cssPath)) {
         }
     }
 
-    // Basic debug logging (console + UI)
+    // Debug logging
     function debugLog(message, data = null) {
-        // Log to console
+        // Console log
         if (data) {
             console.log('[FPP-HomeKit]', message, data);
         } else {
             console.log('[FPP-HomeKit]', message);
         }
         
-        // Log to UI (keep last 15 messages)
+        // UI log (keep last 15)
         const debugContainer = document.getElementById('debug-messages');
         if (!debugContainer) return;
         
@@ -423,7 +434,7 @@ if (file_exists($cssPath)) {
         
         debugContainer.insertBefore(logEntry, debugContainer.firstChild);
         
-        // Keep only last 15 messages
+        // Limit to 15 messages
         while (debugContainer.children.length > 15) {
             debugContainer.removeChild(debugContainer.lastChild);
         }
@@ -434,7 +445,7 @@ if (file_exists($cssPath)) {
         const modal = document.getElementById('mqtt-info-modal');
         if (modal) {
             modal.style.display = 'flex';
-            // Animate in
+            // Animate
             requestAnimationFrame(() => {
                 const content = modal.querySelector('.info-modal-content');
                 if (content) {
@@ -506,12 +517,12 @@ if (file_exists($cssPath)) {
         container.innerHTML = '';
         container.appendChild(msgDiv);
         
-        // Start hidden, positioned above viewport
+        // Start hidden
         msgDiv.style.opacity = '0';
         msgDiv.style.transform = 'translateY(-100%)';
         msgDiv.style.transition = 'none';
         
-        // Animate in from top
+        // Animate in
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 msgDiv.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
@@ -520,7 +531,7 @@ if (file_exists($cssPath)) {
             });
         });
         
-        // Auto-hide success messages after 5 seconds with slide-out animation
+        // Auto-hide success (5s)
         if (type === 'success') {
             setTimeout(() => {
                 msgDiv.style.opacity = '0';
@@ -605,10 +616,10 @@ if (file_exists($cssPath)) {
                     }
                 }
                 
-                // Set the selected value - prioritize currentPlaylist if set
+                // Set selected value
                 const valueToSet = currentPlaylist || '';
                 playlistSelect.value = valueToSet;
-                // If value was set, also update currentPlaylist to match
+                // Update currentPlaylist
                 if (valueToSet && playlistSelect.value === valueToSet) {
                     currentPlaylist = valueToSet;
                 }
@@ -661,18 +672,18 @@ if (file_exists($cssPath)) {
                     debugLog('Playlist saved successfully');
                     currentPlaylist = playlistName;
                     updatePlaylistStatusText(currentPlaylist);
-                    // Update dropdown immediately
+                    // Update dropdown
                     if (playlistSelect) {
                         playlistSelect.value = currentPlaylist;
                     }
                     updateSaveButtonState();
                     showMessage('Configuration saved.', 'success');
-                    // Reload playlists to ensure sync (status will update via SSE)
+                    // Reload playlists
                     setTimeout(() => {
                         if (!playlistFetchInProgress) {
                             loadPlaylists();
                         }
-                        // Only refresh status if SSE is not active
+                        // Refresh if no SSE
                         if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
                             loadStatus();
                         }
@@ -703,7 +714,7 @@ if (file_exists($cssPath)) {
         const modal = document.getElementById('mqtt-settings-modal');
         if (modal) {
             modal.style.display = 'flex';
-            // Animate in
+            // Animate
             requestAnimationFrame(() => {
                 const content = modal.querySelector('.info-modal-content');
                 if (content) {
@@ -788,13 +799,12 @@ if (file_exists($cssPath)) {
 
     // Load status
     function loadStatus(forceFresh = false) {
-        // Prevent concurrent updates
+        // Prevent concurrent calls
         if (isUpdating) {
             return;
         }
 
-        // Debounce rapid successive calls (within 300ms for faster updates)
-        // But allow forced fresh checks to bypass debounce
+        // Debounce (300ms), allow forced bypass
         const now = Date.now();
         if (!forceFresh && lastStatusUpdate && (now - lastStatusUpdate) < 300) {
             return;
@@ -803,20 +813,20 @@ if (file_exists($cssPath)) {
 
         isUpdating = true;
         
-        // Set FPP status loading state
+        // Set loading state
         fppStatusLoading = true;
         fppStatusLoadStartTime = Date.now();
         
-        // Show loading state with yellow bouncing animation
+        // Show loading animation
         const fppStatusTextEl = document.getElementById('fpp-status-text');
         const fppStatusDotEl = document.getElementById('fpp-status-dot');
         if (fppStatusTextEl && fppStatusTextEl.textContent === 'Loading...') {
-            // Only show loading animation if still in initial loading state
+            // Initial load state
             if (fppStatusDotEl) {
                 fppStatusDotEl.className = 'status-dot-large restarting';
             }
         } else if (fppStatusDotEl && fppStatusTextEl && !fppStatusTextEl.textContent.includes('Unable to Check')) {
-            // Show loading animation for subsequent loads (but not if already showing error)
+            // Subsequent loads (skip if error)
             fppStatusDotEl.className = 'status-dot-large restarting';
         }
         
@@ -832,11 +842,11 @@ if (file_exists($cssPath)) {
             .then(data => {
                 debugLog('Status updated', { playing: data.fpp_status?.playing, status: data.fpp_status?.status_name });
                 updateStatusDisplay(data);
-                // Clear loading state after display is updated (updateStatusDisplay will also clear it if valid data received)
+                // Clear loading state
                 if (!fppStatusLoading) {
                     fppStatusLoadStartTime = 0;
                 }
-                // Clear any error messages on successful update with slide-out animation
+                // Clear error messages
                 const messageContainer = document.getElementById('message-container');
                 if (messageContainer) {
                     const errorMessages = messageContainer.querySelectorAll('.message.error');
@@ -859,7 +869,7 @@ if (file_exists($cssPath)) {
                 // Clear loading state
                 fppStatusLoading = false;
                 fppStatusLoadStartTime = 0;
-                // Set "Unable to Check Status" and keep it red
+                // Set error state
                 const fppStatusTextEl = document.getElementById('fpp-status-text');
                 const fppStatusDotEl = document.getElementById('fpp-status-dot');
                 if (fppStatusTextEl) {
@@ -868,7 +878,7 @@ if (file_exists($cssPath)) {
                 if (fppStatusDotEl) {
                     fppStatusDotEl.className = 'status-dot-large stopped';
                 }
-                // Only show error message if it's not already showing
+                // Show error if not already visible
                 const messageContainer = document.getElementById('message-container');
                 const existingError = messageContainer && 
                     Array.from(messageContainer.querySelectorAll('.message.error'))
@@ -880,8 +890,7 @@ if (file_exists($cssPath)) {
             });
     }
     
-    // Update status display
-    // Store last known good values to prevent UI from resetting on incomplete updates
+    // Update status display (preserve last known values)
     let lastKnownStatus = {
         service_running: false,
         paired: false,
@@ -890,8 +899,7 @@ if (file_exists($cssPath)) {
     };
     
     function updateStatusDisplay(data) {
-        // Only update fields that are actually present in the response
-        // This prevents clearing valid data when an update is incomplete
+        // Only update present fields
         if (data.service_running !== undefined) {
             lastKnownStatus.service_running = data.service_running;
         }
@@ -899,14 +907,13 @@ if (file_exists($cssPath)) {
             lastKnownStatus.paired = data.paired;
         }
         
-        // Check if we have valid fpp_status data in this update
+        // Check for valid FPP status
         const hasValidFppStatus = data.fpp_status !== undefined && 
                                    data.fpp_status !== null && 
                                    Object.keys(data.fpp_status).length > 0;
         
         if (hasValidFppStatus) {
-            // Only update fpp_status if we have valid data (not empty object)
-            // Merge fpp_status to preserve existing fields if new data is incomplete
+            // Merge FPP status (preserve existing fields)
             lastKnownStatus.fpp_status = Object.assign({}, lastKnownStatus.fpp_status, data.fpp_status);
         }
         
@@ -914,7 +921,7 @@ if (file_exists($cssPath)) {
             lastKnownStatus.playlist = data.playlist;
         }
         
-        // Use last known values (which may have been updated above)
+        // Use last known values
         const serviceRunning = lastKnownStatus.service_running;
         const paired = lastKnownStatus.paired;
         const fppStatus = lastKnownStatus.fpp_status || {};
@@ -924,13 +931,13 @@ if (file_exists($cssPath)) {
         const serviceStatusTextEl = document.getElementById('service-status-text');
         const serviceStatusDotEl = document.getElementById('service-status-dot');
         
-        // Keep restarting state visible for minimum 2 seconds to show bouncing animation
-        const minRestartDuration = 2000; // 2 seconds - enough time to see the bouncing animation
+        // Keep restarting state visible (min 2s)
+        const minRestartDuration = 2000;
         const elapsedSinceRestart = restartStartTime > 0 ? Date.now() - restartStartTime : 0;
         const shouldShowRestarting = isServiceRestarting && (elapsedSinceRestart < minRestartDuration || !serviceRunning);
         
         if (shouldShowRestarting && serviceRunning && elapsedSinceRestart >= minRestartDuration) {
-            // Service is back and minimum duration has passed
+            // Service restored, clear restarting state
             isServiceRestarting = false;
             restartStartTime = 0;
             if (restartPollInterval) {
@@ -951,8 +958,7 @@ if (file_exists($cssPath)) {
             serviceStatusTextEl.textContent = serviceStatusText;
         }
         if (serviceStatusDotEl) {
-            // Always apply the restarting class if we're in restarting state, even if service is running
-            // This ensures the bouncing animation shows during the restart process
+            // Show restarting animation
             if (shouldShowRestarting) {
                 serviceStatusDotEl.className = 'status-dot-large restarting';
             } else {
@@ -976,34 +982,32 @@ if (file_exists($cssPath)) {
             pairingStatusDotEl.className = 'status-dot-large ' + (paired ? 'paired' : 'not-paired');
         }
         
-        // Update FPP status - only if we have valid fpp_status data
-        // Preserve "Unable to Check Status" if fpp_status is null/undefined/empty
+        // Update FPP status (preserve error state if needed)
         const fppStatusTextEl = document.getElementById('fpp-status-text');
         const currentFppStatusText = fppStatusTextEl ? fppStatusTextEl.textContent : '';
         
-        // If we don't have valid fpp_status data in THIS update and we already have "Unable to Check Status", preserve it
+        // Preserve error state if no valid data
         if (!hasValidFppStatus && currentFppStatusText.includes('Unable to Check')) {
-            // Keep "Unable to Check Status" and red dot
+            // Keep error state
             const fppStatusDotEl = document.getElementById('fpp-status-dot');
             if (fppStatusDotEl && !fppStatusLoading) {
                 fppStatusDotEl.className = 'status-dot-large stopped';
             }
-            // Clear loading state since we're not updating
+            // Clear loading state
             fppStatusLoading = false;
             fppStatusLoadStartTime = 0;
-            return; // Don't update FPP status
+            return;
         }
         
-        // Clear loading state if we got valid data
+        // Clear loading on valid data
         if (hasValidFppStatus) {
             fppStatusLoading = false;
             fppStatusLoadStartTime = 0;
         }
         
-        // If we don't have valid fpp_status data and we're not preserving "Unable to Check Status", 
-        // we might be in initial load - don't update yet, but ensure loading animation is showing
+        // Initial load - keep loading animation
         if (!hasValidFppStatus && Object.keys(fppStatus).length === 0) {
-            // Still loading, keep loading animation
+            // Keep loading animation
             const fppStatusDotEl = document.getElementById('fpp-status-dot');
             if (fppStatusDotEl && fppStatusLoading) {
                 fppStatusDotEl.className = 'status-dot-large restarting';
@@ -1027,7 +1031,7 @@ if (file_exists($cssPath)) {
         if (playing || statusName === 'playing') {
             fppStatusText = '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M160-160v-320h160v320H160Zm240 0v-640h160v640H400Zm240 0v-440h160v440H640Z"/></svg>Playing';
             fppDotClass = 'playing';
-            // Add playlist and sequence details
+            // Add details
             if (fppCurrentPlaylist) {
                 fppStatusDetails += '<div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Playlist: ' + escapeHtml(fppCurrentPlaylist) + '</div>';
             }
@@ -1041,16 +1045,16 @@ if (file_exists($cssPath)) {
             fppStatusText = 'Running';
             fppDotClass = 'running';
         } else if (statusText.includes('Available') || statusCode === 0 || statusName === 'idle' || (!errorDetail && statusName !== 'unknown' && statusName !== '')) {
-            // Check if FPP is paused (status code 2) vs truly idle
+            // Check paused vs idle
             const isPaused = statusCode === 2 || statusName === 'paused' || statusName.toLowerCase().includes('paused');
             const idleText = isPaused ? 'Paused' : 'idle';
             const idleIcon = isPaused ?
                 '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="#e3e3e3" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M560-200v-560h160v560H560Zm-320 0v-560h160v560H240Z"/></svg>' :
-                '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="#e3e3e3" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Zm400-80h80v-400h-80v400Zm-320 0h80v-400h-80v400Zm0-400v400-400Zm320 0v400-400Z"/></svg>';
+                '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="#e3e3e3" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M360-840v-80h240v80H360ZM480-80q-74 0-139.5-28.5T226-186q-49-49-77.5-114.5T120-440q0-74 28.5-139.5T226-694q49-49 114.5-77.5T480-800q62 0 119 20t107 58l56-56 56 56-56 56q38 50 58 107t20 119q0 74-28.5 139.5T734-186q-49 49-114.5 77.5T480-80Zm0-80q116 0 198-82t82-198q0-116-82-198t-198-82q-116 0-198 82t-82 198q0 116 82 198t198 82Zm0-280ZM360-280h80v-320h-80v320Zm160 0h80v-320h-80v320Z"/></svg>';
             fppStatusText = idleIcon + idleText;
             fppDotClass = isPaused ? 'paused' : 'running';
-            // Show error detail if available
-            if (errorDetail) {
+            // Show error details only if not idle (idle is normal state)
+            if (errorDetail && statusCode !== 0 && statusName !== 'idle') {
                 const errorParts = errorDetail.split('. ').filter(part => part.trim());
                 if (errorParts.length > 0) {
                     fppStatusDetails += '<div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.4;">';
@@ -1103,14 +1107,14 @@ if (file_exists($cssPath)) {
             fppStatusTextEl.innerHTML = fppStatusText;
         }
         if (fppStatusDotEl) {
-            // Show loading animation if still loading, otherwise show actual status
+            // Show loading or status
             if (fppStatusLoading) {
                 fppStatusDotEl.className = 'status-dot-large restarting';
             } else {
                 fppStatusDotEl.className = 'status-dot-large ' + fppDotClass;
             }
         }
-        // Add details below the status value if available
+        // Add status details
         if (fppStatusCard && fppStatusDetails) {
             let detailsEl = fppStatusCard.querySelector('.status-card-details');
             if (!detailsEl) {
@@ -1120,26 +1124,26 @@ if (file_exists($cssPath)) {
             }
             detailsEl.innerHTML = fppStatusDetails;
         } else if (fppStatusCard) {
-            // Remove details if not needed
+            // Remove details
             const detailsEl = fppStatusCard.querySelector('.status-card-details');
             if (detailsEl) {
                 detailsEl.remove();
             }
         }
         
-        // Update playlist - only update if a new value is provided
+        // Update playlist
         if (playlist && playlist !== '') {
-            // Only update if we got a non-empty playlist value
+            // Update if changed
             if (playlist !== currentPlaylist) {
                 currentPlaylist = playlist;
                 updatePlaylistStatusText(currentPlaylist);
-                // Update dropdown if it's loaded and the value changed
+                // Update dropdown
                 if (playlistSelect && playlistsLoaded) {
                     playlistSelect.value = currentPlaylist;
                 }
             }
         } else if (playlistSelect && playlistsLoaded && playlistSelect.value !== currentPlaylist) {
-            // Ensure dropdown matches currentPlaylist even if playlist didn't change
+            // Sync dropdown
             playlistSelect.value = currentPlaylist;
         }
         updateSaveButtonState();
@@ -1161,7 +1165,7 @@ if (file_exists($cssPath)) {
                     loadQRCode();
                 }
             } else {
-                // Show placeholder QR code instead of error message
+                // Show placeholder
                 document.getElementById('qr-loading').style.display = 'block';
                 document.getElementById('qr-content').style.display = 'none';
                 document.getElementById('qr-error').style.display = 'none';
@@ -1169,8 +1173,7 @@ if (file_exists($cssPath)) {
             }
         }
 
-        // Update last command display with recent HomeKit commands
-        // Only show commands from the last hour to avoid showing stale/old data
+        // Update last command (show if recent, last hour)
         const timeElement = document.getElementById('last-command-time');
         const textElement = document.getElementById('last-command-text');
         
@@ -1178,9 +1181,9 @@ if (file_exists($cssPath)) {
             const lastCommand = data.recent_homekit_commands[data.recent_homekit_commands.length - 1];
             const now = Math.floor(Date.now() / 1000);
             const commandAge = now - lastCommand.timestamp;
-            const oneHourAgo = 3600; // 1 hour in seconds
+            const oneHourAgo = 3600;
             
-            // Only show command if it's from the last hour
+            // Show if recent
             if (commandAge <= oneHourAgo && timeElement && textElement) {
                 const date = new Date(lastCommand.timestamp * 1000);
                 const timeString = date.toLocaleTimeString();
@@ -1188,11 +1191,11 @@ if (file_exists($cssPath)) {
                 timeElement.textContent = `${lastCommand.action} (${sourceText}) at ${timeString}`;
                 textElement.style.display = 'block';
             } else if (textElement) {
-                // Hide if command is too old
+                // Hide old
                 textElement.style.display = 'none';
             }
         } else if (textElement) {
-            // Hide if no commands available
+            // Hide if none
             textElement.style.display = 'none';
         }
     }
@@ -1204,11 +1207,11 @@ if (file_exists($cssPath)) {
         autoStartAttempted = true;
         showMessage('Starting HomeKit service...', 'info');
         
-        // Set restarting state immediately to show bouncing yellow animation
+        // Set restarting state
         restartStartTime = Date.now();
         isServiceRestarting = true;
         
-        // Update status dot immediately to show bouncing animation
+        // Update status dot
         const serviceStatusTextEl = document.getElementById('service-status-text');
         const serviceStatusDotEl = document.getElementById('service-status-dot');
         if (serviceStatusTextEl) {
@@ -1218,7 +1221,7 @@ if (file_exists($cssPath)) {
             serviceStatusDotEl.className = 'status-dot-large restarting';
         }
         
-        // Start aggressive polling during restart
+        // Start polling
         if (restartPollInterval) {
             clearInterval(restartPollInterval);
         }
@@ -1239,15 +1242,14 @@ if (file_exists($cssPath)) {
                 } else {
                     showMessage(data.message || 'Starting HomeKit service...', 'info');
                 }
-                // Status will update via SSE automatically, no need to poll
-                // Only refresh if SSE is not active
+                // Refresh if no SSE
                 if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
                     setTimeout(() => loadStatus(), 1200);
                 }
             })
             .catch(error => {
                 showMessage('Unable to start service automatically: ' + error.message, 'error');
-                // Clear restarting state on error
+                // Clear restarting state
                 isServiceRestarting = false;
                 restartStartTime = 0;
                 if (restartPollInterval) {
@@ -1273,8 +1275,7 @@ if (file_exists($cssPath)) {
             .then(data => {
                 let setupCode = data.setup_code || '0000-0000';
                 
-                // Format setup code to XXXX-XXXX format
-                // Remove all dashes first, then add one dash in the middle
+                // Format to XXXX-XXXX
                 setupCode = setupCode.replace(/-/g, '');
                 if (setupCode.length === 8) {
                     setupCode = setupCode.substring(0, 4) + '-' + setupCode.substring(4);
@@ -1282,7 +1283,7 @@ if (file_exists($cssPath)) {
                 
                 document.getElementById('setup-code-text').textContent = setupCode;
                 
-                // Load QR code image
+                // Load QR image
                 const qrImage = document.getElementById('qr-image');
                 qrImage.src = API_BASE + '/qr-code?' + new Date().getTime();
                 qrImage.onload = () => {
@@ -1315,7 +1316,7 @@ if (file_exists($cssPath)) {
         btn.classList.add('restarting');
         btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg>';
         
-        // Set restarting state immediately with minimum duration
+        // Set restarting state
         restartStartTime = Date.now();
         isServiceRestarting = true;
         const serviceStatusTextEl = document.getElementById('service-status-text');
@@ -1327,7 +1328,7 @@ if (file_exists($cssPath)) {
             serviceStatusDotEl.className = 'status-dot-large restarting';
         }
 
-        // Start aggressive polling during restart (every 500ms)
+        // Start polling (500ms)
         if (restartPollInterval) {
             clearInterval(restartPollInterval);
         }
@@ -1335,7 +1336,7 @@ if (file_exists($cssPath)) {
             loadStatus();
         }, 500);
 
-        // Remove the restarting class after 5 seconds
+        // Remove restarting class (5s)
         setTimeout(() => {
             btn.classList.remove('restarting');
         }, 5000);
@@ -1364,12 +1365,11 @@ if (file_exists($cssPath)) {
             } else {
                 showMessage(data && data.message ? data.message : 'Service restart initiated. Please wait a few seconds...', 'info');
             }
-            // Status will be polled aggressively by the interval, no need for manual refreshes
-            // Clean up after minimum duration has passed (handled in updateStatusDisplay)
+            // Status polled by interval
             setTimeout(() => {
                 btn.disabled = false;
                 btn.classList.remove('restarting');
-                // Restore original button content
+                // Restore button
                 btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg>';
             }, 5000);
         })
@@ -1433,9 +1433,7 @@ if (file_exists($cssPath)) {
             const commandType = on ? 'start' : 'stop';
             updateLastCommandTime(commandType);
 
-            // Status will update via SSE automatically when FPP state changes
-            // Don't manually refresh status here - let SSE handle it to avoid clearing UI
-            // If SSE is not active, wait a bit longer before refreshing to let FPP state update
+            // Let SSE handle updates, or wait if no SSE
             if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
                 // Wait 2 seconds for FPP to process the command, then refresh
                 setTimeout(() => {
@@ -1489,7 +1487,7 @@ if (file_exists($cssPath)) {
                         mqttPortInput.value = data.mqtt.port;
                     }
                 } else {
-                    // No MQTT config found - show placeholder hint
+                    // Show placeholder
                     mqttBrokerInput.placeholder = 'Enter broker IP/hostname';
                 }
             })
@@ -1546,7 +1544,7 @@ if (file_exists($cssPath)) {
             .then(data => {
                 if (data && data.status === 'saved') {
                     showMessage('MQTT configuration saved. Restart service to apply changes.', 'success');
-                    // Status will update via SSE automatically
+                    // SSE will update
                     if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
                         setTimeout(() => loadStatus(), 300);
                     }
@@ -1632,7 +1630,7 @@ if (file_exists($cssPath)) {
         const homekitIpSelect = document.getElementById('homekit-ip');
         if (!homekitIpSelect) return;
         
-        // Get available network interfaces from API
+        // Get network interfaces
         fetch('/api/plugin/fpp-Homekit/network-interfaces')
             .then(response => {
                 if (!response.ok) {
@@ -1655,10 +1653,10 @@ if (file_exists($cssPath)) {
                 homekitIpSelect.add(new Option('Auto-detect (Primary Interface)', ''));
                 homekitIpSelect.add(new Option('All Interfaces (0.0.0.0)', '0.0.0.0'));
                 
-                // Safely check for interfaces
+                // Check interfaces
                 const interfaces = data && data.interfaces ? data.interfaces : [];
                 
-                // Add separator if we have interfaces
+                // Add separator
                 if (interfaces.length > 0) {
                     try {
                         const separator = new Option('──────────────────────', '', true, false);
@@ -1734,7 +1732,7 @@ if (file_exists($cssPath)) {
                     throw new Error('Invalid JSON response: ' + text.substring(0, 200));
                 }
                 
-                // Check for success indicators: 'success', 'status === saved', or 'status === OK'
+                // Check success
                 if (data.success || data.status === 'saved' || data.status === 'OK') {
                     showMessage('✓ HomeKit network config saved. Restarting service...', 'success');
                     // Restart the service to apply changes
@@ -1757,7 +1755,7 @@ if (file_exists($cssPath)) {
     
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
-        // Show loading animation for FPP status immediately on page load
+        // Show loading animation on load
         const fppStatusDotEl = document.getElementById('fpp-status-dot');
         if (fppStatusDotEl) {
             fppStatusDotEl.className = 'status-dot-large restarting';
@@ -1824,8 +1822,7 @@ if (file_exists($cssPath)) {
             }
         }, 500);
         
-        // Load status immediately on page load (don't wait for SSE)
-        // Force fresh FPP status check on initial load
+        // Load status (force fresh)
         loadStatus(true);
         loadPlaylists();
         
@@ -1843,7 +1840,7 @@ if (file_exists($cssPath)) {
             }
         }, 1500); // Reduced from 2 seconds - just a quick fallback check
         
-        // Only refresh on visibility change if SSE is not active
+        // Refresh if no SSE
         document.addEventListener('visibilitychange', function() {
             if (!document.hidden && !eventSource) {
                 // SSE not active, do a one-time refresh
