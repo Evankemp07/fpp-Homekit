@@ -494,6 +494,7 @@ class FPPMQTTClient:
 
     def _on_message(self, client, userdata, msg):
         """Handle incoming MQTT messages."""
+        logger.info(f"MQTT callback triggered for topic: {msg.topic}")
         try:
             payload = msg.payload.decode('utf-8')
             logger.info(f"MQTT message received on topic '{msg.topic}': {payload[:200]}...")
