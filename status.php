@@ -1,9 +1,6 @@
 <?php
-// Get plugin directory
 $pluginDir = dirname(__FILE__);
 $plugin = basename($pluginDir);
-
-// Load CSS file
 $cssPath = $pluginDir . '/styles.css';
 ?>
 
@@ -71,7 +68,7 @@ if (file_exists($cssPath)) {
                     <div class="status-card-value" id="playlist-status">Loading...</div>
                 </div>
 
-                <div class="status-card" id="emulation-section">
+                <div class="status-card" id="emulation-section" style="display: none;">
                     <div class="status-card-label">HomeKit Emulation</div>
                     <div class="status-card-value" style="display: flex; gap: 8px;">
                         <button class="homekit-button" style="font-size: 14px; padding: 8px 16px; background: #34c759;" onclick="emulateHomeKit(true)" id="emulate-on-btn">
@@ -252,7 +249,7 @@ if (file_exists($cssPath)) {
                         <span id="emulation-visibility-text" class="settings-toggle-description">(currently hidden)</span>
                     </label>
                     <div class="toggle-switch">
-                        <input type="checkbox" id="emulation-visibility-toggle" checked onchange="toggleEmulationVisibility(this)">
+                        <input type="checkbox" id="emulation-visibility-toggle" onchange="toggleEmulationVisibility(this)">
                         <label for="emulation-visibility-toggle" class="toggle-slider"></label>
                     </div>
                 </div>
@@ -295,6 +292,8 @@ if (file_exists($cssPath)) {
     let isServiceRestarting = false;
     let playlistFetchInProgress = false;
     let lastStatusUpdate = 0;
+    let restartStartTime = 0;
+    let restartPollInterval = null;
     
     const playlistSelect = document.getElementById('playlist-select');
     const savePlaylistBtn = document.getElementById('save-playlist-btn');
@@ -318,20 +317,28 @@ if (file_exists($cssPath)) {
 
         eventSource.onopen = function() {
             debugLog('Real-time connection established');
+            // SSE is active, disable any polling
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
         };
 
         eventSource.onerror = function(event) {
             debugLog('SSE connection error', event);
-            // Fallback to polling if SSE fails
-            if (!refreshInterval) {
-                debugLog('Falling back to polling mode');
-                refreshInterval = setInterval(function() {
-                    loadStatus();
-                    if (!playlistFetchInProgress) {
-                        loadPlaylists();
-                    }
-                }, 5000); // Slower polling as fallback
-            }
+            // Close and try to reconnect after a delay
+            eventSource.close();
+            setTimeout(function() {
+                if (!refreshInterval) {
+                    debugLog('SSE failed, falling back to polling mode');
+                    refreshInterval = setInterval(function() {
+                        loadStatus();
+                        if (!playlistFetchInProgress) {
+                            loadPlaylists();
+                        }
+                    }, 5000); // Slower polling as fallback
+                }
+            }, 2000);
         };
     }
 
@@ -365,8 +372,7 @@ if (file_exists($cssPath)) {
 
             case 'connected':
                 debugLog('Real-time connection confirmed');
-                // Load initial data
-                loadStatus();
+                // SSE already sent initial status, only load playlists if needed
                 if (!playlistFetchInProgress) {
                     loadPlaylists();
                 }
@@ -654,11 +660,14 @@ if (file_exists($cssPath)) {
                     }
                     updateSaveButtonState();
                     showMessage('Configuration saved.', 'success');
-                    // Reload status and playlists to ensure sync
+                    // Reload playlists to ensure sync (status will update via SSE)
                     setTimeout(() => {
-                        loadStatus();
                         if (!playlistFetchInProgress) {
                             loadPlaylists();
+                        }
+                        // Only refresh status if SSE is not active
+                        if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+                            loadStatus();
                         }
                     }, 300);
                 } else {
@@ -741,7 +750,6 @@ if (file_exists($cssPath)) {
         }
     };
 
-    // Toggle emulation section visibility preference
     window.toggleEmulationVisibility = function(checkbox) {
         const showEmulation = checkbox.checked;
         localStorage.setItem('fppHomekitShowEmulation', showEmulation);
@@ -855,14 +863,26 @@ if (file_exists($cssPath)) {
         // Update service status card
         const serviceStatusTextEl = document.getElementById('service-status-text');
         const serviceStatusDotEl = document.getElementById('service-status-dot');
-        if (isServiceRestarting && serviceRunning) {
+        
+        // Keep restarting state visible for minimum 3 seconds
+        const minRestartDuration = 3000; // 3 seconds
+        const elapsedSinceRestart = restartStartTime > 0 ? Date.now() - restartStartTime : 0;
+        const shouldShowRestarting = isServiceRestarting && (elapsedSinceRestart < minRestartDuration || !serviceRunning);
+        
+        if (shouldShowRestarting && serviceRunning && elapsedSinceRestart >= minRestartDuration) {
+            // Service is back and minimum duration has passed
             isServiceRestarting = false;
+            restartStartTime = 0;
+            if (restartPollInterval) {
+                clearInterval(restartPollInterval);
+                restartPollInterval = null;
+            }
         }
 
         let serviceStatusText = serviceRunning ? 'Running' : 'Stopped';
         let serviceStatusClass = serviceRunning ? 'running' : 'stopped';
 
-        if (isServiceRestarting && !serviceRunning) {
+        if (shouldShowRestarting) {
             serviceStatusText = 'Restarting...';
             serviceStatusClass = 'restarting';
         }
@@ -1079,8 +1099,11 @@ if (file_exists($cssPath)) {
                 } else {
                     showMessage(data.message || 'Starting HomeKit service...', 'info');
                 }
-                // Give the service a moment before polling
-                setTimeout(() => loadStatus(), 1200);
+                // Status will update via SSE automatically, no need to poll
+                // Only refresh if SSE is not active
+                if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+                    setTimeout(() => loadStatus(), 1200);
+                }
             })
             .catch(error => {
                 showMessage('Unable to start service automatically: ' + error.message, 'error');
@@ -1137,6 +1160,9 @@ if (file_exists($cssPath)) {
         btn.disabled = true;
         btn.classList.add('restarting');
         btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg>';
+        
+        // Set restarting state immediately with minimum duration
+        restartStartTime = Date.now();
         isServiceRestarting = true;
         const serviceStatusTextEl = document.getElementById('service-status-text');
         const serviceStatusDotEl = document.getElementById('service-status-dot');
@@ -1147,7 +1173,14 @@ if (file_exists($cssPath)) {
             serviceStatusDotEl.className = 'status-dot-large restarting';
         }
 
-        
+        // Start aggressive polling during restart (every 500ms)
+        if (restartPollInterval) {
+            clearInterval(restartPollInterval);
+        }
+        restartPollInterval = setInterval(() => {
+            loadStatus();
+        }, 500);
+
         // Remove the restarting class after 5 seconds
         setTimeout(() => {
             btn.classList.remove('restarting');
@@ -1177,13 +1210,9 @@ if (file_exists($cssPath)) {
             } else {
                 showMessage(data && data.message ? data.message : 'Service restart initiated. Please wait a few seconds...', 'info');
             }
-            // Refresh status after a short delay
+            // Status will be polled aggressively by the interval, no need for manual refreshes
+            // Clean up after minimum duration has passed (handled in updateStatusDisplay)
             setTimeout(() => {
-                loadStatus();
-            }, 2000);
-            // Refresh again after longer delay to ensure status is updated
-            setTimeout(() => {
-                loadStatus();
                 btn.disabled = false;
                 btn.classList.remove('restarting');
                 // Restore original button content
@@ -1198,6 +1227,11 @@ if (file_exists($cssPath)) {
             // Restore original button content
             btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg>';
             isServiceRestarting = false;
+            restartStartTime = 0;
+            if (restartPollInterval) {
+                clearInterval(restartPollInterval);
+                restartPollInterval = null;
+            }
         });
     };
 
@@ -1213,13 +1247,11 @@ if (file_exists($cssPath)) {
         }
     }
 
-    // Emulate HomeKit commands for testing
     window.emulateHomeKit = function(on) {
         const action = on ? 'ON' : 'OFF';
         const btnId = on ? 'emulate-on-btn' : 'emulate-off-btn';
         const btn = document.getElementById(btnId);
 
-        // Disable button temporarily
         btn.disabled = true;
         const originalText = btn.textContent;
         btn.textContent = `Sending ${action}...`;
@@ -1247,10 +1279,11 @@ if (file_exists($cssPath)) {
             const commandType = on ? 'start' : 'stop';
             updateLastCommandTime(commandType);
 
-            // Refresh status after a short delay
-            setTimeout(() => {
-                loadStatus();
-            }, 1000);
+            // Status will update via SSE automatically when FPP state changes
+            // Only refresh if SSE is not active
+            if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+                setTimeout(() => loadStatus(), 1000);
+            }
         })
         .catch(error => {
             debugLog(`Error emulating HomeKit ${action}`, error.message);
@@ -1352,7 +1385,10 @@ if (file_exists($cssPath)) {
             .then(data => {
                 if (data && data.status === 'saved') {
                     showMessage('MQTT configuration saved. Restart service to apply changes.', 'success');
-                    setTimeout(() => loadStatus(), 300);
+                    // Status will update via SSE automatically
+                    if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+                        setTimeout(() => loadStatus(), 300);
+                    }
                 } else {
                     throw new Error(data && data.message ? data.message : 'Failed to save configuration');
                 }
@@ -1583,16 +1619,14 @@ if (file_exists($cssPath)) {
             saveHomekitNetworkBtn.addEventListener('click', saveHomekitNetwork);
         }
         
-        // Stagger initial API calls to prevent overwhelming the server
         loadPlaylists(true);
-        setTimeout(() => loadHomekitNetworkConfig(), 100);
-        setTimeout(() => loadStatus(), 200);
-        setTimeout(() => loadMQTTConfig(), 300);
+        Promise.all([
+            new Promise(resolve => setTimeout(() => { loadHomekitNetworkConfig(); resolve(); }, 100)),
+            new Promise(resolve => setTimeout(() => { loadMQTTConfig(); resolve(); }, 200))
+        ]);
 
-        // Initialize section visibility preferences
         setTimeout(() => {
-            // Emulation section (show by default)
-            const showEmulation = localStorage.getItem('fppHomekitShowEmulation') !== 'false'; // Default to true
+            const showEmulation = localStorage.getItem('fppHomekitShowEmulation') === 'true';
             const emulationSection = document.getElementById('emulation-section');
             const emulationToggle = document.getElementById('emulation-visibility-toggle');
             const emulationText = document.getElementById('emulation-visibility-text');
@@ -1624,17 +1658,12 @@ if (file_exists($cssPath)) {
             }
         }, 500);
         
-        // Initialize Server-Sent Events for real-time updates (no polling!)
         initializeEventSource();
         
-        document.addEventListener('click', function(evt) {
-            if (evt.target.closest('button')) {
-                setTimeout(() => loadStatus(), 500);
-            }
-        });
-        
+        // Only refresh on visibility change if SSE is not active
         document.addEventListener('visibilitychange', function() {
-            if (!document.hidden) {
+            if (!document.hidden && !eventSource) {
+                // SSE not active, do a one-time refresh
                 loadStatus();
                 if (!playlistFetchInProgress) {
                     loadPlaylists();
@@ -1643,7 +1672,6 @@ if (file_exists($cssPath)) {
         });
     });
     
-    // Clean up interval on page unload
     window.addEventListener('beforeunload', function() {
         if (refreshInterval) {
             clearInterval(refreshInterval);

@@ -1,29 +1,26 @@
 <?php
 
 function _record_command($action, $source) {
-    // Record command for UI display
-    $pluginDir = dirname(__FILE__);
-    $commandsFile = $pluginDir . '/scripts/homekit_commands.json';
-
-    // Load existing commands
+    $commandsFile = dirname(__FILE__) . '/scripts/homekit_commands.json';
     $commands = array();
+    
     if (file_exists($commandsFile)) {
-        $existing = @json_decode(file_get_contents($commandsFile), true);
+        $existing = json_decode(file_get_contents($commandsFile), true);
         if (is_array($existing)) {
             $commands = $existing;
         }
     }
 
-    // Add new command (keep only last 10)
     $commands[] = array(
         'action' => $action,
         'timestamp' => time(),
         'source' => $source
     );
-    $commands = array_slice($commands, -10); // Keep only last 10
+    $commands = array_slice($commands, -10);
 
-    // Save
-    @file_put_contents($commandsFile, json_encode($commands));
+    if (file_put_contents($commandsFile, json_encode($commands, JSON_PRETTY_PRINT)) === false) {
+        error_log("Failed to write command to $commandsFile");
+    }
 }
 
 function getEndpointsfppHomekit() {
@@ -544,12 +541,10 @@ function fppHomekitApiRequest($method, $path, $options = array()) {
     );
 }
 
-// GET /api/plugin/fpp-Homekit/status
 function fppHomekitStatus() {
-    // Cache status for 5 seconds to improve loading performance
     static $cached = null;
     static $cache_time = 0;
-    $cache_ttl = 5; // 5 seconds
+    $cache_ttl = 5;
 
     if ($cached !== null && (time() - $cache_time) < $cache_ttl) {
         return json($cached);
@@ -559,60 +554,47 @@ function fppHomekitStatus() {
     $pidFile = $pluginDir . '/scripts/homekit_service.pid';
     $configFile = $pluginDir . '/scripts/homekit_config.json';
     $stateFile = $pluginDir . '/scripts/homekit_accessory.state';
+    $statusFile = $pluginDir . '/scripts/homekit_status.json';
 
     $result = array();
     
-    // Check if service is running
     $running = false;
+    if (file_exists($statusFile)) {
+        $statusData = json_decode(file_get_contents($statusFile), true);
+        if ($statusData && isset($statusData['service_running'], $statusData['timestamp'])) {
+            $running = (bool)$statusData['service_running'];
+            if ((time() - $statusData['timestamp']) < 5) {
+                $result['service_running'] = $running;
+                goto skip_pid_check;
+            }
+        }
+    }
+    
     if (file_exists($pidFile)) {
         $pid = trim(file_get_contents($pidFile));
         if ($pid) {
-            // Check if process is running (works on Unix-like systems)
-            if (function_exists('posix_kill')) {
-                if (@posix_kill($pid, 0)) {
-                    $running = true;
-                }
-            }
-
-            if (!$running) {
-                // Fallback #1: /proc/<pid>
-                if (file_exists("/proc/{$pid}")) {
-                    $running = true;
-                }
-            }
-
-            if (!$running) {
-                // Fallback #2: kill -0
-                $output = array();
+            if (file_exists("/proc/{$pid}")) {
+                $running = true;
+            } elseif (function_exists('posix_kill') && posix_kill($pid, 0)) {
+                $running = true;
+            } else {
                 $return_var = 0;
-                @exec("kill -0 $pid 2>/dev/null", $output, $return_var);
+                exec("kill -0 $pid 2>/dev/null", $output, $return_var);
                 if ($return_var === 0) {
-                    $running = true;
-                }
-            }
-
-            if (!$running) {
-                // Fallback #3: ps command (works on macOS/BusyBox)
-                $output = array();
-                $return_var = 0;
-                @exec("ps $pid 2>/dev/null", $output, $return_var);
-                if ($return_var === 0 && count($output) > 1) {
                     $running = true;
                 }
             }
         }
     }
+    
+    skip_pid_check:
     $result['service_running'] = $running;
     
-    // Check pairing status
     $paired = false;
     if (file_exists($stateFile)) {
-        $stateData = @file_get_contents($stateFile);
-        if ($stateData) {
-            $state = @json_decode($stateData, true);
-            if ($state && isset($state['paired_clients']) && count($state['paired_clients']) > 0) {
-                $paired = true;
-            }
+        $state = json_decode(file_get_contents($stateFile), true);
+        if ($state && !empty($state['paired_clients'])) {
+            $paired = true;
         }
     }
     $result['paired'] = $paired;
@@ -630,37 +612,26 @@ function fppHomekitStatus() {
         'error_detail' => ''
     );
     
-    // Use MQTT to get FPP status (more reliable than HTTP API)
     $apiData = null;
     $lastError = '';
 
-    // Get MQTT config
     $mqttBroker = 'localhost';
     $mqttPort = 1883;
     $mqttTopicPrefix = 'FPP';
 
     if (file_exists($configFile)) {
-        $config = @json_decode(file_get_contents($configFile), true);
-        if ($config) {
-            if (isset($config['mqtt']['broker'])) {
-                $mqttBroker = $config['mqtt']['broker'];
-            }
-            if (isset($config['mqtt']['port'])) {
-                $mqttPort = intval($config['mqtt']['port']);
-            }
-            if (isset($config['mqtt']['topic_prefix'])) {
-                $mqttTopicPrefix = $config['mqtt']['topic_prefix'];
-            }
+        $config = json_decode(file_get_contents($configFile), true);
+        if ($config && isset($config['mqtt'])) {
+            $mqttBroker = $config['mqtt']['broker'] ?? $mqttBroker;
+            $mqttPort = intval($config['mqtt']['port'] ?? $mqttPort);
+            $mqttTopicPrefix = $config['mqtt']['topic_prefix'] ?? $mqttTopicPrefix;
         }
     }
 
-    // Try with timeout
     $hasTimeout = @shell_exec('which timeout 2>/dev/null');
 
     $checkScriptPath = $pluginDir . '/scripts/check_mqtt_status.py';
     $checkScriptArg = escapeshellarg($checkScriptPath);
-
-    // Try multiple Python commands in case python3 isn't in PATH
     $pythonExecutables = array(
         'sudo -u fpp -H python3',
         'sudo -u fpp -H /usr/bin/python3',
@@ -2396,6 +2367,7 @@ function fppHomekitEmulate() {
 
             if ($exitCode === 0) {
                 $success = true;
+                break; // Stop trying once we succeed
             } else {
                 $errors[] = sprintf(
                     'Failed to publish to %s (exit=%d%s)',
@@ -2409,9 +2381,11 @@ function fppHomekitEmulate() {
         $errors[] = 'PHP exec() is disabled; cannot publish MQTT commands from PHP.';
     }
 
+    // Always record the command attempt, even if it failed (for debugging)
+    // But only log successful ones as "emulate" source
     if ($success) {
         _record_command($action, 'emulate');
-
+        
         return json(array(
             'success' => true,
             'action' => $action,
@@ -2452,19 +2426,43 @@ function fppHomekitEvents() {
     header('Access-Control-Allow-Origin: *');
     header('Access-Control-Allow-Headers: Cache-Control');
 
-    // Disable output buffering
     if (ob_get_level()) {
         ob_end_clean();
     }
 
-    // Track last modification times
     $lastStatusMod = 0;
     $lastCommandsMod = 0;
 
     $statusFile = $pluginDir . '/scripts/homekit_status.json';
     $commandsFile = $pluginDir . '/scripts/homekit_commands.json';
 
-    // Send initial data
+    if (file_exists($statusFile)) {
+        $statusData = @json_decode(file_get_contents($statusFile), true);
+        if ($statusData) {
+            $initialStatus = array(
+                'type' => 'status_update',
+                'data' => $statusData,
+                'timestamp' => time()
+            );
+            echo "data: " . json_encode($initialStatus) . "\n\n";
+            flush();
+        }
+    }
+    
+    if (file_exists($commandsFile)) {
+        $commandsData = @json_decode(file_get_contents($commandsFile), true);
+        if ($commandsData && is_array($commandsData) && count($commandsData) > 0) {
+            $lastCommand = end($commandsData);
+            $initialCommand = array(
+                'type' => 'command_update',
+                'data' => $lastCommand,
+                'timestamp' => time()
+            );
+            echo "data: " . json_encode($initialCommand) . "\n\n";
+            flush();
+        }
+    }
+    
     $initialData = array('type' => 'connected', 'timestamp' => time());
     echo "data: " . json_encode($initialData) . "\n\n";
     flush();
@@ -2473,7 +2471,6 @@ function fppHomekitEvents() {
     while (true) {
         $iteration++;
 
-        // Check for status updates
         if (file_exists($statusFile)) {
             $currentMod = filemtime($statusFile);
             if ($currentMod > $lastStatusMod) {
@@ -2491,7 +2488,6 @@ function fppHomekitEvents() {
             }
         }
 
-        // Check for command updates
         if (file_exists($commandsFile)) {
             $currentMod = filemtime($commandsFile);
             if ($currentMod > $lastCommandsMod) {
@@ -2510,16 +2506,13 @@ function fppHomekitEvents() {
             }
         }
 
-        // Send heartbeat every 30 seconds to keep connection alive
         if ($iteration % 30 == 0) {
             echo "data: " . json_encode(array('type' => 'heartbeat', 'timestamp' => time())) . "\n\n";
             flush();
         }
 
-        // Sleep for 1 second before next check
-        sleep(1);
+        usleep(500000);
 
-        // Check if client disconnected (connection_aborted() in PHP)
         if (connection_aborted()) {
             break;
         }

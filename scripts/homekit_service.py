@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
 FPP HomeKit Integration Service
-Exposes FPP as a HomeKit Light accessory using HAP-python
+Exposes FPP playlists as a HomeKit Light accessory.
 """
 
 import os
 import sys
 
-# Auto-detect and use venv if available
 PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VENV_PYTHON = os.path.join(PLUGIN_DIR, 'venv', 'bin', 'python3')
 
@@ -17,11 +16,9 @@ if os.path.exists(VENV_PYTHON) and sys.executable != VENV_PYTHON:
 
 import site
 
-# Ensure user-installed packages are available
-# This is important when packages are installed with --user flag
 site.ENABLE_USER_SITE = True
 
-# Add user site-packages to path using the proper method
+user_site = None
 try:
     user_site = site.getusersitepackages()
     if user_site and os.path.exists(user_site):
@@ -29,7 +26,6 @@ try:
 except Exception:
     pass
 
-# Also ensure system site-packages are available
 try:
     for site_dir in site.getsitepackages():
         if os.path.exists(site_dir):
@@ -37,19 +33,12 @@ try:
 except Exception:
     pass
 
-# Update sys.path directly if necessary (avoid reloading site which can undo addsitedir changes)
 _extra_paths = []
-try:
-    if user_site and user_site not in sys.path:
-        _extra_paths.append(user_site)
-except NameError:
-    pass
-try:
-    for site_dir in site.getsitepackages():
-        if site_dir not in sys.path:
-            _extra_paths.append(site_dir)
-except Exception:
-    pass
+if user_site and user_site not in sys.path:
+    _extra_paths.append(user_site)
+for site_dir in site.getsitepackages():
+    if site_dir not in sys.path:
+        _extra_paths.append(site_dir)
 if _extra_paths:
     sys.path[:0] = _extra_paths
 
@@ -59,8 +48,6 @@ import logging
 import threading
 import signal
 from typing import List
-
-# Try importing required modules with helpful error messages
 try:
     import requests
 except ImportError as e:
@@ -126,30 +113,24 @@ try:
 except ImportError:
     QR_AVAILABLE = False
 
-# Configure logging with more verbose output for HomeKit
 logging.basicConfig(
-    level=logging.DEBUG,  # Changed to DEBUG for more detailed logs
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Enable debug logging for HAP-python components
 logging.getLogger('pyhap').setLevel(logging.DEBUG)
 logging.getLogger('pyhap.accessory_driver').setLevel(logging.DEBUG)
 logging.getLogger('pyhap.hap_protocol').setLevel(logging.DEBUG)
 logging.getLogger('pyhap.characteristic').setLevel(logging.DEBUG)
 
-# Get plugin directory
-PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_FILE = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_config.json')
 PID_FILE = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_service.pid')
 
-# ---------------------------------------------------------------------------
-# FPP API discovery helpers
-# ---------------------------------------------------------------------------
+# FPP API Discovery
 
 def _read_http_port_from_settings(settings_path: str) -> int:
-    """Parse the FPP settings file to extract HTTPPort if present."""
+    """Extracts HTTPPort from FPP settings file."""
     if not settings_path or not os.path.isfile(settings_path):
         return 0
     try:
@@ -169,7 +150,7 @@ def _read_http_port_from_settings(settings_path: str) -> int:
 
 
 def _candidate_settings_paths() -> List[str]:
-    """Return probable locations of the FPP settings file."""
+    """Returns candidate paths for FPP settings file."""
     candidates = []
     fppdir = os.environ.get('FPPDIR')
     if fppdir:
@@ -182,7 +163,6 @@ def _candidate_settings_paths() -> List[str]:
         '/home/fpp/media/settings',
         '/opt/fpp/media/settings',
     ])
-    # Deduplicate while preserving order
     seen = set()
     ordered = []
     for path in candidates:
@@ -193,11 +173,10 @@ def _candidate_settings_paths() -> List[str]:
 
 
 def build_fpp_api_endpoints() -> List[str]:
-    """Create a ordered list of candidate FPP API base URLs."""
+    """Builds prioritized list of FPP API endpoint URLs."""
     hosts = []
     ports = []
     
-    # First priority: Read from detected API config file (created by install script)
     plugin_dir = os.path.dirname(os.path.abspath(__file__))
     api_config_file = os.path.join(plugin_dir, 'fpp_api_config.json')
     if os.path.exists(api_config_file):
@@ -212,7 +191,6 @@ def build_fpp_api_endpoints() -> List[str]:
         except Exception as e:
             logger.warning("Failed to read API config file %s: %s", api_config_file, e)
     
-    # Second priority: Environment variables
     env_host = os.environ.get('FPP_API_HOST')
     if env_host and env_host not in hosts:
         hosts.append(env_host)
@@ -226,21 +204,17 @@ def build_fpp_api_endpoints() -> List[str]:
         except ValueError:
             logger.debug("Ignoring invalid FPP_API_PORT value: %s", env_port)
     
-    # Third priority: Read from FPP settings files
     for path in _candidate_settings_paths():
         port_from_file = _read_http_port_from_settings(path)
         if port_from_file > 0 and port_from_file not in ports:
             ports.append(port_from_file)
     
-    # Add default hosts if none found
     if not hosts:
         hosts.extend(['localhost', '127.0.0.1'])
     
-    # Add default ports if none found
     if not ports:
-        ports.extend([32320, 80, 8080])  # Default FPP port first
+        ports.extend([32320, 80, 8080])
 
-    # Deduplicate positive values while preserving order
     seen_ports = set()
     ordered_ports = []
     for port in ports:
@@ -269,12 +243,10 @@ def build_fpp_api_endpoints() -> List[str]:
 FPP_API_ENDPOINTS = build_fpp_api_endpoints()
 
 
-# ---------------------------------------------------------------------------
-# MQTT Configuration and Client
-# ---------------------------------------------------------------------------
+# MQTT Configuration
 
 def _read_mqtt_settings(settings_path: str) -> dict:
-    """Parse FPP settings file to extract MQTT broker configuration."""
+    """Extracts MQTT configuration from FPP settings file."""
     mqtt_config = {
         'enabled': False,
         'broker': 'localhost',
@@ -315,8 +287,7 @@ def _read_mqtt_settings(settings_path: str) -> dict:
 
 
 def get_mqtt_config() -> dict:
-    """Get MQTT configuration from plugin config, FPP settings, or environment."""
-    # Default config
+    """Loads MQTT configuration with priority: plugin config > env vars > FPP settings."""
     mqtt_config = {
         'enabled': True,
         'broker': 'localhost',
@@ -325,8 +296,6 @@ def get_mqtt_config() -> dict:
         'password': None,
         'topic_prefix': 'FPP'
     }
-    
-    # First priority: Plugin config file (highest priority)
     plugin_config_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_config.json')
     if os.path.exists(plugin_config_file):
         try:
@@ -370,54 +339,45 @@ def get_mqtt_config() -> dict:
     if os.environ.get('FPP_MQTT_PREFIX'):
         mqtt_config['topic_prefix'] = os.environ.get('FPP_MQTT_PREFIX', 'FPP')
     
-    # Check FPP settings files for MQTT configuration
     for path in _candidate_settings_paths():
         file_config = _read_mqtt_settings(path)
-        # Update config if we found MQTT settings (even if not explicitly enabled)
         if file_config.get('broker') and file_config['broker'] != 'localhost':
-            # Found explicit broker config, use it
             mqtt_config.update(file_config)
             logger.info(f"Found MQTT config in {path}: broker={file_config.get('broker')}, enabled={file_config.get('enabled')}")
             break
         elif file_config.get('enabled'):
-            # MQTT explicitly enabled in settings
             mqtt_config.update(file_config)
             logger.info(f"MQTT enabled in {path}")
             break
     
-    # If MQTT is not explicitly disabled and we have a broker, try to use it
-    # This allows MQTT to work even if FPP settings don't explicitly enable it
     if not mqtt_config['enabled']:
-        # Check if MQTT was explicitly disabled
         mqtt_disabled = False
         for path in _candidate_settings_paths():
             file_config = _read_mqtt_settings(path)
             if file_config.get('broker') and not file_config.get('enabled'):
-                # Found settings file with MQTT disabled
                 mqtt_disabled = True
                 break
         
-        # If not explicitly disabled, enable MQTT by default (FPP often has MQTT running)
         if not mqtt_disabled:
             mqtt_config['enabled'] = True
-            logger.info("MQTT not explicitly configured, enabling by default (will attempt connection)")
+            logger.info("MQTT not explicitly configured, enabling by default")
     
     logger.info(f"MQTT config: enabled={mqtt_config['enabled']}, broker={mqtt_config['broker']}:{mqtt_config['port']}, prefix={mqtt_config['topic_prefix']}")
     return mqtt_config
 
 
 class FPPMQTTClient:
-    """MQTT client for controlling FPP via MQTT."""
+    """MQTT client for FPP playlist control."""
 
     def __init__(self, config: dict, accessory=None):
         self.config = config
         self.client = None
         self.connected = False
         self.topic_prefix = config.get('topic_prefix', 'FPP')
-        self.accessory = accessory  # Reference to HomeKit accessory for state updates
+        self.accessory = accessory
         
     def connect(self):
-        """Connect to MQTT broker."""
+        """Establishes connection to MQTT broker."""
         if not MQTT_AVAILABLE:
             logger.error("MQTT not available - paho-mqtt not installed. Install with: pip install paho-mqtt")
             return False
@@ -431,7 +391,6 @@ class FPPMQTTClient:
         
         loop_started = False
         try:
-            # Create new client if needed (for reconnection)
             if self.client:
                 try:
                     self.client.loop_stop()
@@ -456,14 +415,12 @@ class FPPMQTTClient:
             self.client.loop_start()
             loop_started = True
             
-            # Wait for connection (max 5 seconds)
             for i in range(50):
                 if self.connected:
                     logger.info(f"✓ MQTT connected successfully to {broker}:{port}")
                     return True
                 time.sleep(0.1)
             
-            # Connection timeout - stop the loop and clean up
             if loop_started:
                 self.client.loop_stop()
             logger.warning(f"MQTT connection timeout after 5 seconds to {broker}:{port}")
@@ -493,7 +450,7 @@ class FPPMQTTClient:
             return False
     
     def _on_connect(self, client, userdata, flags, rc):
-        """MQTT connection callback."""
+        """Handles MQTT connection events."""
         if rc == 0:
             self.connected = True
             logger.info("MQTT broker connected")
@@ -502,7 +459,7 @@ class FPPMQTTClient:
             self.connected = False
 
     def _on_message(self, client, userdata, msg):
-        """Handle incoming MQTT messages."""
+        """Processes incoming MQTT status messages from FPP."""
         logger.debug(f"MQTT callback triggered for topic: {msg.topic}")
         try:
             payload = msg.payload.decode('utf-8')
@@ -538,8 +495,7 @@ class FPPMQTTClient:
 
                 logger.info(f"FPP status parsed: code={status_code}, name={status_name}, playlist={playlist_name}, sequence={current_sequence}")
 
-                # More robust status detection for playlist end
-                # Status code 1 = playing, 0 = idle, 2 = paused (treated as idle), etc.
+                # Status codes: 1=playing, 0=idle, 2=paused
                 is_idle = (status_code == 0 or status_code == 2 or
                           status_name.lower() in ['idle', 'stopped', 'finished', 'paused'] or
                           'idle' in status_name.lower() or
@@ -547,13 +503,11 @@ class FPPMQTTClient:
                           'finished' in status_name.lower() or
                           'paused' in status_name.lower())
 
-                # Check if actively playing
                 fpp_playing = (status_code == 1 or
                              status_name.lower() == 'playing' or
                              'playing' in status_name.lower() or
                              status_data.get('playing', False))
 
-                # Override: if status indicates idle/stopped, definitely not playing
                 if is_idle:
                     fpp_playing = False
 
@@ -564,7 +518,6 @@ class FPPMQTTClient:
                 fpp_playing = 'playing' in status_name or status_name == 'playing'
                 logger.info(f"FPP status (text): '{status_name}', playing={fpp_playing}")
 
-            # Always update HomeKit state to match FPP (even if same, to ensure sync)
             if self.accessory:
                 logger.info(f"About to check status change: fpp_playing={fpp_playing}, accessory.is_on={self.accessory.is_on}")
                 if fpp_playing != self.accessory.is_on:
@@ -574,11 +527,8 @@ class FPPMQTTClient:
                     try:
                         self.accessory.on_char.set_value(fpp_playing)
                         logger.info(f"HomeKit light set to: {fpp_playing} (was {old_state})")
-                        # Force notification to HomeKit clients
                         self.accessory.on_char.notify()
                         logger.info("HomeKit notification sent to clients")
-
-                        # Update status file for real-time UI updates
                         self._update_status_file()
                     except Exception as e:
                         logger.error(f"Failed to update HomeKit light state: {e}")
@@ -594,20 +544,18 @@ class FPPMQTTClient:
             logger.error(traceback.format_exc())
 
     def _on_disconnect(self, client, userdata, rc):
-        """MQTT disconnection callback."""
+        """Handles MQTT disconnection events."""
         self.connected = False
         if rc != 0:
             logger.warning(f"MQTT disconnected unexpectedly (code {rc})")
     
     def publish_command(self, command: str, payload: str = ''):
-        """Publish a command to FPP via MQTT."""
+        """Publishes FPP command via MQTT with fallback topic variations."""
         if not self.connected or not self.client:
             logger.error("MQTT not connected, cannot publish command")
             return False
 
         prefix = (self.topic_prefix or '').strip('/')
-
-        # Build a list of prefix variations to maximize compatibility with different FPP MQTT configurations
         prefix_candidates = []
 
         def add_candidate(candidate: str):
@@ -618,7 +566,6 @@ class FPPMQTTClient:
         if prefix:
             add_candidate(prefix)
 
-        # Common fallbacks used across FPP installs
         for fallback_prefix in (
             'falcon/player/FPP2',
             'falcon/player/FPP',
@@ -648,13 +595,10 @@ class FPPMQTTClient:
                 add_topic(base, f"command/StartPlaylist/{playlist_name}")
                 add_topic(base, f"set/command/StartPlaylist/{playlist_name}")
         elif command == "Stop":
-            # For stop, we need the current playlist name - get it from config for now
-            import os
-            config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'homekit_config.json')
-            current_playlist = 'Christmas-2024'  # Default fallback
+            config_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_config.json')
+            current_playlist = 'Christmas-2024'
             try:
                 with open(config_file, 'r') as f:
-                    import json
                     config = json.load(f)
                     current_playlist = config.get('playlist_name', 'Christmas-2024')
             except:
@@ -673,7 +617,6 @@ class FPPMQTTClient:
         success = False
         for topic in topics_to_try:
             try:
-                # Use QoS 0 for faster delivery (fire-and-forget)
                 result = self.client.publish(topic, payload, qos=0)
                 if result.rc == mqtt.MQTT_ERR_SUCCESS:
                     logger.debug(f"Published MQTT command: {topic} = {payload}")
@@ -688,7 +631,7 @@ class FPPMQTTClient:
         return success
     
     def subscribe(self, topic: str, callback=None, qos=1):
-        """Subscribe to an MQTT topic."""
+        """Subscribes to MQTT topic for status updates."""
         if not self.connected or not self.client:
             logger.error("MQTT not connected, cannot subscribe")
             return False
@@ -704,24 +647,26 @@ class FPPMQTTClient:
             return False
     
     def _update_status_file(self):
-        """Update status file for real-time UI updates"""
+        """Updates status file for UI updates, throttled to once per second."""
+        if not hasattr(self, '_last_status_write'):
+            self._last_status_write = 0
+        
+        current_time = time.time()
+        if current_time - self._last_status_write < 1.0:
+            return
+        
+        status_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_status.json')
+        status_data = {
+            'homekit_light_on': getattr(self.accessory, 'is_on', False),
+            'service_running': True,
+            'timestamp': int(current_time),
+            'mqtt_connected': self.connected
+        }
+
         try:
-            import json
-            status_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'homekit_status.json')
-
-            # Get current status from accessory
-            status_data = {
-                'homekit_light_on': getattr(self.accessory, 'is_on', False),
-                'service_running': True,  # We're running if we can update this
-                'timestamp': int(time.time())
-            }
-
-            # Try to get MQTT connection status
-            status_data['mqtt_connected'] = self.connected
-
             with open(status_file, 'w') as f:
                 json.dump(status_data, f)
-
+            self._last_status_write = current_time
         except Exception as e:
             logger.debug(f"Could not update status file: {e}")
 
@@ -734,7 +679,7 @@ class FPPMQTTClient:
 
 
 def _request_with_fallback(method: str, path: str, **kwargs):
-    """Attempt an HTTP request against the list of candidate endpoints."""
+    """Attempts HTTP request against prioritized FPP API endpoints."""
     last_exception = None
     last_response = None
     for base in FPP_API_ENDPOINTS:
@@ -762,11 +707,9 @@ class FPPLightAccessory(Accessory):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Load configuration
         self.config = self.load_config()
         self.playlist_name = self.config.get('playlist_name', '')
         
-        # Initialize MQTT client (MQTT only, no HTTP fallback)
         if not MQTT_AVAILABLE:
             logger.warning("MQTT not available - paho-mqtt not installed. Install with: pip install paho-mqtt --user")
             logger.warning("HomeKit service will start but FPP control will not work until paho-mqtt is installed")
@@ -776,8 +719,6 @@ class FPPLightAccessory(Accessory):
             mqtt_config = get_mqtt_config()
             self.mqtt_client = FPPMQTTClient(mqtt_config, self)
             self.use_mqtt = True
-        
-        # Try to connect to MQTT (will retry in background thread if fails)
         mqtt_connected = False
         if self.use_mqtt and self.mqtt_client:
             mqtt_connected = self.mqtt_client.connect()
@@ -865,92 +806,65 @@ class FPPLightAccessory(Accessory):
         command_thread.start()
 
     def _record_homekit_command(self, action):
-        """Record HomeKit command for UI display"""
+        """Records HomeKit command for UI display."""
+        command_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_commands.json')
+        commands = []
+        
+        if os.path.exists(command_file):
+            try:
+                with open(command_file, 'r') as f:
+                    commands = json.load(f)
+            except:
+                pass
+
+        commands.append({
+            'action': action,
+            'timestamp': int(time.time()),
+            'source': 'homekit'
+        })
+        commands = commands[-10:]
+
         try:
-            import json
-            command_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_commands.json')
-
-            # Load existing commands
-            commands = []
-            if os.path.exists(command_file):
-                try:
-                    with open(command_file, 'r') as f:
-                        commands = json.load(f)
-                except:
-                    commands = []
-
-            # Add new command (keep only last 10)
-            commands.append({
-                'action': action,
-                'timestamp': int(time.time()),
-                'source': 'homekit'
-            })
-            commands = commands[-10:]  # Keep only last 10
-
-            # Save
             with open(command_file, 'w') as f:
                 json.dump(commands, f)
-
         except Exception as e:
             logger.debug(f"Could not record HomeKit command: {e}")
     
     def subscribe_to_status(self):
-        """Subscribe to FPP status updates via MQTT."""
+        """Subscribes to FPP status updates via MQTT."""
         if not self.use_mqtt or not self.mqtt_client:
             logger.warning("Cannot subscribe to MQTT status: paho-mqtt not installed")
             return
         
-        # Subscribe only to needed FPP topics to reduce traffic
         topics_to_subscribe = [
-            ('falcon/player/FPP2/status', 1),
-            ('falcon/player/FPP2/falcon/player/FPP2/port_status', 1)
+            ('falcon/player/FPP2/status', 1)
         ]
 
-        subscribed_count = 0
         for topic, qos in topics_to_subscribe:
-            if self.mqtt_client.subscribe(topic, qos=qos):
-                subscribed_count += 1
-                logger.debug(f"Subscribed to MQTT topic: {topic}")
-            else:
+            if not self.mqtt_client.subscribe(topic, qos=qos):
                 logger.error(f"Failed to subscribe to MQTT topic: {topic}")
-
-        logger.info(f"Successfully subscribed to {subscribed_count}/{len(topics_to_subscribe)} MQTT topics")
         
-        # Request initial status from FPP
-        logger.info(f"Requesting initial FPP status via MQTT topic: {self.mqtt_client.topic_prefix}/command/GetStatus")
         self.mqtt_client.publish_command("GetStatus")
-
-        # Also try requesting playlist status
-        logger.info(f"Requesting playlist status via MQTT topic: {self.mqtt_client.topic_prefix}/command/GetPlaylistStatus")
-        self.mqtt_client.publish_command("GetPlaylistStatus")
 
         # Sync initial HomeKit state with FPP after a short delay
         import threading
         def sync_initial_state():
-            time.sleep(3)  # Wait for MQTT connection and initial responses
+            time.sleep(3)
             try:
-                # Query FPP status via HTTP API as fallback
-                import requests
                 response = requests.get("http://localhost/api/system/status", timeout=5)
                 if response.status_code == 200:
                     status_data = response.json()
                     status_code = status_data.get('status', 0)
                     status_name = status_data.get('status_name', 'idle')
-                    fpp_playing = status_code == 1 or status_name.lower() == 'playing' or 'playing' in status_name.lower()
+                    fpp_playing = status_code == 1 or 'playing' in status_name.lower()
 
-                    logger.info(f"Initial FPP sync: status={status_code} ({status_name}), playing={fpp_playing}, current HomeKit={self.is_on}")
                     if fpp_playing != self.is_on:
                         logger.info(f"Syncing HomeKit light to match FPP: {fpp_playing}")
                         self.is_on = fpp_playing
                         self.on_char.set_value(fpp_playing)
                         self.on_char.notify()
-                        logger.info("Initial HomeKit state synced with FPP")
-                    else:
-                        logger.info("HomeKit state already matches FPP")
-                else:
-                    logger.warning("Could not query FPP status for initial sync")
             except Exception as e:
-                logger.error(f"Error syncing initial state: {e}")
+                logger.debug(f"Could not sync initial state: {e}")
 
         # Start initial sync in background
         sync_thread = threading.Thread(target=sync_initial_state, daemon=True)
@@ -958,18 +872,12 @@ class FPPLightAccessory(Accessory):
     
     def start_playlist(self):
         """Start the configured FPP playlist via MQTT"""
-        if not self.playlist_name:
-            logger.warning("No playlist configured")
-            return
-        
-        if not self.use_mqtt or not self.mqtt_client:
-            logger.error(f"Cannot start playlist: paho-mqtt not installed. Install with: pip install paho-mqtt --user")
-            logger.error(f"Playlist: {self.playlist_name}")
+        if not self.playlist_name or not self.use_mqtt or not self.mqtt_client:
+            logger.warning("Cannot start playlist: not configured or MQTT unavailable")
             return
         
         if not self.mqtt_client.connected:
-            logger.error(f"Cannot start playlist: MQTT not connected. Playlist: {self.playlist_name}")
-            logger.error("MQTT connection will be retried automatically")
+            logger.warning(f"Cannot start playlist: MQTT not connected")
             return
         
         logger.info(f"Starting playlist via MQTT: {self.playlist_name}")
@@ -979,18 +887,12 @@ class FPPLightAccessory(Accessory):
     
     def stop_playlist(self):
         """Stop FPP playback via MQTT"""
-        if not self.use_mqtt or not self.mqtt_client:
-            logger.error("Cannot stop playback: paho-mqtt not installed. Install with: pip install paho-mqtt --user")
-            return
-        
-        if not self.mqtt_client.connected:
-            logger.error("Cannot stop playback: MQTT not connected")
-            logger.error("MQTT connection will be retried automatically")
+        if not self.use_mqtt or not self.mqtt_client or not self.mqtt_client.connected:
+            logger.warning("Cannot stop playlist: MQTT unavailable")
             return
         
         logger.info("Stopping playback via MQTT")
-        success = self.mqtt_client.publish_command("Stop")
-        if not success:
+        if not self.mqtt_client.publish_command("Stop"):
             logger.error("Failed to stop playback via MQTT")
     
     def poll_fpp_status_mqtt(self):
