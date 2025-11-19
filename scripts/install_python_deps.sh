@@ -265,14 +265,24 @@ fi
 
 if ! $PYTHON3 -c "import qrcode" 2>>"${INSTALL_LOG}"; then
     echo "  ✗ qrcode not found" | tee -a "${INSTALL_LOG}"
-    MISSING_DEPS=1
+    echo "    Attempting to install qrcode..." | tee -a "${INSTALL_LOG}"
+    if run_pip_with_timeout 300 "qrcode installation" install --upgrade "qrcode[pil]>=7.0.0" --no-input --disable-pip-version-check --quiet; then
+        echo "  ✓ qrcode installed successfully" | tee -a "${INSTALL_LOG}"
+    else
+        MISSING_DEPS=1
+    fi
 else
     echo "  ✓ qrcode installed" | tee -a "${INSTALL_LOG}"
 fi
 
 if ! $PYTHON3 -c "from PIL import Image" 2>>"${INSTALL_LOG}"; then
     echo "  ✗ PIL/Pillow not found (required for QR code generation)" | tee -a "${INSTALL_LOG}"
-    MISSING_DEPS=1
+    echo "    Attempting to install Pillow..." | tee -a "${INSTALL_LOG}"
+    if run_pip_with_timeout 300 "Pillow installation" install --upgrade "Pillow>=9.0.0" --no-input --disable-pip-version-check --quiet; then
+        echo "  ✓ PIL/Pillow installed successfully" | tee -a "${INSTALL_LOG}"
+    else
+        MISSING_DEPS=1
+    fi
 else
     echo "  ✓ PIL/Pillow installed" | tee -a "${INSTALL_LOG}"
 fi
