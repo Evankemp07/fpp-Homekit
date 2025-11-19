@@ -115,8 +115,8 @@ The plugin uses the following Python libraries (installed automatically):
 
 ### File Structure
 
-- `scripts/homekit_service.py`: Main HomeKit accessory service (uses HAP-python)
-- `scripts/requirements.txt`: Python dependencies including HAP-python
+- `scripts/homekit_service.py`: Main HomeKit accessory service
+- `scripts/requirements.txt`: Python dependencies
 - `scripts/install_venv.sh`: Virtual environment setup
 - `api.php`: Web interface API endpoints
 - `status.php`: Web interface UI
@@ -154,8 +154,6 @@ cd /home/fpp/media/plugins/fpp-Homekit/scripts
 - Ensure playlist exists in FPP
 - Check MQTT connection status in plugin interface
 
-## Development
-
 ### Updating the Plugin
 
 ```bash
@@ -164,24 +162,19 @@ bash scripts/update_plugin.sh
 bash scripts/fpp_install.sh
 ```
 
-### Adding Dependencies
+### Restarting the Service
 
-1. Add package to `scripts/requirements.txt`
-2. Run `bash scripts/fpp_install.sh` to update the virtual environment
+Restart the service via web interface or:
 
-### Modifying the Service
-
-1. Edit `scripts/homekit_service.py`
-2. Restart the service via web interface or:
-   ```bash
-   cd /home/fpp/media/plugins/fpp-Homekit/scripts
-   MEDIADIR=/home/fpp/media bash postStop.sh
-   MEDIADIR=/home/fpp/media bash postStart.sh
-   ```
+```bash
+cd /home/fpp/media/plugins/fpp-Homekit/scripts
+MEDIADIR=/home/fpp/media bash postStop.sh
+MEDIADIR=/home/fpp/media bash postStart.sh
+```
 
 ## Credits
 
-Built with [HAP-python](https://github.com/ikalchev/HAP-python) by [ikalchev](https://github.com/ikalchev) - a Python implementation of the HomeKit Accessory Protocol.
+Built with [HAP-python](https://github.com/ikalchev/HAP-python) - a Python implementation of the HomeKit Accessory Protocol.
 
 ## License
 
