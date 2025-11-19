@@ -481,4 +481,4 @@ echo "Installation log saved to: ${INSTALL_LOG}"
 echo ""
 
 echo ""
-echo "made with ❤️ in PA"
+echo "made with ❤️ in PA + MA"

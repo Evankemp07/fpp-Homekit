@@ -947,6 +947,21 @@ if (file_exists($cssPath)) {
                 qrLoaded = false;
             }
         }
+
+        // Update last command display with recent HomeKit commands
+        if (data.recent_homekit_commands && data.recent_homekit_commands.length > 0) {
+            const lastCommand = data.recent_homekit_commands[data.recent_homekit_commands.length - 1];
+            const timeElement = document.getElementById('last-command-time');
+            const textElement = document.getElementById('last-command-text');
+
+            if (timeElement && textElement) {
+                const date = new Date(lastCommand.timestamp * 1000);
+                const timeString = date.toLocaleTimeString();
+                const sourceText = lastCommand.source === 'homekit' ? 'HomeKit' : 'Emulate';
+                timeElement.textContent = `${lastCommand.action} (${sourceText}) at ${timeString}`;
+                textElement.style.display = 'block';
+            }
+        }
     }
     
     function attemptAutoStart() {
@@ -1511,7 +1526,7 @@ if (file_exists($cssPath)) {
             if (!playlistFetchInProgress) {
                 loadPlaylists();
             }
-        }, 15000); // Increased from 10s to 15s to reduce server load
+        }, 2000); // Fast refresh for responsive UI
         
         document.addEventListener('click', function(evt) {
             if (evt.target.closest('button')) {

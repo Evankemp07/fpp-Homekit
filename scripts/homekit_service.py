@@ -6,6 +6,15 @@ Exposes FPP as a HomeKit Light accessory using HAP-python
 
 import os
 import sys
+
+# Auto-detect and use venv if available
+PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VENV_PYTHON = os.path.join(PLUGIN_DIR, 'venv', 'bin', 'python3')
+
+if os.path.exists(VENV_PYTHON) and sys.executable != VENV_PYTHON:
+    print(f"Re-launching script using venv: {VENV_PYTHON}")
+    os.execv(VENV_PYTHON, [VENV_PYTHON] + sys.argv)
+
 import site
 
 # Ensure user-installed packages are available
@@ -494,10 +503,10 @@ class FPPMQTTClient:
 
     def _on_message(self, client, userdata, msg):
         """Handle incoming MQTT messages."""
-        logger.info(f"MQTT callback triggered for topic: {msg.topic}")
+        logger.debug(f"MQTT callback triggered for topic: {msg.topic}")
         try:
             payload = msg.payload.decode('utf-8')
-            logger.info(f"MQTT message received on topic '{msg.topic}': {payload[:200]}...")
+            logger.debug(f"MQTT message received on topic '{msg.topic}': {payload[:100]}...")
 
             # FPP status messages can be JSON or simple text
             if payload.startswith('{'):
@@ -619,9 +628,10 @@ class FPPMQTTClient:
         success = False
         for topic in topics_to_try:
             try:
-                result = self.client.publish(topic, payload, qos=1)
+                # Use QoS 0 for faster delivery (fire-and-forget)
+                result = self.client.publish(topic, payload, qos=0)
                 if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                    logger.info(f"Published MQTT command: {topic} = {payload}")
+                    logger.debug(f"Published MQTT command: {topic} = {payload}")
                     success = True
                 else:
                     logger.debug(f"Failed to publish to {topic} (rc={result.rc})")
@@ -755,20 +765,67 @@ class FPPLightAccessory(Accessory):
             logger.error(f"Error saving config: {e}")
     
     def set_on(self, value):
-        """Handle HomeKit On/Off characteristic changes"""
+        """Handle HomeKit On/Off characteristic changes - optimized for speed"""
         logger.info(f"HomeKit set_on called with value: {value}")
-        
-        # Reload config to get latest playlist name
-        self.config = self.load_config()
-        self.playlist_name = self.config.get('playlist_name', '')
-        
-        if value:
-            self.start_playlist()
-        else:
-            self.stop_playlist()
-        
+
+        # Immediately update HomeKit state for snappy response
         self.is_on = value
         self.on_char.set_value(value)
+
+        # Process MQTT commands in background for maximum speed
+        import threading
+        def process_command():
+            try:
+                # Track HomeKit command for UI display
+                self._record_homekit_command("start" if value else "stop")
+
+                # Reload config to get latest playlist name
+                self.config = self.load_config()
+                self.playlist_name = self.config.get('playlist_name', '')
+
+                # Send MQTT command
+                if value:
+                    self.start_playlist()
+                else:
+                    self.stop_playlist()
+
+                logger.debug(f"HomeKit command processed in background: {'start' if value else 'stop'}")
+            except Exception as e:
+                logger.error(f"Error processing HomeKit command in background: {e}")
+
+        # Start background processing
+        command_thread = threading.Thread(target=process_command, daemon=True)
+        command_thread.start()
+
+    def _record_homekit_command(self, action):
+        """Record HomeKit command for UI display"""
+        try:
+            import json
+            command_file = os.path.join(PLUGIN_DIR, 'scripts', 'homekit_commands.json')
+
+            # Load existing commands
+            commands = []
+            if os.path.exists(command_file):
+                try:
+                    with open(command_file, 'r') as f:
+                        commands = json.load(f)
+                except:
+                    commands = []
+
+            # Add new command (keep only last 10)
+            commands.append({
+                'action': action,
+                'timestamp': int(time.time()),
+                'source': 'homekit'
+            })
+            commands = commands[-10:]  # Keep only last 10
+
+            # Save
+            with open(command_file, 'w') as f:
+                json.dump(commands, f)
+
+        except Exception as e:
+            logger.debug(f"Could not record HomeKit command: {e}")
     
     def subscribe_to_status(self):
         """Subscribe to FPP status updates via MQTT."""
@@ -776,17 +833,21 @@ class FPPLightAccessory(Accessory):
             logger.warning("Cannot subscribe to MQTT status: paho-mqtt not installed")
             return
         
-        # Subscribe to everything to catch all FPP status messages
-        result, mid = self.mqtt_client.subscribe('#', qos=1)
-        if result == 0:
-            logger.info("Successfully subscribed to all MQTT topics (#)")
-        else:
-            logger.error(f"Failed to subscribe to MQTT topics, result: {result}")
+        # Subscribe only to needed FPP topics to reduce traffic
+        topics_to_subscribe = [
+            ('falcon/player/FPP2/status', 1),
+            ('falcon/player/FPP2/falcon/player/FPP2/port_status', 1)
+        ]
 
-        # Also try subscribing to specific FPP topics to be sure
-        self.mqtt_client.subscribe('falcon/player/FPP2/status', qos=1)
-        self.mqtt_client.subscribe('falcon/player/FPP2/falcon/player/FPP2/port_status', qos=1)
-        logger.info("Subscribed to specific FPP status topics")
+        subscribed_count = 0
+        for topic, qos in topics_to_subscribe:
+            if self.mqtt_client.subscribe(topic, qos=qos):
+                subscribed_count += 1
+                logger.debug(f"Subscribed to MQTT topic: {topic}")
+            else:
+                logger.error(f"Failed to subscribe to MQTT topic: {topic}")
+
+        logger.info(f"Successfully subscribed to {subscribed_count}/{len(topics_to_subscribe)} MQTT topics")
         
         # Request initial status from FPP
         logger.info(f"Requesting initial FPP status via MQTT topic: {self.mqtt_client.topic_prefix}/command/GetStatus")
@@ -866,57 +927,54 @@ class FPPLightAccessory(Accessory):
             logger.error("Failed to stop playback via MQTT")
     
     def poll_fpp_status_mqtt(self):
-        """Keep MQTT connection alive and handle reconnections"""
+        """Keep MQTT connection alive and handle reconnections - optimized"""
         if not self.use_mqtt or not self.mqtt_client:
             logger.warning("MQTT polling thread started but paho-mqtt not available")
             return
-        
+
         subscriptions_setup = False
         last_status_request = 0
-        
+        reconnect_delay = 5  # Start with 5s, exponential backoff up to 60s
+
         while self.fpp_status_polling:
             try:
-                # MQTT client loop handles messages automatically
-                # Check connection status periodically and set up subscriptions if needed
+                # Check connection status
                 if not self.mqtt_client.connected:
                     if subscriptions_setup:
                         logger.warning("MQTT disconnected, attempting reconnect...")
                     else:
                         logger.info("MQTT not connected, attempting initial connection...")
-                    
+
                     if self.mqtt_client.connect():
                         logger.info("MQTT connected successfully")
                         if not subscriptions_setup:
                             self.subscribe_to_status()
                             subscriptions_setup = True
-                            logger.info("MQTT status subscriptions set up")
+                        reconnect_delay = 5  # Reset delay on successful connection
                     else:
-                        if subscriptions_setup:
-                            logger.warning("MQTT reconnection failed, will retry in 10 seconds...")
-                        else:
-                            logger.warning("MQTT initial connection failed, will retry in 10 seconds...")
-                        time.sleep(10)  # Wait before retry if not connected
+                        logger.warning(f"MQTT connection failed, will retry in {reconnect_delay}s...")
+                        time.sleep(reconnect_delay)
+                        reconnect_delay = min(reconnect_delay * 2, 60)  # Exponential backoff, max 60s
                         continue
                 elif not subscriptions_setup:
                     # Connected but subscriptions not set up yet
                     self.subscribe_to_status()
                     subscriptions_setup = True
                     logger.info("MQTT status subscriptions set up")
-                else:
-                    # Connected - periodically request status updates (every 10 seconds)
-                    import time as time_module
-                    current_time = time_module.time()
-                    if current_time - last_status_request > 10:
-                        try:
-                            self.mqtt_client.publish_command("GetStatus")
-                            last_status_request = current_time
-                        except Exception as e:
-                            logger.debug(f"Could not request status update: {e}")
 
-                time.sleep(1)  # Check connection every second
+                # Only request status every 30 seconds (reduced frequency for performance)
+                current_time = time.time()
+                if current_time - last_status_request > 30:
+                    try:
+                        self.mqtt_client.publish_command("GetStatus")
+                        last_status_request = current_time
+                    except Exception as e:
+                        logger.debug(f"Could not request status update: {e}")
+
+                time.sleep(5)  # Check connection every 5 seconds (reduced frequency)
             except Exception as e:
                 logger.error(f"Error in MQTT status polling: {e}")
-                time.sleep(5)
+                time.sleep(10)
     
     def stop(self):
         """Stop the accessory"""

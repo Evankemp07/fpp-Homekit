@@ -1,5 +1,31 @@
 <?php
 
+function _record_command($action, $source) {
+    // Record command for UI display
+    $pluginDir = dirname(__FILE__);
+    $commandsFile = $pluginDir . '/scripts/homekit_commands.json';
+
+    // Load existing commands
+    $commands = array();
+    if (file_exists($commandsFile)) {
+        $existing = @json_decode(file_get_contents($commandsFile), true);
+        if (is_array($existing)) {
+            $commands = $existing;
+        }
+    }
+
+    // Add new command (keep only last 10)
+    $commands[] = array(
+        'action' => $action,
+        'timestamp' => time(),
+        'source' => $source
+    );
+    $commands = array_slice($commands, -10); // Keep only last 10
+
+    // Save
+    @file_put_contents($commandsFile, json_encode($commands));
+}
+
 function getEndpointsfppHomekit() {
     $result = array();
 
@@ -832,7 +858,7 @@ function fppHomekitStatus() {
         
         $result['fpp_status'] = $fppStatus;
         $result['control_method'] = 'MQTT (Status via MQTT)';
-        
+
         // Get configured playlist
         $playlist = '';
         if (file_exists($configFile)) {
@@ -842,6 +868,22 @@ function fppHomekitStatus() {
             }
         }
         $result['playlist'] = $playlist;
+
+        // Get recent HomeKit commands for UI display
+        $commandsFile = $pluginDir . '/scripts/homekit_commands.json';
+        $recentCommands = array();
+        if (file_exists($commandsFile)) {
+            $commands = @json_decode(file_get_contents($commandsFile), true);
+            if (is_array($commands)) {
+                // Get last 5 commands from last 24 hours
+                $oneDayAgo = time() - 86400;
+                $recentCommands = array_filter($commands, function($cmd) use ($oneDayAgo) {
+                    return isset($cmd['timestamp']) && $cmd['timestamp'] > $oneDayAgo;
+                });
+                $recentCommands = array_slice(array_reverse($recentCommands), 0, 5);
+            }
+        }
+        $result['recent_homekit_commands'] = array_values($recentCommands);
         
         return json($result);
     }
@@ -2290,6 +2332,9 @@ function fppHomekitEmulate() {
     }
 
     if ($success) {
+        // Record command for UI display
+        _record_command($action, 'emulate');
+
         return json(array(
             'success' => true,
             'action' => $action,

@@ -1,0 +1,4 @@
+FPP HomeKit Plugin v2.0.0
+Built for Falcon Player (FPP) integration
+Supports Apple HomeKit protocol for remote control
+Made with ❤️ in PA + MA
