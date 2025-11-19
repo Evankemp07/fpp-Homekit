@@ -292,6 +292,7 @@ if (file_exists($cssPath)) {
     let currentPlaylist = '';
     let qrLoaded = false;
     let autoStartAttempted = false;
+    let isServiceRestarting = false;
     let playlistFetchInProgress = false;
     let lastStatusUpdate = 0;
     
@@ -854,16 +855,27 @@ if (file_exists($cssPath)) {
         // Update service status card
         const serviceStatusTextEl = document.getElementById('service-status-text');
         const serviceStatusDotEl = document.getElementById('service-status-dot');
-        const serviceStatusText = serviceRunning ? 'Running' : 'Stopped';
+        if (isServiceRestarting && serviceRunning) {
+            isServiceRestarting = false;
+        }
+
+        let serviceStatusText = serviceRunning ? 'Running' : 'Stopped';
+        let serviceStatusClass = serviceRunning ? 'running' : 'stopped';
+
+        if (isServiceRestarting && !serviceRunning) {
+            serviceStatusText = 'Restarting...';
+            serviceStatusClass = 'restarting';
+        }
+
         if (serviceStatusTextEl) {
             serviceStatusTextEl.textContent = serviceStatusText;
         }
         if (serviceStatusDotEl) {
-            serviceStatusDotEl.className = 'status-dot-large ' + (serviceRunning ? 'running' : 'stopped');
+            serviceStatusDotEl.className = 'status-dot-large ' + serviceStatusClass;
         }
         if (serviceRunning) {
             autoStartAttempted = false;
-        } else if (!autoStartAttempted) {
+        } else if (!autoStartAttempted && !isServiceRestarting) {
             attemptAutoStart();
         }
         
@@ -1125,6 +1137,16 @@ if (file_exists($cssPath)) {
         btn.disabled = true;
         btn.classList.add('restarting');
         btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg>';
+        isServiceRestarting = true;
+        const serviceStatusTextEl = document.getElementById('service-status-text');
+        const serviceStatusDotEl = document.getElementById('service-status-dot');
+        if (serviceStatusTextEl) {
+            serviceStatusTextEl.textContent = 'Restarting...';
+        }
+        if (serviceStatusDotEl) {
+            serviceStatusDotEl.className = 'status-dot-large restarting';
+        }
+
         
         // Remove the restarting class after 5 seconds
         setTimeout(() => {
@@ -1175,6 +1197,7 @@ if (file_exists($cssPath)) {
             btn.classList.remove('restarting');
             // Restore original button content
             btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg>';
+            isServiceRestarting = false;
         });
     };
 

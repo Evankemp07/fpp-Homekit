@@ -53,12 +53,10 @@ $addCandidate = function ($candidate) use (&$prefixCandidates) {
 
 if ($normalizedPrefix !== '') {
     $addCandidate($normalizedPrefix);
-    $addCandidate($normalizedPrefix . '/' . $normalizedPrefix);
 }
 
 foreach (array(
     'falcon/player/FPP2',
-    'falcon/player/FPP2/falcon/player/FPP2',
     'falcon/player/FPP',
     'FPP',
     'fpp'

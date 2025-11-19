@@ -617,12 +617,10 @@ class FPPMQTTClient:
 
         if prefix:
             add_candidate(prefix)
-            add_candidate(f"{prefix}/{prefix}")
 
         # Common fallbacks used across FPP installs
         for fallback_prefix in (
             'falcon/player/FPP2',
-            'falcon/player/FPP2/falcon/player/FPP2',
             'falcon/player/FPP',
             'FPP',
             'fpp',
@@ -680,7 +678,6 @@ class FPPMQTTClient:
                 if result.rc == mqtt.MQTT_ERR_SUCCESS:
                     logger.debug(f"Published MQTT command: {topic} = {payload}")
                     success = True
-                    break
                 else:
                     logger.debug(f"Failed to publish to {topic} (rc={result.rc})")
             except Exception as e:

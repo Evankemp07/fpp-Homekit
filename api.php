@@ -2315,12 +2315,10 @@ function fppHomekitEmulate() {
 
     if ($normalizedPrefix !== '') {
         $addCandidate($normalizedPrefix);
-        $addCandidate($normalizedPrefix . '/' . $normalizedPrefix);
     }
 
     foreach (array(
         'falcon/player/FPP2',
-        'falcon/player/FPP2/falcon/player/FPP2',
         'falcon/player/FPP',
         'FPP',
         'fpp',
@@ -2398,7 +2396,6 @@ function fppHomekitEmulate() {
 
             if ($exitCode === 0) {
                 $success = true;
-                break;
             } else {
                 $errors[] = sprintf(
                     'Failed to publish to %s (exit=%d%s)',
