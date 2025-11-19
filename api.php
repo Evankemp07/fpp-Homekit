@@ -545,8 +545,11 @@ function fppHomekitStatus() {
     static $cached = null;
     static $cache_time = 0;
     $cache_ttl = 5;
+    
+    // Allow bypassing cache with ?force=1 parameter (useful for initial page load)
+    $force = isset($_GET['force']) && $_GET['force'] == '1';
 
-    if ($cached !== null && (time() - $cache_time) < $cache_ttl) {
+    if (!$force && $cached !== null && (time() - $cache_time) < $cache_ttl) {
         return json($cached);
     }
 
@@ -628,6 +631,8 @@ function fppHomekitStatus() {
         }
     }
 
+    // Use shorter timeout for forced fresh checks (initial page load)
+    $mqttTimeout = $force ? 2 : 5;  // 2 seconds for forced checks, 5 for normal
     $hasTimeout = @shell_exec('which timeout 2>/dev/null');
 
     $checkScriptPath = $pluginDir . '/scripts/check_mqtt_status.py';
@@ -650,7 +655,7 @@ function fppHomekitStatus() {
                        escapeshellarg($mqttPort) . ' ' .
                        escapeshellarg($mqttTopicPrefix);
 
-        $fullCommand = $hasTimeout ? "timeout 5 " . $baseCommand : $baseCommand;
+        $fullCommand = $hasTimeout ? "timeout $mqttTimeout " . $baseCommand : $baseCommand;
         $fullCommand .= " 2>&1";
         $triedCommands[] = $fullCommand;
 
@@ -885,6 +890,8 @@ function fppHomekitStatus() {
         }
         
         // Try with timeout
+        // Use shorter timeout for forced fresh checks (initial page load)
+        $mqttTimeout = $force ? 2 : 5;  // 2 seconds for forced checks, 5 for normal
         $hasTimeout = @shell_exec('which timeout 2>/dev/null');
 
         $checkScriptPath = $pluginDir . '/scripts/check_mqtt_status.py';
@@ -909,7 +916,7 @@ function fppHomekitStatus() {
                            escapeshellarg($mqttPort) . ' ' .
                            escapeshellarg($mqttTopicPrefix);
 
-            $fullCommand = $hasTimeout ? "timeout 5 " . $baseCommand : $baseCommand;
+            $fullCommand = $hasTimeout ? "timeout $mqttTimeout " . $baseCommand : $baseCommand;
             $fullCommand .= " 2>&1";
             $triedCommands[] = $fullCommand;
 

@@ -30,8 +30,10 @@ if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
 else
     # Venv doesn't exist or is incomplete, create it
     echo "Virtual environment not found or incomplete, creating it..." | tee -a "${INSTALL_LOG}"
+    echo "This may take 30-60 seconds..." | tee -a "${INSTALL_LOG}"
     if [ -f "${PLUGIN_DIR}/scripts/install_venv.sh" ]; then
-        if bash "${PLUGIN_DIR}/scripts/install_venv.sh" >> "${INSTALL_LOG}" 2>&1; then
+        # Show progress by using tee instead of redirecting all output
+        if bash "${PLUGIN_DIR}/scripts/install_venv.sh" 2>&1 | tee -a "${INSTALL_LOG}"; then
             if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
                 PYTHON3="${VENV_DIR}/bin/python3"
                 PIP_CMD="${VENV_DIR}/bin/pip"
@@ -47,7 +49,8 @@ else
     else
         # Fallback: create venv directly if install_venv.sh doesn't exist
         echo "install_venv.sh not found, creating venv directly..." | tee -a "${INSTALL_LOG}"
-        if $PYTHON3 -m venv "${VENV_DIR}" >> "${INSTALL_LOG}" 2>&1; then
+        echo "Creating virtual environment (this may take 30-60 seconds)..." | tee -a "${INSTALL_LOG}"
+        if $PYTHON3 -m venv "${VENV_DIR}" 2>&1 | tee -a "${INSTALL_LOG}"; then
             if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
                 PYTHON3="${VENV_DIR}/bin/python3"
                 PIP_CMD="${VENV_DIR}/bin/pip"
@@ -78,6 +81,7 @@ fi
 
 # Immediate feedback that script is running
 echo "Starting Python dependency installation..." | tee -a "${INSTALL_LOG}"
+echo "Checking system requirements..." | tee -a "${INSTALL_LOG}"
 
 # Check if timeout command is available
 TIMEOUT_CMD=""
@@ -189,9 +193,11 @@ echo "This may take a few minutes..."
 echo "Detailed log: ${INSTALL_LOG}"
 echo "Timeout: ${PIP_TIMEOUT}s per operation"
 echo "Note: If installation appears stuck, check ${INSTALL_LOG} for progress"
+echo ""
 
 echo "Using pip command: $PIP_CMD" | tee -a "${INSTALL_LOG}"
-$PIP_CMD --version >> "${INSTALL_LOG}" 2>&1 || true
+PIP_VERSION=$($PIP_CMD --version 2>&1 || echo "unknown")
+echo "pip version: $PIP_VERSION" | tee -a "${INSTALL_LOG}"
 
 # Attempt to upgrade pip to latest version before installing dependencies
 # This helps ensure compatibility with the latest package formats

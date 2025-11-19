@@ -780,22 +780,24 @@ if (file_exists($cssPath)) {
     };
 
     // Load status
-    function loadStatus() {
+    function loadStatus(forceFresh = false) {
         // Prevent concurrent updates
         if (isUpdating) {
             return;
         }
 
         // Debounce rapid successive calls (within 300ms for faster updates)
+        // But allow forced fresh checks to bypass debounce
         const now = Date.now();
-        if (lastStatusUpdate && (now - lastStatusUpdate) < 300) {
+        if (!forceFresh && lastStatusUpdate && (now - lastStatusUpdate) < 300) {
             return;
         }
         lastStatusUpdate = now;
 
         isUpdating = true;
-        debugLog('Loading status...');
-        fetch(API_BASE + '/status')
+        debugLog('Loading status...' + (forceFresh ? ' (forcing fresh check)' : ''));
+        const url = API_BASE + '/status' + (forceFresh ? '?force=1' : '');
+        fetch(url)
             .then(response => {
                 if (!response.ok) {
                     throw new Error('HTTP ' + response.status);
@@ -1684,7 +1686,8 @@ if (file_exists($cssPath)) {
         }, 500);
         
         // Load status immediately on page load (don't wait for SSE)
-        loadStatus();
+        // Force fresh FPP status check on initial load
+        loadStatus(true);
         loadPlaylists();
         
         initializeEventSource();
