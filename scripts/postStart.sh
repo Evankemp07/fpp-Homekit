@@ -7,15 +7,30 @@ SERVICE_SCRIPT="${PLUGIN_DIR}/scripts/homekit_service.py"
 PID_FILE="${PLUGIN_DIR}/scripts/homekit_service.pid"
 LOG_FILE="${PLUGIN_DIR}/scripts/homekit_service.log"
 
-VENV_PYTHON=""
-if [ -x "$PLUGIN_DIR/venv/bin/python3" ]; then
-    VENV_PYTHON="$PLUGIN_DIR/venv/bin/python3"
-elif [ -x "$PLUGIN_DIR/venv/bin/python" ]; then
-    VENV_PYTHON="$PLUGIN_DIR/venv/bin/python"
+# Ensure virtual environment exists and is ready
+if [ -z "$VENVDIR" ]; then
+    VENVDIR="$PLUGIN_DIR/venv"
 fi
 
-if [ -n "$VENV_PYTHON" ]; then
-    PYTHON3="$VENV_PYTHON"
+ENSURE_VENV()
+{
+    if [ ! -x "$VENVDIR/bin/python3" ] && [ ! -x "$VENVDIR/bin/python" ]; then
+        echo "Virtualenv missing or incomplete. Building venv..."
+        if [ -f "$PLUGIN_DIR/scripts/install_venv.sh" ]; then
+            sh "$PLUGIN_DIR/scripts/install_venv.sh"
+        else
+            echo "ERROR: install_venv.sh not found at $PLUGIN_DIR/scripts/install_venv.sh"
+            exit 1
+        fi
+    fi
+}
+
+ENSURE_VENV
+
+if [ -x "$VENVDIR/bin/python3" ]; then
+    PYTHON3="$VENVDIR/bin/python3"
+elif [ -x "$VENVDIR/bin/python" ]; then
+    PYTHON3="$VENVDIR/bin/python"
 else
     PYTHON3=""
     if command -v python3 >/dev/null 2>&1; then
