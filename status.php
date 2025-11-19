@@ -35,7 +35,7 @@ if (file_exists($cssPath)) {
                 <div class="status-card">
                     <div class="status-card-label">HomeKit Service</div>
                     <div class="status-card-value" id="service-status" style="display: flex; align-items: center; justify-content: space-between;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
                             <span id="service-status-text">Loading...</span>
                             <button class="restart-icon-btn" onclick="restartService()" id="restart-btn">
                                 <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
@@ -43,7 +43,7 @@ if (file_exists($cssPath)) {
                                 </svg>
                             </button>
                         </div>
-                        <span class="status-dot-large" id="service-status-dot"></span>
+                        <span class="status-dot-large" id="service-status-dot" style="flex-shrink: 0;"></span>
                     </div>
                 </div>
                 
@@ -184,9 +184,9 @@ if (file_exists($cssPath)) {
                         <div class="info-label">Accessory Type</div>
                         <div class="info-value">Light</div>
                     </div>
-                    <div class="info-row" style="align-items: flex-start;">
+                    <div class="info-row">
                         <div class="info-label">Control</div>
-                        <div class="info-value" style="text-align: left; max-width: 60%;">Turning the light ON will start the configured playlist. Turning it OFF will stop playback.</div>
+                        <div class="info-value">Turning the light ON will start the configured playlist. Turning it OFF will stop playback.</div>
                     </div>
                 </div>
             </div>
