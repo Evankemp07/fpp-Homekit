@@ -777,8 +777,16 @@ class FPPLightAccessory(Accessory):
             return
         
         # Subscribe to everything to catch all FPP status messages
-        self.mqtt_client.subscribe('#', qos=1)
-        logger.debug("Subscribed to all MQTT topics (#) for comprehensive FPP status monitoring")
+        result, mid = self.mqtt_client.subscribe('#', qos=1)
+        if result == 0:
+            logger.info("Successfully subscribed to all MQTT topics (#)")
+        else:
+            logger.error(f"Failed to subscribe to MQTT topics, result: {result}")
+
+        # Also try subscribing to specific FPP topics to be sure
+        self.mqtt_client.subscribe('falcon/player/FPP2/status', qos=1)
+        self.mqtt_client.subscribe('falcon/player/FPP2/falcon/player/FPP2/port_status', qos=1)
+        logger.info("Subscribed to specific FPP status topics")
         
         # Request initial status from FPP
         logger.info(f"Requesting initial FPP status via MQTT topic: {self.mqtt_client.topic_prefix}/command/GetStatus")
