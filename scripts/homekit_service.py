@@ -691,7 +691,7 @@ class FPPLightAccessory(Accessory):
             """Handle FPP status updates from MQTT."""
             try:
                 payload = msg.payload.decode('utf-8')
-                logger.debug(f"MQTT message received on topic '{msg.topic}': {payload[:200]}...")
+                logger.info(f"MQTT message received on topic '{msg.topic}': {payload[:200]}...")
                 
                 # FPP status messages can be JSON or simple text
                 if payload.startswith('{'):
@@ -748,17 +748,22 @@ class FPPLightAccessory(Accessory):
                     logger.info(f"FPP status (text): '{status_name}', playing={fpp_playing}")
                 
                 # Always update HomeKit state to match FPP (even if same, to ensure sync)
+                logger.info(f"About to check status change: fpp_playing={fpp_playing}, self.is_on={self.is_on}")
                 if fpp_playing != self.is_on:
                     logger.info(f"FPP status changed via MQTT: {status_name} (playing={fpp_playing}, was={self.is_on})")
                     self.is_on = fpp_playing
                     self.on_char.set_value(fpp_playing)
+                    logger.info(f"HomeKit light set to: {fpp_playing}")
                 else:
-                    logger.info(f"FPP status unchanged: {status_name} (playing={fpp_playing}, HomeKit already={self.is_on})")
+                    logger.debug(f"FPP status unchanged: {status_name} (playing={fpp_playing}, HomeKit already={self.is_on})")
             except Exception as e:
                 logger.error(f"Error processing MQTT status message: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
         
+        # Set the message callback
+        self.mqtt_client.on_message = on_status_message
+
         # Subscribe to everything to catch all FPP status messages (original working approach)
         self.mqtt_client.subscribe('#', qos=1)
         logger.debug("Subscribed to all MQTT topics (#) for comprehensive FPP status monitoring")
