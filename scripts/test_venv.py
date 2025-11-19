@@ -5,6 +5,7 @@ Test script to verify venv setup and dependencies
 
 import sys
 import os
+import importlib
 
 def test_venv():
     """Test if running in venv and check dependencies"""
@@ -24,7 +25,7 @@ def test_venv():
 
     for dep in deps:
         try:
-            __import__(dep.replace('.', '_') if '.' in dep else dep)
+            importlib.import_module(dep)
             print(f"✓ {dep} - OK")
         except ImportError as e:
             print(f"✗ {dep} - FAILED: {e}")
