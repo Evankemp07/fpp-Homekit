@@ -813,21 +813,23 @@ if (file_exists($cssPath)) {
 
         isUpdating = true;
         
-        // Set loading state
-        fppStatusLoading = true;
-        fppStatusLoadStartTime = Date.now();
-        
-        // Show loading animation
+        // Only show loading animation on initial load or forced fresh check
         const fppStatusTextEl = document.getElementById('fpp-status-text');
         const fppStatusDotEl = document.getElementById('fpp-status-dot');
-        if (fppStatusTextEl && fppStatusTextEl.textContent === 'Loading...') {
-            // Initial load state
+        const hasExistingStatus = fppStatusTextEl && 
+            !fppStatusTextEl.textContent.includes('Loading...') && 
+            !fppStatusTextEl.textContent.includes('Unable to Check');
+        
+        if (!hasExistingStatus || forceFresh) {
+            // Set loading state only when needed
+            fppStatusLoading = true;
+            fppStatusLoadStartTime = Date.now();
             if (fppStatusDotEl) {
                 fppStatusDotEl.className = 'status-dot-large restarting';
             }
-        } else if (fppStatusDotEl && fppStatusTextEl && !fppStatusTextEl.textContent.includes('Unable to Check')) {
-            // Subsequent loads (skip if error)
-            fppStatusDotEl.className = 'status-dot-large restarting';
+        } else {
+            // Don't show loading if we already have valid status
+            fppStatusLoading = false;
         }
         
         debugLog('Loading status...' + (forceFresh ? ' (forcing fresh check)' : ''));
@@ -842,10 +844,9 @@ if (file_exists($cssPath)) {
             .then(data => {
                 debugLog('Status updated', { playing: data.fpp_status?.playing, status: data.fpp_status?.status_name });
                 updateStatusDisplay(data);
-                // Clear loading state
-                if (!fppStatusLoading) {
-                    fppStatusLoadStartTime = 0;
-                }
+                // Clear loading state after display update
+                fppStatusLoading = false;
+                fppStatusLoadStartTime = 0;
                 // Clear error messages
                 const messageContainer = document.getElementById('message-container');
                 if (messageContainer) {
@@ -1013,6 +1014,10 @@ if (file_exists($cssPath)) {
                 fppStatusDotEl.className = 'status-dot-large restarting';
             }
             return;
+        } else if (hasValidFppStatus) {
+            // Clear loading state when we have valid data
+            fppStatusLoading = false;
+            fppStatusLoadStartTime = 0;
         }
         
         const playing = fppStatus.playing || false;
@@ -1047,7 +1052,7 @@ if (file_exists($cssPath)) {
         } else if (statusText.includes('Available') || statusCode === 0 || statusName === 'idle' || (!errorDetail && statusName !== 'unknown' && statusName !== '')) {
             // Check paused vs idle
             const isPaused = statusCode === 2 || statusName === 'paused' || statusName.toLowerCase().includes('paused');
-            const idleText = isPaused ? 'Paused' : 'idle';
+            const idleText = isPaused ? 'Paused' : 'Idle';
             const idleIcon = isPaused ?
                 '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="#e3e3e3" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M560-200v-560h160v560H560Zm-320 0v-560h160v560H240Z"/></svg>' :
                 '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="#e3e3e3" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M360-840v-80h240v80H360ZM480-80q-74 0-139.5-28.5T226-186q-49-49-77.5-114.5T120-440q0-74 28.5-139.5T226-694q49-49 114.5-77.5T480-800q62 0 119 20t107 58l56-56 56 56-56 56q38 50 58 107t20 119q0 74-28.5 139.5T734-186q-49 49-114.5 77.5T480-80Zm0-80q116 0 198-82t82-198q0-116-82-198t-198-82q-116 0-198 82t-82 198q0 116 82 198t198 82Zm0-280ZM360-280h80v-320h-80v320Zm160 0h80v-320h-80v320Z"/></svg>';
