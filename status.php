@@ -138,7 +138,7 @@ if (file_exists($cssPath)) {
                                             <div class="qr-placeholder-grid"></div>
                                         </div>
                                         <div class="setup-code-placeholder">
-                                            <span class="setup-code-label">Setup Code</span>
+                                            <div class="setup-code-label">SETUP CODE</div>
                                             <div class="setup-code-value">
                                                 <span>XXXX-XXXX</span>
                                             </div>
@@ -349,7 +349,7 @@ if (file_exists($cssPath)) {
         switch (data.type) {
             case 'status_update':
                 if (data.data) {
-                    // Update status displays with real-time data
+                    // SSE now sends full status on initial connection
                     updateStatusDisplay(data.data);
                 }
                 break;
@@ -376,6 +376,12 @@ if (file_exists($cssPath)) {
                 if (!playlistFetchInProgress) {
                     loadPlaylists();
                 }
+                // Ensure QR code loads if service is running (fallback if status_update didn't trigger it)
+                setTimeout(function() {
+                    if (!qrLoaded) {
+                        loadStatus();
+                    }
+                }, 500);
                 break;
 
             case 'heartbeat':
@@ -1659,6 +1665,18 @@ if (file_exists($cssPath)) {
         }, 500);
         
         initializeEventSource();
+        
+        // Fallback: If QR code hasn't loaded after SSE connects, trigger initial load
+        setTimeout(function() {
+            const qrLoadingEl = document.getElementById('qr-loading');
+            const qrContentEl = document.getElementById('qr-content');
+            // If still showing loading state and content not shown, trigger load
+            if (qrLoadingEl && qrLoadingEl.style.display !== 'none' && 
+                (!qrContentEl || qrContentEl.style.display === 'none')) {
+                // SSE might not have sent status yet, trigger initial load
+                loadStatus();
+            }
+        }, 2000); // Wait 2 seconds for SSE to send initial status
         
         // Only refresh on visibility change if SSE is not active
         document.addEventListener('visibilitychange', function() {

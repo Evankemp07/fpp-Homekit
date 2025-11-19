@@ -2436,18 +2436,66 @@ function fppHomekitEvents() {
     $statusFile = $pluginDir . '/scripts/homekit_status.json';
     $commandsFile = $pluginDir . '/scripts/homekit_commands.json';
 
+    // Send full status on initial connection (for QR code loading)
+    // Get status data directly (bypass json() wrapper)
+    $pidFile = $pluginDir . '/scripts/homekit_service.pid';
+    $configFile = $pluginDir . '/scripts/homekit_config.json';
+    $stateFile = $pluginDir . '/scripts/homekit_accessory.state';
+    
+    $fullStatusData = array();
+    
+    // Get service running status
+    $running = false;
     if (file_exists($statusFile)) {
         $statusData = @json_decode(file_get_contents($statusFile), true);
-        if ($statusData) {
-            $initialStatus = array(
-                'type' => 'status_update',
-                'data' => $statusData,
-                'timestamp' => time()
-            );
-            echo "data: " . json_encode($initialStatus) . "\n\n";
-            flush();
+        if ($statusData && isset($statusData['service_running'], $statusData['timestamp'])) {
+            $running = (bool)$statusData['service_running'];
+            if ((time() - $statusData['timestamp']) >= 5) {
+                $running = false; // Status too old, check PID
+            }
         }
     }
+    
+    if (!$running && file_exists($pidFile)) {
+        $pid = trim(file_get_contents($pidFile));
+        if ($pid && (file_exists("/proc/{$pid}") || (function_exists('posix_kill') && posix_kill($pid, 0)))) {
+            $running = true;
+        }
+    }
+    
+    $fullStatusData['service_running'] = $running;
+    
+    // Get paired status
+    $paired = false;
+    if (file_exists($stateFile)) {
+        $state = @json_decode(file_get_contents($stateFile), true);
+        if ($state && !empty($state['paired_clients'])) {
+            $paired = true;
+        }
+    }
+    $fullStatusData['paired'] = $paired;
+    
+    // Get FPP status (simplified - just check if service is running for QR code)
+    $fullStatusData['fpp_status'] = array('playing' => false);
+    
+    // Get playlist
+    $playlist = '';
+    if (file_exists($configFile)) {
+        $config = @json_decode(file_get_contents($configFile), true);
+        if ($config && isset($config['playlist_name'])) {
+            $playlist = $config['playlist_name'];
+        }
+    }
+    $fullStatusData['playlist'] = $playlist;
+    
+    // Send initial full status
+    $initialStatus = array(
+        'type' => 'status_update',
+        'data' => $fullStatusData,
+        'timestamp' => time()
+    );
+    echo "data: " . json_encode($initialStatus) . "\n\n";
+    flush();
     
     if (file_exists($commandsFile)) {
         $commandsData = @json_decode(file_get_contents($commandsFile), true);
