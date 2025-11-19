@@ -165,7 +165,7 @@ if (file_exists($cssPath)) {
                         </div>
                         
                         <div id="paired-section" style="display: none;">
-                            <p class="success-message">✓ Successfully paired with HomeKit</p>
+                            <p class="success-message"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#4caf50" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M240-200h120v-240h240v240h120v-360L480-740 240-560v360Zm-80 80v-480l320-240 320 240v480H520v-240h-80v240H160Zm320-350Z"/></svg>Successfully paired with HomeKit</p>
                             <p class="info-text">You can now control FPP from the Home app on your iOS devices.</p>
                             <p class="info-text" id="last-command-text" style="display: none;">Last command: <span id="last-command-time">none</span></p>
                         </div>
@@ -288,6 +288,8 @@ if (file_exists($cssPath)) {
     let lastStatusUpdate = 0;
     let restartStartTime = 0;
     let restartPollInterval = null;
+    let fppStatusLoading = false;
+    let fppStatusLoadStartTime = 0;
     
     const playlistSelect = document.getElementById('playlist-select');
     const savePlaylistBtn = document.getElementById('save-playlist-btn');
@@ -350,16 +352,23 @@ if (file_exists($cssPath)) {
 
             case 'command_update':
                 if (data.data) {
-                    // Update last command display
+                    // Update last command display - only if command is recent (within last hour)
+                    const now = Math.floor(Date.now() / 1000);
+                    const commandAge = now - data.data.timestamp;
+                    const oneHourAgo = 3600; // 1 hour in seconds
+                    
                     const timeElement = document.getElementById('last-command-time');
                     const textElement = document.getElementById('last-command-text');
 
-                    if (timeElement && textElement) {
+                    if (commandAge <= oneHourAgo && timeElement && textElement) {
                         const date = new Date(data.data.timestamp * 1000);
                         const timeString = date.toLocaleTimeString();
                         const sourceText = data.data.source === 'homekit' ? 'HomeKit' : 'Emulate';
                         timeElement.textContent = `${data.data.action} (${sourceText}) at ${timeString}`;
                         textElement.style.display = 'block';
+                    } else if (textElement) {
+                        // Hide if command is too old
+                        textElement.style.display = 'none';
                     }
                 }
                 break;
@@ -795,6 +804,24 @@ if (file_exists($cssPath)) {
         lastStatusUpdate = now;
 
         isUpdating = true;
+        
+        // Set FPP status loading state
+        fppStatusLoading = true;
+        fppStatusLoadStartTime = Date.now();
+        
+        // Show loading state with yellow bouncing animation
+        const fppStatusTextEl = document.getElementById('fpp-status-text');
+        const fppStatusDotEl = document.getElementById('fpp-status-dot');
+        if (fppStatusTextEl && fppStatusTextEl.textContent === 'Loading...') {
+            // Only show loading animation if still in initial loading state
+            if (fppStatusDotEl) {
+                fppStatusDotEl.className = 'status-dot-large restarting';
+            }
+        } else if (fppStatusDotEl && fppStatusTextEl && !fppStatusTextEl.textContent.includes('Unable to Check')) {
+            // Show loading animation for subsequent loads (but not if already showing error)
+            fppStatusDotEl.className = 'status-dot-large restarting';
+        }
+        
         debugLog('Loading status...' + (forceFresh ? ' (forcing fresh check)' : ''));
         const url = API_BASE + '/status' + (forceFresh ? '?force=1' : '');
         fetch(url)
@@ -807,6 +834,10 @@ if (file_exists($cssPath)) {
             .then(data => {
                 debugLog('Status updated', { playing: data.fpp_status?.playing, status: data.fpp_status?.status_name });
                 updateStatusDisplay(data);
+                // Clear loading state after display is updated (updateStatusDisplay will also clear it if valid data received)
+                if (!fppStatusLoading) {
+                    fppStatusLoadStartTime = 0;
+                }
                 // Clear any error messages on successful update with slide-out animation
                 const messageContainer = document.getElementById('message-container');
                 if (messageContainer) {
@@ -827,6 +858,18 @@ if (file_exists($cssPath)) {
             })
             .catch(error => {
                 debugLog('Error loading status', error.message);
+                // Clear loading state
+                fppStatusLoading = false;
+                fppStatusLoadStartTime = 0;
+                // Set "Unable to Check Status" and keep it red
+                const fppStatusTextEl = document.getElementById('fpp-status-text');
+                const fppStatusDotEl = document.getElementById('fpp-status-dot');
+                if (fppStatusTextEl) {
+                    fppStatusTextEl.textContent = 'Unable to Check Status';
+                }
+                if (fppStatusDotEl) {
+                    fppStatusDotEl.className = 'status-dot-large stopped';
+                }
                 // Only show error message if it's not already showing
                 const messageContainer = document.getElementById('message-container');
                 const existingError = messageContainer && 
@@ -857,10 +900,18 @@ if (file_exists($cssPath)) {
         if (data.paired !== undefined) {
             lastKnownStatus.paired = data.paired;
         }
-        if (data.fpp_status !== undefined && data.fpp_status !== null) {
+        
+        // Check if we have valid fpp_status data in this update
+        const hasValidFppStatus = data.fpp_status !== undefined && 
+                                   data.fpp_status !== null && 
+                                   Object.keys(data.fpp_status).length > 0;
+        
+        if (hasValidFppStatus) {
+            // Only update fpp_status if we have valid data (not empty object)
             // Merge fpp_status to preserve existing fields if new data is incomplete
             lastKnownStatus.fpp_status = Object.assign({}, lastKnownStatus.fpp_status, data.fpp_status);
         }
+        
         if (data.playlist !== undefined) {
             lastKnownStatus.playlist = data.playlist;
         }
@@ -927,7 +978,41 @@ if (file_exists($cssPath)) {
             pairingStatusDotEl.className = 'status-dot-large ' + (paired ? 'paired' : 'not-paired');
         }
         
-        // Update FPP status
+        // Update FPP status - only if we have valid fpp_status data
+        // Preserve "Unable to Check Status" if fpp_status is null/undefined/empty
+        const fppStatusTextEl = document.getElementById('fpp-status-text');
+        const currentFppStatusText = fppStatusTextEl ? fppStatusTextEl.textContent : '';
+        
+        // If we don't have valid fpp_status data in THIS update and we already have "Unable to Check Status", preserve it
+        if (!hasValidFppStatus && currentFppStatusText.includes('Unable to Check')) {
+            // Keep "Unable to Check Status" and red dot
+            const fppStatusDotEl = document.getElementById('fpp-status-dot');
+            if (fppStatusDotEl && !fppStatusLoading) {
+                fppStatusDotEl.className = 'status-dot-large stopped';
+            }
+            // Clear loading state since we're not updating
+            fppStatusLoading = false;
+            fppStatusLoadStartTime = 0;
+            return; // Don't update FPP status
+        }
+        
+        // Clear loading state if we got valid data
+        if (hasValidFppStatus) {
+            fppStatusLoading = false;
+            fppStatusLoadStartTime = 0;
+        }
+        
+        // If we don't have valid fpp_status data and we're not preserving "Unable to Check Status", 
+        // we might be in initial load - don't update yet, but ensure loading animation is showing
+        if (!hasValidFppStatus && Object.keys(fppStatus).length === 0) {
+            // Still loading, keep loading animation
+            const fppStatusDotEl = document.getElementById('fpp-status-dot');
+            if (fppStatusDotEl && fppStatusLoading) {
+                fppStatusDotEl.className = 'status-dot-large restarting';
+            }
+            return;
+        }
+        
         const playing = fppStatus.playing || false;
         let statusText = fppStatus.status_text || fppStatus.status_name || 'Unknown';
         const statusName = (fppStatus.status_name || 'unknown').toLowerCase();
@@ -1014,14 +1099,18 @@ if (file_exists($cssPath)) {
         }
         
         // Update FPP status card
-        const fppStatusTextEl = document.getElementById('fpp-status-text');
         const fppStatusDotEl = document.getElementById('fpp-status-dot');
         const fppStatusCard = document.getElementById('fpp-status-card');
         if (fppStatusTextEl) {
             fppStatusTextEl.innerHTML = fppStatusText;
         }
         if (fppStatusDotEl) {
-            fppStatusDotEl.className = 'status-dot-large ' + fppDotClass;
+            // Show loading animation if still loading, otherwise show actual status
+            if (fppStatusLoading) {
+                fppStatusDotEl.className = 'status-dot-large restarting';
+            } else {
+                fppStatusDotEl.className = 'status-dot-large ' + fppDotClass;
+            }
         }
         // Add details below the status value if available
         if (fppStatusCard && fppStatusDetails) {
@@ -1083,18 +1172,30 @@ if (file_exists($cssPath)) {
         }
 
         // Update last command display with recent HomeKit commands
+        // Only show commands from the last hour to avoid showing stale/old data
+        const timeElement = document.getElementById('last-command-time');
+        const textElement = document.getElementById('last-command-text');
+        
         if (data.recent_homekit_commands && data.recent_homekit_commands.length > 0) {
             const lastCommand = data.recent_homekit_commands[data.recent_homekit_commands.length - 1];
-            const timeElement = document.getElementById('last-command-time');
-            const textElement = document.getElementById('last-command-text');
-
-            if (timeElement && textElement) {
+            const now = Math.floor(Date.now() / 1000);
+            const commandAge = now - lastCommand.timestamp;
+            const oneHourAgo = 3600; // 1 hour in seconds
+            
+            // Only show command if it's from the last hour
+            if (commandAge <= oneHourAgo && timeElement && textElement) {
                 const date = new Date(lastCommand.timestamp * 1000);
                 const timeString = date.toLocaleTimeString();
                 const sourceText = lastCommand.source === 'homekit' ? 'HomeKit' : 'Emulate';
                 timeElement.textContent = `${lastCommand.action} (${sourceText}) at ${timeString}`;
                 textElement.style.display = 'block';
+            } else if (textElement) {
+                // Hide if command is too old
+                textElement.style.display = 'none';
             }
+        } else if (textElement) {
+            // Hide if no commands available
+            textElement.style.display = 'none';
         }
     }
     
@@ -1104,6 +1205,28 @@ if (file_exists($cssPath)) {
         }
         autoStartAttempted = true;
         showMessage('Starting HomeKit service...', 'info');
+        
+        // Set restarting state immediately to show bouncing yellow animation
+        restartStartTime = Date.now();
+        isServiceRestarting = true;
+        
+        // Update status dot immediately to show bouncing animation
+        const serviceStatusTextEl = document.getElementById('service-status-text');
+        const serviceStatusDotEl = document.getElementById('service-status-dot');
+        if (serviceStatusTextEl) {
+            serviceStatusTextEl.textContent = 'Restarting...';
+        }
+        if (serviceStatusDotEl) {
+            serviceStatusDotEl.className = 'status-dot-large restarting';
+        }
+        
+        // Start aggressive polling during restart
+        if (restartPollInterval) {
+            clearInterval(restartPollInterval);
+        }
+        restartPollInterval = setInterval(() => {
+            loadStatus();
+        }, 500);
         
         fetch(API_BASE + '/restart', { method: 'POST' })
             .then(response => {
@@ -1126,6 +1249,13 @@ if (file_exists($cssPath)) {
             })
             .catch(error => {
                 showMessage('Unable to start service automatically: ' + error.message, 'error');
+                // Clear restarting state on error
+                isServiceRestarting = false;
+                restartStartTime = 0;
+                if (restartPollInterval) {
+                    clearInterval(restartPollInterval);
+                    restartPollInterval = null;
+                }
             });
     }
     
@@ -1629,6 +1759,11 @@ if (file_exists($cssPath)) {
     
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
+        // Show loading animation for FPP status immediately on page load
+        const fppStatusDotEl = document.getElementById('fpp-status-dot');
+        if (fppStatusDotEl) {
+            fppStatusDotEl.className = 'status-dot-large restarting';
+        }
         if (savePlaylistBtn) {
             savePlaylistBtn.addEventListener('click', savePlaylist);
             savePlaylistBtn.disabled = true;
