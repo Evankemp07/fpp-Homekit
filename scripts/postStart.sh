@@ -7,22 +7,33 @@ SERVICE_SCRIPT="${PLUGIN_DIR}/scripts/homekit_service.py"
 PID_FILE="${PLUGIN_DIR}/scripts/homekit_service.pid"
 LOG_FILE="${PLUGIN_DIR}/scripts/homekit_service.log"
 
-# Find python3 (must match the one used during installation)
-PYTHON3=""
-if command -v python3 >/dev/null 2>&1; then
-    PYTHON3="python3"
-elif command -v python >/dev/null 2>&1; then
-    # Check if python is python3
-    PYTHON_VERSION=$(python --version 2>&1 | sed -n 's/.*\([0-9]\+\.[0-9]\+\).*/\1/p' | cut -d. -f1)
-    if [ -n "$PYTHON_VERSION" ] && [ "$PYTHON_VERSION" -ge 3 ]; then
-        PYTHON3="python"
+VENV_PYTHON=""
+if [ -x "$PLUGIN_DIR/venv/bin/python3" ]; then
+    VENV_PYTHON="$PLUGIN_DIR/venv/bin/python3"
+elif [ -x "$PLUGIN_DIR/venv/bin/python" ]; then
+    VENV_PYTHON="$PLUGIN_DIR/venv/bin/python"
+fi
+
+if [ -n "$VENV_PYTHON" ]; then
+    PYTHON3="$VENV_PYTHON"
+else
+    PYTHON3=""
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON3="python3"
+    elif command -v python >/dev/null 2>&1; then
+        PYTHON_VERSION=$(python --version 2>&1 | sed -n 's/.*\([0-9]\+\.[0-9]\+\).*/\1/p' | cut -d. -f1)
+        if [ -n "$PYTHON_VERSION" ] && [ "$PYTHON_VERSION" -ge 3 ]; then
+            PYTHON3="python"
+        fi
+    fi
+
+    if [ -z "$PYTHON3" ]; then
+        echo "Error: python3 not found. Please install Python 3.6 or newer."
+        exit 1
     fi
 fi
 
-if [ -z "$PYTHON3" ]; then
-    echo "Error: python3 not found. Please install Python 3.6 or newer."
-    exit 1
-fi
+echo "Using interpreter: $PYTHON3"
 
 # Check if mosquitto is running, try to start it if not
 if command -v systemctl >/dev/null 2>&1; then
