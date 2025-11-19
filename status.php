@@ -143,7 +143,7 @@ if (file_exists($cssPath)) {
                                         <div class="setup-code-placeholder">
                                             <span class="setup-code-label">Setup Code</span>
                                             <div class="setup-code-value">
-                                                <span>XXX-XX-XXX</span>
+                                                <span>XXXX-XXXX</span>
                                             </div>
                                         </div>
                                     </div>
@@ -1089,7 +1089,7 @@ if (file_exists($cssPath)) {
                 return response.json();
             })
             .then(data => {
-                const setupCode = data.setup_code || '123-45-678';
+                const setupCode = data.setup_code || '0000-0000';
                 
                 document.getElementById('setup-code-text').textContent = setupCode;
                 

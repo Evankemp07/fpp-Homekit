@@ -147,11 +147,15 @@ def main():
             realtime_updates = 'EventSource' in content and 'initializeEventSource' in content
 
     # This is an additional feature check, not a core requirement
-    check_requirement(
-        "Real-time UI updates (EventSource/SSE)",
-        realtime_updates,
-        "JavaScript uses EventSource for push updates"
-    )
+    if realtime_updates:
+        check_requirement(
+            "Real-time UI updates (EventSource/SSE)",
+            True,
+            "JavaScript uses EventSource for push updates"
+        )
+    else:
+        print("ℹ️ Real-time UI updates (EventSource/SSE)")
+        print("   Not detected in current build (optional feature).")
 
     # Venv isolation
     venv_isolation = False

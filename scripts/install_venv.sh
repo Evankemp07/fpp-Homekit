@@ -33,13 +33,19 @@ fi
 echo "Installing/Updating dependencies in venv..."
 source "$VENV_DIR/bin/activate"
 
-# Upgrade pip first
-pip install --upgrade pip > /dev/null 2>&1
+PIP_BIN="$VENV_DIR/bin/pip"
 
-# Install requirements
-pip install -r "$REQUIREMENTS_FILE"
-if [ $? -ne 0 ]; then
-    echo "ERROR: Failed to install dependencies."
+# Upgrade pip first
+"$PIP_BIN" install --upgrade pip > /dev/null 2>&1
+
+# Install requirements and explicitly guarantee critical packages
+if ! "$PIP_BIN" install --upgrade -r "$REQUIREMENTS_FILE"; then
+    echo "ERROR: Failed to install dependencies from requirements.txt."
+    exit 1
+fi
+
+if ! "$PIP_BIN" install --upgrade "HAP-python[QRCode]>=4.5.0" "paho-mqtt>=1.6.1" "requests>=2.28.0"; then
+    echo "ERROR: Failed to install core HomeKit dependencies."
     exit 1
 fi
 
@@ -49,8 +55,7 @@ echo "Python executable: $VENV_DIR/bin/python3"
 # Test the venv setup
 echo ""
 echo "Testing venv setup..."
-source "$VENV_DIR/bin/activate"
-python3 "$PLUGIN_DIR/scripts/test_venv.py"
+"$VENV_DIR/bin/python3" "$PLUGIN_DIR/scripts/test_venv.py"
 
 if [ $? -eq 0 ]; then
     echo ""

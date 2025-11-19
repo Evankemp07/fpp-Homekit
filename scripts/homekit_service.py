@@ -623,7 +623,10 @@ class FPPMQTTClient:
                     current_playlist = config.get('playlist_name', 'Christmas-2024')
             except:
                 pass
-            topics_to_try = [f"{self.topic_prefix}/{self.topic_prefix}/set/playlist/{current_playlist}/stop/now"]
+            topics_to_try = [
+                f"{self.topic_prefix}/{self.topic_prefix}/set/playlist/{current_playlist}/stop/now",
+                f"{self.topic_prefix}/{self.topic_prefix}/set/playlist/{current_playlist}/stop"
+            ]
         else:
             # Fallback for other commands
             topics_to_try = [f"{self.topic_prefix}/{self.topic_prefix}/set/command/{command}"]

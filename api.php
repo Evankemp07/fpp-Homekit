@@ -1051,7 +1051,7 @@ function fppHomekitQRCode() {
     $stateFile = $pluginDir . '/scripts/homekit_accessory.state';
 
     // Try to get setup code and setup ID from pairing info file first
-    $setupCode = '123-45-678';
+    $setupCode = '0000-0000';
     $setupID = 'HOME';
 
     if (file_exists($infoFile)) {
@@ -1099,8 +1099,8 @@ function fppHomekitQRCode() {
     // If not available, generate QR code data
     if (!$qrData) {
         // HomeKit QR code format: X-HM://[8-character hex setup ID][8-digit setup code]
-        // Setup code format: XXX-XX-XXX (display) -> XXXXXXXX (encoded, no dashes)
-        // Example: 123-45-678 becomes 12345678 in the QR code
+        // Setup code format: XXXX-XXXX (display) -> XXXXXXXX (encoded, no dashes)
+        // Example: 1234-5678 becomes 12345678 in the QR code
         $setupCodeClean = str_replace('-', '', $setupCode);
         if (strlen($setupCodeClean) !== 8) {
             // Invalid setup code format
@@ -1311,7 +1311,7 @@ function fppHomekitPairingInfo() {
     
     $result = array(
         'paired' => false,
-        'setup_code' => '123-45-678',
+        'setup_code' => '0000-0000',
         'setup_id' => 'HOME'
     );
     
@@ -2307,28 +2307,28 @@ function fppHomekitEmulate() {
         // Emulate ON - start playlist
         $command = "StartPlaylist/{$playlistName}";
         $action = 'start';
+        $topics_to_try = array(
+            "{$mqttConfig['topic_prefix']}/{$mqttConfig['topic_prefix']}/set/playlist/{$playlistName}/start"
+        );
     } else {
         // Emulate OFF - stop playback
         $command = "Stop";
-        $action = 'stop/now';
+        $action = 'stop';
+        $topics_to_try = array(
+            "{$mqttConfig['topic_prefix']}/{$mqttConfig['topic_prefix']}/set/playlist/{$playlistName}/stop/now",
+            "{$mqttConfig['topic_prefix']}/{$mqttConfig['topic_prefix']}/set/playlist/{$playlistName}/stop"
+        );
     }
-
-    // Use correct FPP MQTT topic format with doubled prefix
-    $topics_to_try = array(
-        "{$mqttConfig['topic_prefix']}/{$mqttConfig['topic_prefix']}/set/playlist/{$playlistName}/{$action}"
-    );
 
     $success = false;
     $errors = array();
 
-    // Try to publish to MQTT broker using mosquitto_pub
     if (function_exists('shell_exec')) {
         foreach ($topics_to_try as $topic) {
-            // Use mosquitto_pub to send empty payload (same as HomeKit service)
             $mosquitto_cmd = "mosquitto_pub -h '{$mqttConfig['broker']}' -p '{$mqttConfig['port']}' -t '{$topic}' -m '' 2>/dev/null";
             $result = shell_exec($mosquitto_cmd);
 
-            if ($result === null) { // Command succeeded (no output)
+            if ($result === null) {
                 $success = true;
                 break;
             } else {
@@ -2338,7 +2338,6 @@ function fppHomekitEmulate() {
     }
 
     if ($success) {
-        // Record command for UI display
         _record_command($action, 'emulate');
 
         return json(array(
