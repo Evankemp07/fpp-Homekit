@@ -116,7 +116,8 @@ if [ $FIRST_INSTALL -eq 1 ]; then
 
     # Install Python dependencies
     echo "Installing dependencies..." | tee -a "${INSTALL_LOG}"
-    "${SCRIPTS_DIR}/install_python_deps.sh" "${PLUGIN_DIR}" "${PYTHON3}" >> "${INSTALL_LOG}" 2>&1
+    # Use tee to show output while also logging it
+    "${SCRIPTS_DIR}/install_python_deps.sh" "${PLUGIN_DIR}" "${PYTHON3}" 2>&1 | tee -a "${INSTALL_LOG}"
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to install Python dependencies. Check ${INSTALL_LOG}" | tee -a "${INSTALL_LOG}"
         exit 1
@@ -132,7 +133,8 @@ else
     if [ "${UPDATED_USING_SCRIPT}" -eq 1 ]; then
         echo "Ensuring Python dependencies after update..." | tee -a "${INSTALL_LOG}"
         if [ -n "$PYTHON3" ]; then
-            "${SCRIPTS_DIR}/install_python_deps.sh" "${PLUGIN_DIR}" "$PYTHON3" >> "${INSTALL_LOG}" 2>&1 || \
+            # Use tee to show output while also logging it
+            "${SCRIPTS_DIR}/install_python_deps.sh" "${PLUGIN_DIR}" "$PYTHON3" 2>&1 | tee -a "${INSTALL_LOG}" || \
                 echo "Warning: Could not verify Python dependencies" | tee -a "${INSTALL_LOG}"
         fi
     fi

@@ -10,9 +10,8 @@
 #   python3_executable: Path to Python 3 executable
 #   pip_command:       Optional pip command (defaults to python3 -m pip)
 #
-# This script installs dependencies from requirements.txt using pip with
-# the --break-system-packages flag, which is required for Python 3.11+
-# on Debian/Ubuntu systems with PEP 668 system package isolation.
+# This script installs dependencies from requirements.txt using pip.
+# If a venv exists, it uses the venv's pip. Otherwise, it uses the provided Python/pip.
 
 PLUGIN_DIR="${1}"
 PYTHON3="${2}"
@@ -20,6 +19,29 @@ PYTHON3="${2}"
 PIP_CMD="${3:-$PYTHON3 -m pip}"
 REQUIREMENTS_FILE="${PLUGIN_DIR}/scripts/requirements.txt"
 INSTALL_LOG="${PLUGIN_DIR}/scripts/install.log"
+VENV_DIR="${PLUGIN_DIR}/venv"
+
+# Check if venv exists and use it if available
+# If venv doesn't exist but should, try to create it
+if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
+    PYTHON3="${VENV_DIR}/bin/python3"
+    PIP_CMD="${VENV_DIR}/bin/pip"
+    echo "Using virtual environment: ${VENV_DIR}" | tee -a "${INSTALL_LOG}"
+elif [ ! -d "${VENV_DIR}" ] && [ -f "${PLUGIN_DIR}/scripts/install_venv.sh" ]; then
+    # Venv doesn't exist, try to create it
+    echo "Virtual environment not found, creating it..." | tee -a "${INSTALL_LOG}"
+    if bash "${PLUGIN_DIR}/scripts/install_venv.sh" >> "${INSTALL_LOG}" 2>&1; then
+        if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
+            PYTHON3="${VENV_DIR}/bin/python3"
+            PIP_CMD="${VENV_DIR}/bin/pip"
+            echo "✓ Virtual environment created and ready" | tee -a "${INSTALL_LOG}"
+        else
+            echo "Warning: Venv creation reported success but venv not found, using system Python" | tee -a "${INSTALL_LOG}"
+        fi
+    else
+        echo "Warning: Failed to create venv, using system Python" | tee -a "${INSTALL_LOG}"
+    fi
+fi
 
 # Timeout settings (in seconds)
 PIP_TIMEOUT="${PIP_TIMEOUT:-600}"  # 10 minutes default timeout for pip operations
@@ -33,6 +55,9 @@ if [ ! -f "${REQUIREMENTS_FILE}" ]; then
     echo "ERROR: requirements.txt not found at ${REQUIREMENTS_FILE}"
     exit 1
 fi
+
+# Immediate feedback that script is running
+echo "Starting Python dependency installation..." | tee -a "${INSTALL_LOG}"
 
 # Check if timeout command is available
 TIMEOUT_CMD=""
@@ -135,11 +160,19 @@ $PIP_CMD --version >> "${INSTALL_LOG}" 2>&1 || true
 
 # Attempt to upgrade pip to latest version before installing dependencies
 # This helps ensure compatibility with the latest package formats
-# Try --user first to avoid system-wide changes, fallback to system-wide if needed
+# In venv, no flags needed. For system Python, try --user first
 echo "Upgrading pip (best effort)..." | tee -a "${INSTALL_LOG}"
-if ! run_pip_with_timeout 300 "pip upgrade (--user)" install --upgrade pip --user --no-input --disable-pip-version-check; then
-    if ! run_pip_with_timeout 300 "pip upgrade (system)" install --upgrade pip --no-input --disable-pip-version-check; then
+if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
+    # Using venv, no special flags needed
+    if ! run_pip_with_timeout 300 "pip upgrade" install --upgrade pip --no-input --disable-pip-version-check --quiet; then
         echo "Warning: Could not upgrade pip, continuing with existing version..." | tee -a "${INSTALL_LOG}"
+    fi
+else
+    # System Python, try --user first
+    if ! run_pip_with_timeout 300 "pip upgrade (--user)" install --upgrade pip --user --no-input --disable-pip-version-check --quiet; then
+        if ! run_pip_with_timeout 300 "pip upgrade (system)" install --upgrade pip --no-input --disable-pip-version-check --quiet; then
+            echo "Warning: Could not upgrade pip, continuing with existing version..." | tee -a "${INSTALL_LOG}"
+        fi
     fi
 fi
 
@@ -153,8 +186,8 @@ install_with() {
         args=($1)
     fi
     
-    # Add non-interactive flags to prevent hanging and show progress
-    args+=("--no-input" "--disable-pip-version-check" "--progress-bar" "off")
+    # Add non-interactive flags to prevent hanging and suppress verbose output
+    args+=("--no-input" "--disable-pip-version-check" "--quiet")
 
     if run_pip_with_timeout "$PIP_TIMEOUT" "dependency installation (${1:-default flags})" install -r "${REQUIREMENTS_FILE}" "${args[@]}"; then
         echo "✓ Dependencies installed successfully (${1:-default flags})" | tee -a "${INSTALL_LOG}"
@@ -166,12 +199,24 @@ install_with() {
 
 INSTALL_SUCCESS=0
 
-# Install dependencies using --break-system-packages flag
-# This flag is required for Python 3.11+ on Debian/Ubuntu systems where
-# system package isolation is enforced by default
-echo "Installing with --break-system-packages..." | tee -a "${INSTALL_LOG}"
-if install_with "--upgrade --break-system-packages"; then
-    INSTALL_SUCCESS=1
+# Install dependencies
+# In venv, no special flags needed. For system Python, try --user first
+echo "Removing old venv packages..." | tee -a "${INSTALL_LOG}"
+if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
+    # Using venv, no special flags needed
+    echo "Installing dependencies in venv..." | tee -a "${INSTALL_LOG}"
+    if install_with "--upgrade"; then
+        INSTALL_SUCCESS=1
+    fi
+else
+    # System Python, try --user first
+    echo "Installing dependencies (trying --user first)..." | tee -a "${INSTALL_LOG}"
+    if install_with "--upgrade --user"; then
+        INSTALL_SUCCESS=1
+    elif install_with "--upgrade"; then
+        INSTALL_SUCCESS=1
+        echo "Note: Installed system-wide (--user installation failed)" | tee -a "${INSTALL_LOG}"
+    fi
 fi
 
 if [ $INSTALL_SUCCESS -eq 0 ]; then
@@ -179,8 +224,13 @@ if [ $INSTALL_SUCCESS -eq 0 ]; then
     echo "Last 30 lines of error output:" | tee -a "${INSTALL_LOG}"
     tail -30 "${INSTALL_LOG}" || true
     echo ""
-    echo "Try manual install with:" | tee -a "${INSTALL_LOG}"
-    echo "  $PIP_CMD install -r ${REQUIREMENTS_FILE} --upgrade --break-system-packages"
+    if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
+        echo "Try manual install with:" | tee -a "${INSTALL_LOG}"
+        echo "  ${VENV_DIR}/bin/pip install -r ${REQUIREMENTS_FILE} --upgrade"
+    else
+        echo "Try manual install with:" | tee -a "${INSTALL_LOG}"
+        echo "  $PIP_CMD install -r ${REQUIREMENTS_FILE} --upgrade --user"
+    fi
     exit 1
 fi
 
