@@ -21,6 +21,9 @@ PIP_CMD="${3:-$PYTHON3 -m pip}"
 REQUIREMENTS_FILE="${PLUGIN_DIR}/scripts/requirements.txt"
 INSTALL_LOG="${PLUGIN_DIR}/scripts/install.log"
 
+# Timeout settings (in seconds)
+PIP_TIMEOUT="${PIP_TIMEOUT:-600}"  # 10 minutes default timeout for pip operations
+
 if [ -z "$PLUGIN_DIR" ] || [ -z "$PYTHON3" ]; then
     echo "ERROR: Missing required parameters for install_python_deps.sh"
     exit 1
@@ -31,10 +34,101 @@ if [ ! -f "${REQUIREMENTS_FILE}" ]; then
     exit 1
 fi
 
+# Check if timeout command is available
+TIMEOUT_CMD=""
+if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="gtimeout"
+fi
+
+# Helper function to run pip commands with timeout and progress indication
+# Usage: run_pip_with_timeout <timeout_seconds> <description> <pip_command_and_args...>
+run_pip_with_timeout() {
+    local timeout_sec="$1"
+    local description="$2"
+    shift 2
+    local pip_args=("$@")
+    
+    echo "[$(date '+%H:%M:%S')] Starting: $description" | tee -a "${INSTALL_LOG}"
+    
+    # Use timeout if available, otherwise run directly
+    if [ -n "$TIMEOUT_CMD" ]; then
+        # Build command string with proper quoting for bash -c
+        # This handles PIP_CMD which might be "python3 -m pip" or just "pip3"
+        # Split PIP_CMD if it contains spaces and quote each part
+        local cmd_str=""
+        if echo "$PIP_CMD" | grep -q " "; then
+            # PIP_CMD has spaces, split and quote each part
+            for part in $PIP_CMD; do
+                if [ -z "$cmd_str" ]; then
+                    cmd_str="$(printf '%q' "$part")"
+                else
+                    cmd_str="$cmd_str $(printf '%q' "$part")"
+                fi
+            done
+        else
+            # Single command, quote it
+            cmd_str="$(printf '%q' "$PIP_CMD")"
+        fi
+        # Add pip arguments
+        for arg in "${pip_args[@]}"; do
+            cmd_str="$cmd_str $(printf '%q' "$arg")"
+        done
+        
+        # Execute with timeout using bash -c to properly handle command with spaces
+        if $TIMEOUT_CMD "$timeout_sec" bash -c "$cmd_str" >> "${INSTALL_LOG}" 2>&1; then
+            echo "[$(date '+%H:%M:%S')] ✓ Completed: $description" | tee -a "${INSTALL_LOG}"
+            return 0
+        else
+            local exit_code=$?
+            if [ $exit_code -eq 124 ]; then
+                echo "[$(date '+%H:%M:%S')] ✗ TIMEOUT: $description (exceeded ${timeout_sec}s)" | tee -a "${INSTALL_LOG}"
+            else
+                echo "[$(date '+%H:%M:%S')] ✗ FAILED: $description (exit code: $exit_code)" | tee -a "${INSTALL_LOG}"
+            fi
+            return $exit_code
+        fi
+    else
+        # No timeout command available, run directly but with progress indication
+        echo "Warning: timeout command not available, running without timeout protection" | tee -a "${INSTALL_LOG}"
+        # Build command string with proper quoting (same as timeout case)
+        # Split PIP_CMD if it contains spaces and quote each part
+        local cmd_str=""
+        if echo "$PIP_CMD" | grep -q " "; then
+            # PIP_CMD has spaces, split and quote each part
+            for part in $PIP_CMD; do
+                if [ -z "$cmd_str" ]; then
+                    cmd_str="$(printf '%q' "$part")"
+                else
+                    cmd_str="$cmd_str $(printf '%q' "$part")"
+                fi
+            done
+        else
+            # Single command, quote it
+            cmd_str="$(printf '%q' "$PIP_CMD")"
+        fi
+        # Add pip arguments
+        for arg in "${pip_args[@]}"; do
+            cmd_str="$cmd_str $(printf '%q' "$arg")"
+        done
+        # Execute using bash -c to properly handle command with spaces
+        if bash -c "$cmd_str" >> "${INSTALL_LOG}" 2>&1; then
+            echo "[$(date '+%H:%M:%S')] ✓ Completed: $description" | tee -a "${INSTALL_LOG}"
+            return 0
+        else
+            echo "[$(date '+%H:%M:%S')] ✗ FAILED: $description" | tee -a "${INSTALL_LOG}"
+            return 1
+        fi
+    fi
+}
+
 echo ""
 echo "Installing Python dependencies from requirements.txt..."
 echo "This may take a few minutes..."
 echo "Detailed log: ${INSTALL_LOG}"
+echo "Timeout: ${PIP_TIMEOUT}s per operation"
+echo "Note: If installation appears stuck, check ${INSTALL_LOG} for progress"
 
 echo "Using pip command: $PIP_CMD" | tee -a "${INSTALL_LOG}"
 $PIP_CMD --version >> "${INSTALL_LOG}" 2>&1 || true
@@ -43,8 +137,8 @@ $PIP_CMD --version >> "${INSTALL_LOG}" 2>&1 || true
 # This helps ensure compatibility with the latest package formats
 # Try --user first to avoid system-wide changes, fallback to system-wide if needed
 echo "Upgrading pip (best effort)..." | tee -a "${INSTALL_LOG}"
-if ! $PIP_CMD install --upgrade pip --user >> "${INSTALL_LOG}" 2>&1; then
-    if ! $PIP_CMD install --upgrade pip >> "${INSTALL_LOG}" 2>&1; then
+if ! run_pip_with_timeout 300 "pip upgrade (--user)" install --upgrade pip --user --no-input --disable-pip-version-check; then
+    if ! run_pip_with_timeout 300 "pip upgrade (system)" install --upgrade pip --no-input --disable-pip-version-check; then
         echo "Warning: Could not upgrade pip, continuing with existing version..." | tee -a "${INSTALL_LOG}"
     fi
 fi
@@ -58,8 +152,11 @@ install_with() {
         # shellcheck disable=SC2206
         args=($1)
     fi
+    
+    # Add non-interactive flags to prevent hanging and show progress
+    args+=("--no-input" "--disable-pip-version-check" "--progress-bar" "off")
 
-    if $PIP_CMD install -r "${REQUIREMENTS_FILE}" "${args[@]}" >> "${INSTALL_LOG}" 2>&1; then
+    if run_pip_with_timeout "$PIP_TIMEOUT" "dependency installation (${1:-default flags})" install -r "${REQUIREMENTS_FILE}" "${args[@]}"; then
         echo "✓ Dependencies installed successfully (${1:-default flags})" | tee -a "${INSTALL_LOG}"
         return 0
     fi
