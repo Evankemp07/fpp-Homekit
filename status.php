@@ -935,7 +935,8 @@ if (file_exists($cssPath)) {
         service_running: false,
         paired: false,
         fpp_status: {},
-        playlist: ''
+        playlist: '',
+        recent_homekit_commands: []
     };
     
     function updateStatusDisplay(data) {
@@ -961,11 +962,21 @@ if (file_exists($cssPath)) {
             lastKnownStatus.playlist = data.playlist;
         }
         
+        // Preserve last command - update if new data has it, otherwise keep existing
+        if (data.recent_homekit_commands !== undefined) {
+            if (data.recent_homekit_commands.length > 0) {
+                // Update with new commands
+                lastKnownStatus.recent_homekit_commands = data.recent_homekit_commands;
+            }
+            // If data.recent_homekit_commands is empty array, don't overwrite - keep last known
+        }
+        
         // Use last known values
         const serviceRunning = lastKnownStatus.service_running;
         const paired = lastKnownStatus.paired;
         const fppStatus = lastKnownStatus.fpp_status || {};
         const playlist = lastKnownStatus.playlist || '';
+        const recentCommands = lastKnownStatus.recent_homekit_commands || [];
         
         // Update service status card
         const serviceStatusTextEl = document.getElementById('service-status-text');
@@ -1217,7 +1228,7 @@ if (file_exists($cssPath)) {
             }
         }
 
-        // Update last command display (show last command received, regardless of age)
+        // Update last command display (show last command received, keep it visible permanently if enabled)
         const showLastCommand = localStorage.getItem('fppHomekitShowLastCommand') !== 'false';
         const timeElement = document.getElementById('last-command-time');
         const textElement = document.getElementById('last-command-text');
@@ -1227,17 +1238,23 @@ if (file_exists($cssPath)) {
             return;
         }
         
-        // Show the last command from the array (most recent)
-        if (data.recent_homekit_commands && data.recent_homekit_commands.length > 0 && timeElement && textElement) {
+        // Use preserved commands if new data doesn't have them (preserve last known command)
+        const commandsToUse = (data.recent_homekit_commands && data.recent_homekit_commands.length > 0) 
+            ? data.recent_homekit_commands 
+            : recentCommands;
+        
+        // Show the last command from the array (most recent) - keep it visible permanently once received
+        if (commandsToUse && commandsToUse.length > 0 && timeElement && textElement) {
             // Get the last command (most recent)
-            const lastCommand = data.recent_homekit_commands[data.recent_homekit_commands.length - 1];
+            const lastCommand = commandsToUse[commandsToUse.length - 1];
             const date = new Date(lastCommand.timestamp * 1000);
             const timeString = date.toLocaleTimeString();
             const sourceText = lastCommand.source === 'homekit' ? 'HomeKit' : 'Emulate';
             timeElement.textContent = `${lastCommand.action} (${sourceText}) at ${timeString}`;
             textElement.style.display = 'block';
         } else if (textElement) {
-            // Hide if no commands
+            // Only hide if no commands exist at all (never received any commands)
+            // This ensures it stays visible permanently once a command is received
             textElement.style.display = 'none';
         }
     }
