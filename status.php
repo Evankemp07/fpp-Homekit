@@ -875,8 +875,8 @@ if (file_exists($cssPath)) {
         const serviceStatusTextEl = document.getElementById('service-status-text');
         const serviceStatusDotEl = document.getElementById('service-status-dot');
         
-        // Keep restarting state visible for minimum 1 second (reduced for faster feedback)
-        const minRestartDuration = 1000; // 1 second
+        // Keep restarting state visible for minimum 2 seconds to show bouncing animation
+        const minRestartDuration = 2000; // 2 seconds - enough time to see the bouncing animation
         const elapsedSinceRestart = restartStartTime > 0 ? Date.now() - restartStartTime : 0;
         const shouldShowRestarting = isServiceRestarting && (elapsedSinceRestart < minRestartDuration || !serviceRunning);
         
@@ -902,7 +902,13 @@ if (file_exists($cssPath)) {
             serviceStatusTextEl.textContent = serviceStatusText;
         }
         if (serviceStatusDotEl) {
-            serviceStatusDotEl.className = 'status-dot-large ' + serviceStatusClass;
+            // Always apply the restarting class if we're in restarting state, even if service is running
+            // This ensures the bouncing animation shows during the restart process
+            if (shouldShowRestarting) {
+                serviceStatusDotEl.className = 'status-dot-large restarting';
+            } else {
+                serviceStatusDotEl.className = 'status-dot-large ' + serviceStatusClass;
+            }
         }
         if (serviceRunning) {
             autoStartAttempted = false;
