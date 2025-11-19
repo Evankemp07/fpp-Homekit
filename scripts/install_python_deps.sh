@@ -21,25 +21,45 @@ REQUIREMENTS_FILE="${PLUGIN_DIR}/scripts/requirements.txt"
 INSTALL_LOG="${PLUGIN_DIR}/scripts/install.log"
 VENV_DIR="${PLUGIN_DIR}/venv"
 
-# Check if venv exists and use it if available
-# If venv doesn't exist but should, try to create it
+# Always use venv - create it if it doesn't exist
+# This ensures we never install to system Python
 if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
     PYTHON3="${VENV_DIR}/bin/python3"
     PIP_CMD="${VENV_DIR}/bin/pip"
-    echo "Using virtual environment: ${VENV_DIR}" | tee -a "${INSTALL_LOG}"
-elif [ ! -d "${VENV_DIR}" ] && [ -f "${PLUGIN_DIR}/scripts/install_venv.sh" ]; then
-    # Venv doesn't exist, try to create it
-    echo "Virtual environment not found, creating it..." | tee -a "${INSTALL_LOG}"
-    if bash "${PLUGIN_DIR}/scripts/install_venv.sh" >> "${INSTALL_LOG}" 2>&1; then
-        if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
-            PYTHON3="${VENV_DIR}/bin/python3"
-            PIP_CMD="${VENV_DIR}/bin/pip"
-            echo "✓ Virtual environment created and ready" | tee -a "${INSTALL_LOG}"
+    echo "Using existing virtual environment: ${VENV_DIR}" | tee -a "${INSTALL_LOG}"
+else
+    # Venv doesn't exist or is incomplete, create it
+    echo "Virtual environment not found or incomplete, creating it..." | tee -a "${INSTALL_LOG}"
+    if [ -f "${PLUGIN_DIR}/scripts/install_venv.sh" ]; then
+        if bash "${PLUGIN_DIR}/scripts/install_venv.sh" >> "${INSTALL_LOG}" 2>&1; then
+            if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
+                PYTHON3="${VENV_DIR}/bin/python3"
+                PIP_CMD="${VENV_DIR}/bin/pip"
+                echo "✓ Virtual environment created successfully" | tee -a "${INSTALL_LOG}"
+            else
+                echo "ERROR: Venv creation reported success but venv not found at ${VENV_DIR}" | tee -a "${INSTALL_LOG}"
+                exit 1
+            fi
         else
-            echo "Warning: Venv creation reported success but venv not found, using system Python" | tee -a "${INSTALL_LOG}"
+            echo "ERROR: Failed to create virtual environment. Check ${INSTALL_LOG} for details." | tee -a "${INSTALL_LOG}"
+            exit 1
         fi
     else
-        echo "Warning: Failed to create venv, using system Python" | tee -a "${INSTALL_LOG}"
+        # Fallback: create venv directly if install_venv.sh doesn't exist
+        echo "install_venv.sh not found, creating venv directly..." | tee -a "${INSTALL_LOG}"
+        if $PYTHON3 -m venv "${VENV_DIR}" >> "${INSTALL_LOG}" 2>&1; then
+            if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
+                PYTHON3="${VENV_DIR}/bin/python3"
+                PIP_CMD="${VENV_DIR}/bin/pip"
+                echo "✓ Virtual environment created successfully" | tee -a "${INSTALL_LOG}"
+            else
+                echo "ERROR: Failed to create virtual environment" | tee -a "${INSTALL_LOG}"
+                exit 1
+            fi
+        else
+            echo "ERROR: Failed to create virtual environment with python3 -m venv" | tee -a "${INSTALL_LOG}"
+            exit 1
+        fi
     fi
 fi
 
@@ -160,20 +180,10 @@ $PIP_CMD --version >> "${INSTALL_LOG}" 2>&1 || true
 
 # Attempt to upgrade pip to latest version before installing dependencies
 # This helps ensure compatibility with the latest package formats
-# In venv, no flags needed. For system Python, try --user first
-echo "Upgrading pip (best effort)..." | tee -a "${INSTALL_LOG}"
-if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
-    # Using venv, no special flags needed
-    if ! run_pip_with_timeout 300 "pip upgrade" install --upgrade pip --no-input --disable-pip-version-check --quiet; then
-        echo "Warning: Could not upgrade pip, continuing with existing version..." | tee -a "${INSTALL_LOG}"
-    fi
-else
-    # System Python, try --user first
-    if ! run_pip_with_timeout 300 "pip upgrade (--user)" install --upgrade pip --user --no-input --disable-pip-version-check --quiet; then
-        if ! run_pip_with_timeout 300 "pip upgrade (system)" install --upgrade pip --no-input --disable-pip-version-check --quiet; then
-            echo "Warning: Could not upgrade pip, continuing with existing version..." | tee -a "${INSTALL_LOG}"
-        fi
-    fi
+# In venv, no special flags needed
+echo "Upgrading pip in venv (best effort)..." | tee -a "${INSTALL_LOG}"
+if ! run_pip_with_timeout 300 "pip upgrade" install --upgrade pip --no-input --disable-pip-version-check --quiet; then
+    echo "Warning: Could not upgrade pip, continuing with existing version..." | tee -a "${INSTALL_LOG}"
 fi
 
 # Helper function to install dependencies with specified pip flags
@@ -199,38 +209,20 @@ install_with() {
 
 INSTALL_SUCCESS=0
 
-# Install dependencies
-# In venv, no special flags needed. For system Python, try --user first
+# Install dependencies in venv (we always use venv now)
 echo "Removing old venv packages..." | tee -a "${INSTALL_LOG}"
-if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
-    # Using venv, no special flags needed
-    echo "Installing dependencies in venv..." | tee -a "${INSTALL_LOG}"
-    if install_with "--upgrade"; then
-        INSTALL_SUCCESS=1
-    fi
-else
-    # System Python, try --user first
-    echo "Installing dependencies (trying --user first)..." | tee -a "${INSTALL_LOG}"
-    if install_with "--upgrade --user"; then
-        INSTALL_SUCCESS=1
-    elif install_with "--upgrade"; then
-        INSTALL_SUCCESS=1
-        echo "Note: Installed system-wide (--user installation failed)" | tee -a "${INSTALL_LOG}"
-    fi
+echo "Installing dependencies in venv..." | tee -a "${INSTALL_LOG}"
+if install_with "--upgrade"; then
+    INSTALL_SUCCESS=1
 fi
 
 if [ $INSTALL_SUCCESS -eq 0 ]; then
-    echo "ERROR: Failed to install Python dependencies." | tee -a "${INSTALL_LOG}"
+    echo "ERROR: Failed to install Python dependencies in venv." | tee -a "${INSTALL_LOG}"
     echo "Last 30 lines of error output:" | tee -a "${INSTALL_LOG}"
     tail -30 "${INSTALL_LOG}" || true
     echo ""
-    if [ -d "${VENV_DIR}" ] && [ -x "${VENV_DIR}/bin/python3" ]; then
-        echo "Try manual install with:" | tee -a "${INSTALL_LOG}"
-        echo "  ${VENV_DIR}/bin/pip install -r ${REQUIREMENTS_FILE} --upgrade"
-    else
-        echo "Try manual install with:" | tee -a "${INSTALL_LOG}"
-        echo "  $PIP_CMD install -r ${REQUIREMENTS_FILE} --upgrade --user"
-    fi
+    echo "Try manual install with:" | tee -a "${INSTALL_LOG}"
+    echo "  ${VENV_DIR}/bin/pip install -r ${REQUIREMENTS_FILE} --upgrade"
     exit 1
 fi
 
