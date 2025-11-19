@@ -808,9 +808,9 @@ if (file_exists($cssPath)) {
             return;
         }
 
-        // Debounce rapid successive calls (within 1 second)
+        // Debounce rapid successive calls (within 300ms for faster updates)
         const now = Date.now();
-        if (lastStatusUpdate && (now - lastStatusUpdate) < 1000) {
+        if (lastStatusUpdate && (now - lastStatusUpdate) < 300) {
             return;
         }
         lastStatusUpdate = now;
@@ -870,8 +870,8 @@ if (file_exists($cssPath)) {
         const serviceStatusTextEl = document.getElementById('service-status-text');
         const serviceStatusDotEl = document.getElementById('service-status-dot');
         
-        // Keep restarting state visible for minimum 3 seconds
-        const minRestartDuration = 3000; // 3 seconds
+        // Keep restarting state visible for minimum 1 second (reduced for faster feedback)
+        const minRestartDuration = 1000; // 1 second
         const elapsedSinceRestart = restartStartTime > 0 ? Date.now() - restartStartTime : 0;
         const shouldShowRestarting = isServiceRestarting && (elapsedSinceRestart < minRestartDuration || !serviceRunning);
         
@@ -1664,19 +1664,23 @@ if (file_exists($cssPath)) {
             }
         }, 500);
         
+        // Load status immediately on page load (don't wait for SSE)
+        loadStatus();
+        loadPlaylists();
+        
         initializeEventSource();
         
-        // Fallback: If QR code hasn't loaded after SSE connects, trigger initial load
+        // Fallback: If QR code hasn't loaded after SSE connects, trigger load again
         setTimeout(function() {
             const qrLoadingEl = document.getElementById('qr-loading');
             const qrContentEl = document.getElementById('qr-content');
             // If still showing loading state and content not shown, trigger load
             if (qrLoadingEl && qrLoadingEl.style.display !== 'none' && 
                 (!qrContentEl || qrContentEl.style.display === 'none')) {
-                // SSE might not have sent status yet, trigger initial load
+                // SSE might not have sent status yet, trigger another load
                 loadStatus();
             }
-        }, 2000); // Wait 2 seconds for SSE to send initial status
+        }, 1500); // Reduced from 2 seconds - just a quick fallback check
         
         // Only refresh on visibility change if SSE is not active
         document.addEventListener('visibilitychange', function() {
