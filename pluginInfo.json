@@ -1,18 +1,18 @@
 {
 	"repoName": "fpp-Homekit",
-	"name": "FPP HomeKit Integration",
+	"name": "FPP Homekit",
 	"author": "Evan Kemp, Nick Wulff",
-	"description": "Integrates Falcon Pixel Player with Apple HomeKit, allowing you to control FPP playlists via HomeKit. Provides QR code pairing and status monitoring.",
+	"description": "High-performance HomeKit integration for Falcon Player. Control FPP playlists via Apple Home app with lightning-fast response times, QR pairing, and real-time status monitoring.",
 	"homeURL": "https://github.com/Evankemp07/fpp-Homekit",
 	"srcURL": "https://github.com/Evankemp07/fpp-Homekit.git",
 	"bugURL": "https://github.com/Evankemp07/fpp-Homekit/issues",
 	"allowUpdates": 1,
 	"versions": [
 		{
-			"minFPPVersion": "9.0",
+			"minFPPVersion": "7.0",
 			"maxFPPVersion": "0",
 			"branch": "master",
-			"sha": "",
+			"sha": "75f84eadea54b1b2e02717131ae19b7331d49150",
 			"dependencies": {
 				"plugins": [],
 				"packages": [

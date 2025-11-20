@@ -1,9 +1,6 @@
 <?php
-// Get plugin directory
 $pluginDir = dirname(__FILE__);
 $plugin = basename($pluginDir);
-
-// Load CSS file
 $cssPath = $pluginDir . '/styles.css';
 ?>
 
@@ -17,137 +14,291 @@ if (file_exists($cssPath)) {
 
 <div class="homekit-container">
     <div class="homekit-card">
-        <h2>HomeKit Status</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0;">FPP Homekit</h2>
+            <div style="display: flex; gap: 8px;">
+                <button class="settings-button" onclick="showMqttSettings()" id="settings-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm70-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z"/></svg>
+                </button>
+                <button class="info-button" onclick="showMqttInfo()">
+                    <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
+                        <path d="M440-280h80v-240h-80v240Zm40-320q17 0 28.5-11.5T520-640q0-17-11.5-28.5T480-680q-17 0-28.5 11.5T440-640q0 17 11.5 28.5T480-600Zm0 520q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
         
         <div id="message-container"></div>
         
         <div id="status-content">
-            <div class="status-row">
-                <span class="status-label">HomeKit Service</span>
-                <span class="status-value" id="service-status">
-                    <span class="status-indicator stopped"></span>Loading...
-                </span>
-            </div>
-            
-            <div class="status-row">
-                <span class="status-label">Pairing Status</span>
-                <span class="status-value" id="pairing-status">
-                    <span class="status-indicator not-paired"></span>Loading...
-                </span>
-            </div>
-            
-            <div class="status-row">
-                <span class="status-label">FPP Status</span>
-                <span class="status-value" id="fpp-status">
-                    <span class="status-indicator stopped"></span>Loading...
-                </span>
-            </div>
-            
-            <div class="status-row">
-                <span class="status-label">Configured Playlist</span>
-                <span class="status-value" id="playlist-status">
-                    Loading...
-                </span>
-            </div>
-            
-            <div class="playlist-config">
-                <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">Playlist Configuration</h3>
-                <div class="playlist-config-controls">
-                    <select class="form-select" id="playlist-select" aria-label="Select playlist to start">
-                        <option value="">-- Loading playlists... --</option>
-                    </select>
-                    <button class="homekit-button" type="button" id="save-playlist-btn">Save Playlist</button>
-                </div>
-            </div>
-            
-            <div class="playlist-config" style="margin-top: 24px;">
-                <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">MQTT Configuration</h3>
-                <div class="playlist-config-controls" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <label for="mqtt-broker" style="font-weight: 500; color: var(--text-secondary);">Broker:</label>
-                        <input type="text" class="form-select" id="mqtt-broker" placeholder="localhost" style="width: 120px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
-                    </div>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <label for="mqtt-port" style="font-weight: 500; color: var(--text-secondary);">Port:</label>
-                        <input type="number" class="form-select" id="mqtt-port" placeholder="1883" min="1" max="65535" style="width: 100px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
-                    </div>
-                    <button class="homekit-button" type="button" id="save-mqtt-btn">Save MQTT</button>
-                    <button class="homekit-button secondary" type="button" id="test-mqtt-btn">Test MQTT</button>
-                </div>
-            </div>
-            
-            <div class="playlist-config" style="margin-top: 24px;">
-                <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">HomeKit Network</h3>
-                <div class="playlist-config-controls" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <label for="homekit-ip" style="font-weight: 500; color: var(--text-secondary);">Listen Address:</label>
-                        <select class="form-select" id="homekit-ip" style="min-width: 220px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
-                            <option value="">Auto-detect (Primary Interface)</option>
-                            <option value="0.0.0.0">All Interfaces (0.0.0.0)</option>
-                        </select>
-                    </div>
-                    <button class="homekit-button" type="button" id="save-homekit-network-btn">Save & Restart</button>
-                </div>
-                <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
-                    Select which network interface HomeKit should listen on. Choose a specific interface if you get "not reachable" errors.
-                </div>
-            </div>
-            
-            <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color); display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap;">
-                <button class="homekit-button" onclick="restartService()" id="restart-btn">Restart Service</button>
-            </div>
-        </div>
-        
-        <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-color);">
-            <h3>Pair with HomeKit</h3>
-            <div id="pairing-section">
-                <div class="qr-container">
-                    <div id="qr-loading" style="display: none;">
-                        <p class="info-text">Generating QR code...</p>
-                    </div>
-                    <div id="qr-content" style="display: none;">
-                        <div class="qr-code">
-                            <img id="qr-image" alt="HomeKit QR Code" style="max-width: 280px; display: block;" />
+            <div class="status-cards-container">
+                <div class="status-card">
+                    <div class="status-card-label">HomeKit Service</div>
+                    <div class="status-card-value" id="service-status" style="display: flex; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                            <span id="service-status-text">Loading...</span>
+                            <button class="restart-icon-btn" onclick="restartService()" id="restart-btn">
+                                <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
+                                    <path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/>
+                                </svg>
+                            </button>
                         </div>
-                        <div class="setup-code">
-                            <span class="setup-code-label">Setup Code</span>
-                            <div class="setup-code-value">
-                                <span id="setup-code-text"></span>
-                                <button class="copy-btn" onclick="copySetupCode()" title="Copy Setup Code" id="copy-btn">
-                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M5.5 2.5H11.5C12.0523 2.5 12.5 2.94772 12.5 3.5V9.5C12.5 10.0523 12.0523 10.5 11.5 10.5H9.5V12.5C9.5 13.0523 9.05228 13.5 8.5 13.5H2.5C1.94772 13.5 1.5 13.0523 1.5 12.5V6.5C1.5 5.94772 1.94772 5.5 2.5 5.5H4.5V3.5C4.5 2.94772 4.94772 2.5 5.5 2.5Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                                        <path d="M4.5 5.5H8.5C9.05228 5.5 9.5 5.94772 9.5 6.5V10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                                    </svg>
-                                </button>
+                        <span class="status-dot-large" id="service-status-dot" style="flex-shrink: 0;"></span>
+                    </div>
+                </div>
+                
+                <div class="status-card">
+                    <div class="status-card-label">Pairing Status</div>
+                    <div class="status-card-value" id="pairing-status" style="display: flex; align-items: center; justify-content: space-between;">
+                        <span id="pairing-status-text">Loading...</span>
+                        <span class="status-dot-large" id="pairing-status-dot"></span>
+                    </div>
+                </div>
+                
+                <div class="status-card" id="fpp-status-card">
+                    <div class="status-card-label">FPP Status</div>
+                    <div class="status-card-value" id="fpp-status" style="display: flex; align-items: center; justify-content: space-between;">
+                        <span id="fpp-status-text">Loading...</span>
+                        <span class="status-dot-large" id="fpp-status-dot"></span>
+                    </div>
+                </div>
+                
+                <div class="status-card" id="playlist-status-card">
+                    <div class="status-card-label">Configured Playlist</div>
+                    <div class="status-card-value" id="playlist-status">Loading...</div>
+                </div>
+
+                <div class="status-card" id="emulation-section" style="display: none;">
+                    <div class="status-card-label">HomeKit Emulation</div>
+                    <div class="status-card-value" style="display: flex; gap: 8px; padding-top: 4px;">
+                        <button class="homekit-button" style="font-size: 14px; padding: 8px 16px; background: #34c759;" onclick="emulateHomeKit(true)" id="emulate-on-btn">
+                            Emulate ON
+                        </button>
+                        <button class="homekit-button secondary" style="font-size: 14px; padding: 8px 16px;" onclick="emulateHomeKit(false)" id="emulate-off-btn">
+                            Emulate OFF
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="config-layout">
+                <div class="config-left">
+                    <div class="playlist-config">
+                        <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">Playlist Configuration</h3>
+                        <div class="playlist-config-controls">
+                            <select class="form-select" id="playlist-select" aria-label="Select playlist to start">
+                                <option value="">-- Loading playlists... --</option>
+                            </select>
+                            <button class="homekit-button" type="button" id="save-playlist-btn" style="min-width: 140px;">Save Playlist</button>
+                        </div>
+                    </div>
+                    
+                    <div class="playlist-config" style="margin-top: 24px;" id="mqtt-config-section">
+                        <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">MQTT Configuration</h3>
+                        <div class="playlist-config-controls" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <label for="mqtt-broker" style="font-weight: 500; color: var(--text-secondary);">Broker:</label>
+                                <input type="text" class="form-select" id="mqtt-broker" placeholder="localhost" style="width: 120px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <label for="mqtt-port" style="font-weight: 500; color: var(--text-secondary);">Port:</label>
+                                <input type="number" class="form-select" id="mqtt-port" placeholder="1883" min="1" max="65535" style="width: 100px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary);">
+                            </div>
+                            <button class="homekit-button" type="button" id="save-mqtt-btn">Save MQTT</button>
+                            <button class="homekit-button secondary" type="button" id="test-mqtt-btn">Test MQTT</button>
+                        </div>
+                    </div>
+                    
+                    <div class="playlist-config" style="margin-top: 24px;">
+                        <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">HomeKit Network</h3>
+                        <div class="playlist-config-controls" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                            <select class="form-select" id="homekit-ip" aria-label="Select network interface">
+                                <option value="">Auto-detect (Primary Interface)</option>
+                                <option value="0.0.0.0">All Interfaces (0.0.0.0)</option>
+                            </select>
+                            <button class="homekit-button" type="button" id="save-homekit-network-btn" style="min-width: 140px;">Save & Restart</button>
+                        </div>
+                        <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+                            Select which network interface HomeKit should listen on. Choose a different interface if you get "not reachable" errors.
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="config-right">
+                    <div class="status-card pairing-card">
+                        <div class="status-card-label">Pair with HomeKit</div>
+                        <div id="pairing-section">
+                            <div class="qr-container">
+                                <div id="qr-loading" style="display: block;">
+                                    <div class="qr-code-box">
+                                        <div class="qr-placeholder">
+                                            <div class="qr-placeholder-grid"></div>
+                                        </div>
+                                        <div class="setup-code-placeholder">
+                                            <div class="setup-code-label">SETUP CODE</div>
+                                            <div class="setup-code-value">
+                                                <span>XXXX-XXXX</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="qr-content" style="display: none;">
+                                    <div class="qr-code-box">
+                                        <div class="qr-code">
+                                            <img id="qr-image" alt="HomeKit QR Code" />
+                                        </div>
+                                        <div class="setup-code">
+                                            <span class="setup-code-label">Setup Code</span>
+                                            <div class="setup-code-value">
+                                                <span id="setup-code-text"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="qr-error" style="display: none;">
+                                    <p style="color: var(--error-color);">Service is not running. Please start the service to generate QR code.</p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div id="qr-error" style="display: none;">
-                        <p style="color: var(--error-color);">Service is not running. Please start the service to generate QR code.</p>
+                        
+                        <div id="paired-section" style="display: none;">
+                            <p class="success-message"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#4caf50" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M240-200h120v-240h240v240h120v-360L480-740 240-560v360Zm-80 80v-480l320-240 320 240v480H520v-240h-80v240H160Zm320-350Z"/></svg>Successfully paired with HomeKit</p>
+                            <p class="info-text">You can now control FPP from the Home app on your iOS devices.</p>
+                            <p class="info-text" id="last-command-text" style="display: none;">Last command: <span id="last-command-time">none</span></p>
+                        </div>
                     </div>
                 </div>
             </div>
             
-            <div id="paired-section" style="display: none;">
-                <p class="success-message">✓ Successfully paired with HomeKit</p>
-                <p class="info-text">You can now control FPP from the Home app on your iOS devices.</p>
+        </div>
+        
+        <div class="info-debug-layout" style="margin-top: 32px; padding-top: 32px;">
+            <div class="info-section">
+                <div class="info-group" style="padding: 0;">
+                    <div class="status-card-label" style="padding: 18px 22px 12px 22px; margin: 0;">Information</div>
+                    <div class="info-row">
+                        <div class="info-label">Accessory Name</div>
+                        <div class="info-value">FPP-Controller</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Accessory Type</div>
+                        <div class="info-value">Light</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Control</div>
+                        <div class="info-value">Turning the light ON will start the configured playlist. Turning it OFF will stop playback.</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="debug-section">
+                <h4 class="debug-header" onclick="toggleDebug()" style="margin: 0 0 16px 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-weight: 600;">
+                    <span class="debug-toggle-icon" id="debug-toggle-icon" style="display: inline-block; transition: transform 0.2s; transform: rotate(-90deg);">▼</span>
+                    Debug Messages
+                </h4>
+                <div class="debug-messages" id="debug-messages" style="color: var(--text-secondary); line-height: 1.6; font-family: 'SF Mono', Monaco, monospace; font-size: 12px;">
+                    <div>No debug messages yet...</div>
+                </div>
             </div>
         </div>
-        
-        <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-color);">
-            <h3>Information</h3>
-            <p class="info-text"><strong>Accessory Name:</strong> FPP-Controller</p>
-            <p class="info-text"><strong>Accessory Type:</strong> Light</p>
-            <p class="info-text"><strong>Control:</strong> Turning the light ON will start the configured playlist. Turning it OFF will stop playback.</p>
+    </div>
+</div>
+
+<!-- MQTT Info Modal -->
+<div id="mqtt-info-modal" class="info-modal" style="display: none;">
+    <div class="info-modal-overlay" onclick="hideMqttInfo()"></div>
+    <div class="info-modal-content">
+        <div class="info-modal-header">
+            <h3>MQTT Setup Instructions</h3>
+            <button class="info-modal-close" onclick="hideMqttInfo()" aria-label="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
+                    <path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/>
+                </svg>
+            </button>
         </div>
-        
-        <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-color);">
-            <h4 class="debug-header" onclick="toggleDebug()" style="margin: 0 0 16px 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-weight: 600;">
-                <span class="debug-toggle-icon" id="debug-toggle-icon" style="display: inline-block; transition: transform 0.2s; transform: rotate(-90deg);">▼</span>
-                Debug Messages
-            </h4>
-            <div class="debug-messages" id="debug-messages" style="display: none; color: var(--text-secondary); line-height: 1.6; max-height: 300px; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace; font-size: 12px;">
-                <div>No debug messages yet...</div>
+        <div class="info-modal-body">
+            <p><strong>To configure MQTT settings in FPP:</strong></p>
+            <ol>
+                <li>Enable <strong>Developer Mode</strong> in FPP settings to see MQTT configuration options</li>
+                <li>In MQTT settings, add <strong>'#'</strong> to the subscriptions list</li>
+                <li>Set the value to <strong>1</strong> for updates on everything</li>
+                <li>Use <strong>localhost</strong> as the hostname</li>
+                <li>If you changed the MQTT port from the default (1883), you can adjust it in this plugin's MQTT Configuration section</li>
+            </ol>
+        </div>
+    </div>
+</div>
+
+<!-- MQTT Settings Modal -->
+<div id="mqtt-settings-modal" class="info-modal" style="display: none;">
+    <div class="info-modal-overlay" onclick="hideMqttSettings()"></div>
+    <div class="info-modal-content">
+        <div class="info-modal-header">
+            <h3>MQTT Configuration Settings</h3>
+            <button class="info-modal-close" onclick="hideMqttSettings(); event.stopPropagation();" aria-label="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
+                    <path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/>
+                </svg>
+            </button>
+        </div>
+        <div class="info-modal-body">
+            <p><strong>Section Visibility Settings</strong></p>
+
+            <div class="settings-toggle-container">
+                <div class="settings-toggle-row">
+                    <label for="emulation-visibility-toggle" class="settings-toggle-label">
+                        Show HomeKit Emulation Section
+                        <span id="emulation-visibility-text" class="settings-toggle-description">(currently hidden)</span>
+                    </label>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="emulation-visibility-toggle" onchange="toggleEmulationVisibility(this)">
+                        <label for="emulation-visibility-toggle" class="toggle-slider"></label>
+                    </div>
+                </div>
+                <p class="settings-description">
+                    Control whether the HomeKit emulation buttons are visible on the main page.
+                    Useful for testing playlist control without needing actual HomeKit devices.
+                </p>
+            </div>
+
+            <div class="settings-toggle-container">
+                <div class="settings-toggle-row">
+                    <label for="mqtt-visibility-toggle" class="settings-toggle-label">
+                        Show MQTT Configuration Section
+                        <span id="mqtt-visibility-text" class="settings-toggle-description">(currently hidden)</span>
+                    </label>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="mqtt-visibility-toggle" onchange="toggleMqttConfigVisibility(this)">
+                        <label for="mqtt-visibility-toggle" class="toggle-slider"></label>
+                    </div>
+                </div>
+                <p class="settings-description">
+                    Control whether the MQTT configuration section is visible on the main page.
+                    Advanced users can show it to modify broker settings, while basic users can keep it hidden for a cleaner interface.
+                </p>
+            </div>
+
+            <div class="settings-toggle-container">
+                <div class="settings-toggle-row">
+                    <label for="last-command-visibility-toggle" class="settings-toggle-label">
+                        Show Last Command Display
+                        <span id="last-command-visibility-text" class="settings-toggle-description">(currently shown)</span>
+                    </label>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="last-command-visibility-toggle" onchange="toggleLastCommandVisibility(this)" checked>
+                        <label for="last-command-visibility-toggle" class="toggle-slider"></label>
+                    </div>
+                </div>
+                <p class="settings-description">
+                    Control whether the "Last command" information is displayed in the paired section.
+                    Shows the most recent command received through HomeKit (both real HomeKit commands and emulated ones).
+                </p>
+            </div>
+
+            <div style="margin-top: 32px; padding-top: 24px;">
+                <button id="unpair-homekit-btn" onclick="unpairHomeKit()" style="width: 100%; padding: 14px 20px; background: #ff3b30; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 0.2s ease, opacity 0.2s ease;" onmouseover="this.style.background='#ff2d20'" onmouseout="this.style.background='#ff3b30'">
+                    UNPAIR HOMEKIT
+                </button>
             </div>
         </div>
     </div>
@@ -157,18 +308,132 @@ if (file_exists($cssPath)) {
 (function() {
     const API_BASE = '/api/plugin/<?php echo $plugin; ?>';
     let refreshInterval = null;
+    let eventSource = null;
     let isUpdating = false;
     let playlistsLoaded = false;
     let currentPlaylist = '';
     let qrLoaded = false;
     let autoStartAttempted = false;
+    let isServiceRestarting = false;
     let playlistFetchInProgress = false;
+    let lastStatusUpdate = 0;
+    let restartStartTime = 0;
+    let restartPollInterval = null;
+    let fppStatusLoading = false;
+    let fppStatusLoadStartTime = 0;
     
     const playlistSelect = document.getElementById('playlist-select');
     const savePlaylistBtn = document.getElementById('save-playlist-btn');
-    
+
+    // Initialize SSE for real-time updates
+    function initializeEventSource() {
+        if (eventSource) {
+            eventSource.close();
+        }
+
+        eventSource = new EventSource(API_BASE + '/events');
+
+        eventSource.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                handleRealtimeUpdate(data);
+            } catch (e) {
+                debugLog('Error parsing SSE data', e.message);
+            }
+        };
+
+        eventSource.onopen = function() {
+            debugLog('Real-time connection established');
+            // Disable polling when SSE is active
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
+        };
+
+        eventSource.onerror = function(event) {
+            debugLog('SSE connection error', event);
+            // Reconnect after delay
+            eventSource.close();
+            setTimeout(function() {
+                if (!refreshInterval) {
+                    debugLog('SSE failed, falling back to polling mode');
+                    refreshInterval = setInterval(function() {
+                        loadStatus();
+                        if (!playlistFetchInProgress) {
+                            loadPlaylists();
+                        }
+                    }, 5000); // Slower polling as fallback
+                }
+            }, 2000);
+        };
+    }
+
+    // Handle SSE updates
+    function handleRealtimeUpdate(data) {
+        debugLog('Real-time update received', data.type);
+
+        switch (data.type) {
+            case 'status_update':
+                if (data.data) {
+                    // Full status sent on connection
+                    updateStatusDisplay(data.data);
+                }
+                break;
+
+            case 'command_update':
+                if (data.data) {
+                    // Show last command received (regardless of age)
+                    const showLastCommand = localStorage.getItem('fppHomekitShowLastCommand') !== 'false';
+                    const timeElement = document.getElementById('last-command-time');
+                    const textElement = document.getElementById('last-command-text');
+
+                    if (showLastCommand && timeElement && textElement) {
+                        const date = new Date(data.data.timestamp * 1000);
+                        const timeString = date.toLocaleTimeString();
+                        const sourceText = data.data.source === 'homekit' ? 'HomeKit' : 'Emulate';
+                        timeElement.textContent = `${data.data.action} (${sourceText}) at ${timeString}`;
+                        textElement.style.display = 'block';
+                    } else if (textElement && !showLastCommand) {
+                        // Hide if disabled
+                        textElement.style.display = 'none';
+                    }
+                }
+                break;
+
+            case 'connected':
+                debugLog('Real-time connection confirmed');
+                // Load playlists if needed
+                if (!playlistFetchInProgress) {
+                    loadPlaylists();
+                }
+                // Fallback QR code load
+                setTimeout(function() {
+                    if (!qrLoaded) {
+                        loadStatus();
+                    }
+                }, 500);
+                break;
+
+            case 'heartbeat':
+                // Heartbeat - no action
+                break;
+
+            default:
+                debugLog('Unknown update type', data.type);
+        }
+    }
+
     // Debug logging
     function debugLog(message, data = null) {
+        // Console log
+        if (data) {
+            console.log('[FPP-HomeKit]', message, data);
+        } else {
+            console.log('[FPP-HomeKit]', message);
+        }
+        
+        // UI log (keep last 15)
         const debugContainer = document.getElementById('debug-messages');
         if (!debugContainer) return;
         
@@ -189,11 +454,57 @@ if (file_exists($cssPath)) {
         
         debugContainer.insertBefore(logEntry, debugContainer.firstChild);
         
-        // Keep only last 15 messages
+        // Limit to 15 messages
         while (debugContainer.children.length > 15) {
             debugContainer.removeChild(debugContainer.lastChild);
         }
     }
+    
+    // Show MQTT info modal
+    window.showMqttInfo = function() {
+        const modal = document.getElementById('mqtt-info-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            // Animate
+            requestAnimationFrame(() => {
+                const content = modal.querySelector('.info-modal-content');
+                if (content) {
+                    content.style.opacity = '0';
+                    content.style.transform = 'scale(0.95)';
+                    requestAnimationFrame(() => {
+                        content.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                        content.style.opacity = '1';
+                        content.style.transform = 'scale(1)';
+                    });
+                }
+            });
+        }
+    };
+    
+    // Hide MQTT info modal
+    window.hideMqttInfo = function() {
+        const modal = document.getElementById('mqtt-info-modal');
+        if (modal) {
+            const content = modal.querySelector('.info-modal-content');
+            if (content) {
+                content.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                content.style.opacity = '0';
+                content.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    modal.style.display = 'none';
+                }, 200);
+            } else {
+                modal.style.display = 'none';
+            }
+        }
+    };
+    
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            hideMqttInfo();
+        }
+    });
     
     // Toggle debug section
     window.toggleDebug = function() {
@@ -201,18 +512,13 @@ if (file_exists($cssPath)) {
         const toggleIcon = document.getElementById('debug-toggle-icon');
         if (!debugMessages || !toggleIcon) return;
         
-        const isHidden = debugMessages.style.display === 'none' || 
-                        (debugMessages.style.display === '' && !debugMessages.classList.contains('open'));
+        const isHidden = !debugMessages.classList.contains('open');
         
         if (isHidden) {
-            debugMessages.style.display = 'block';
             debugMessages.classList.add('open');
-            toggleIcon.style.transform = 'rotate(0deg)';
             toggleIcon.classList.add('open');
         } else {
-            debugMessages.style.display = 'none';
             debugMessages.classList.remove('open');
-            toggleIcon.style.transform = 'rotate(-90deg)';
             toggleIcon.classList.remove('open');
         }
     };
@@ -223,22 +529,35 @@ if (file_exists($cssPath)) {
         const msgDiv = document.createElement('div');
         msgDiv.className = 'message ' + type;
         msgDiv.innerHTML = escapeHtml(message);
-        msgDiv.style.opacity = '0';
-        msgDiv.style.transform = 'translateY(-20px)';
+        
+        // Clear existing messages
         container.innerHTML = '';
         container.appendChild(msgDiv);
         
-        setTimeout(() => {
-            msgDiv.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-            msgDiv.style.opacity = '1';
-            msgDiv.style.transform = 'translateY(0)';
-        }, 10);
+        // Start hidden
+        msgDiv.style.opacity = '0';
+        msgDiv.style.transform = 'translateY(-100%)';
+        msgDiv.style.transition = 'none';
         
+        // Animate in
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                msgDiv.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                msgDiv.style.opacity = '1';
+                msgDiv.style.transform = 'translateY(0)';
+            });
+        });
+        
+        // Auto-hide success (5s)
         if (type === 'success') {
             setTimeout(() => {
                 msgDiv.style.opacity = '0';
-                msgDiv.style.transform = 'translateY(-20px)';
-                setTimeout(() => msgDiv.remove(), 500);
+                msgDiv.style.transform = 'translateY(-100%)';
+                setTimeout(() => {
+                    if (msgDiv.parentNode) {
+                        msgDiv.remove();
+                    }
+                }, 300);
             }, 5000);
         }
     }
@@ -249,9 +568,10 @@ if (file_exists($cssPath)) {
             return;
         }
         if (name) {
-            playlistStatusEl.innerHTML = '<span style="color: var(--success-color);">' + escapeHtml(name) + '</span>';
+            const playlistIcon = '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="#e3e3e3" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M640-160q-50 0-85-35t-35-85q0-50 35-85t85-35q11 0 21 1.5t19 6.5v-328h200v80H760v360q0 50-35 85t-85 35ZM120-320v-80h320v80H120Zm0-160v-80h480v80H120Zm0-160v-80h480v80H120Z"/></svg>';
+            playlistStatusEl.innerHTML = playlistIcon + escapeHtml(name);
         } else {
-            playlistStatusEl.innerHTML = '<span style="color: var(--warning-color);">Not configured</span>';
+            playlistStatusEl.textContent = 'Not configured';
         }
     }
     
@@ -290,8 +610,6 @@ if (file_exists($cssPath)) {
         } else {
             playlistFetchInProgress = true;
         }
-        debugLog('Loading playlists...');
-        
         fetch(API_BASE + '/playlists')
             .then(response => {
                 if (!response.ok) {
@@ -315,12 +633,16 @@ if (file_exists($cssPath)) {
                     }
                 }
                 
-                playlistSelect.value = currentPlaylist || '';
+                // Set selected value
+                const valueToSet = currentPlaylist || '';
+                playlistSelect.value = valueToSet;
+                // Update currentPlaylist
+                if (valueToSet && playlistSelect.value === valueToSet) {
+                    currentPlaylist = valueToSet;
+                }
                 updateSaveButtonState();
-                debugLog('Playlists loaded', data);
             })
             .catch(error => {
-                debugLog('Error loading playlists', { error: error.message });
                 showMessage('Error loading playlists: ' + error.message, 'error');
             })
             .finally(() => {
@@ -351,7 +673,7 @@ if (file_exists($cssPath)) {
         const formData = new FormData();
         formData.append('playlist_name', playlistName);
         
-        debugLog('Saving playlist configuration', { playlist: playlistName });
+        debugLog('Saving playlist', playlistName);
         fetch(API_BASE + '/config', {
             method: 'POST',
             body: formData
@@ -363,23 +685,32 @@ if (file_exists($cssPath)) {
                 return response.json();
             })
             .then(data => {
-                debugLog('Save response', data);
                 if (data.status === 'saved') {
+                    debugLog('Playlist saved successfully');
                     currentPlaylist = playlistName;
                     updatePlaylistStatusText(currentPlaylist);
+                    // Update dropdown
+                    if (playlistSelect) {
+                        playlistSelect.value = currentPlaylist;
+                    }
+                    updateSaveButtonState();
                     showMessage('Configuration saved.', 'success');
-                    setTimeout(() => loadStatus(), 300);
+                    // Reload playlists
                     setTimeout(() => {
                         if (!playlistFetchInProgress) {
                             loadPlaylists();
                         }
-                    }, 500);
+                        // Refresh if no SSE
+                        if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+                            loadStatus();
+                        }
+                    }, 300);
                 } else {
                     throw new Error(data.message || 'Failed to save configuration');
                 }
             })
             .catch(error => {
-                debugLog('Error saving playlist', { error: error.message });
+                debugLog('Error saving playlist', error.message);
                 showMessage('Error saving configuration: ' + error.message, 'error');
             })
             .finally(() => {
@@ -394,34 +725,158 @@ if (file_exists($cssPath)) {
         return div.innerHTML;
     }
     
-    // Copy setup code to clipboard
-    window.copySetupCode = function() {
-        const codeText = document.getElementById('setup-code-text').textContent;
-        if (!codeText) return;
-        
-        navigator.clipboard.writeText(codeText).then(() => {
-            const btn = document.getElementById('copy-btn');
-            const originalHTML = btn.innerHTML;
-            btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 8L6 11L13 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-            setTimeout(() => {
-                btn.innerHTML = originalHTML;
-            }, 2000);
-        }).catch(err => {
-            debugLog('Failed to copy setup code', { error: err.message });
-        });
+
+    // Show MQTT settings modal
+    window.showMqttSettings = function() {
+        const modal = document.getElementById('mqtt-settings-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            // Animate
+            requestAnimationFrame(() => {
+                const content = modal.querySelector('.info-modal-content');
+                if (content) {
+                    content.style.opacity = '0';
+                    content.style.transform = 'scale(0.95)';
+                    requestAnimationFrame(() => {
+                        content.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                        content.style.opacity = '1';
+                        content.style.transform = 'scale(1)';
+                    });
+                }
+            });
+        }
     };
-    
+
+    // Hide MQTT settings modal
+    window.hideMqttSettings = function() {
+        console.log('hideMqttSettings called');
+        const modal = document.getElementById('mqtt-settings-modal');
+        if (modal) {
+            console.log('modal found, hiding...');
+            const content = modal.querySelector('.info-modal-content');
+            if (content) {
+                content.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                content.style.opacity = '0';
+                content.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    modal.style.display = 'none';
+                }, 200);
+            } else {
+                console.log('content not found');
+            }
+        } else {
+            console.log('modal not found');
+        }
+    };
+
+    window.toggleEmulationVisibility = function(checkbox) {
+        const showEmulation = checkbox.checked;
+        localStorage.setItem('fppHomekitShowEmulation', showEmulation);
+
+        const section = document.getElementById('emulation-section');
+        if (section) {
+            if (showEmulation) {
+                section.style.display = 'block';
+                section.style.opacity = '1';
+                section.style.transform = 'translateY(0)';
+            } else {
+                section.style.display = 'none';
+            }
+        }
+
+        // Update the toggle text
+        const toggleText = document.getElementById('emulation-visibility-text');
+        if (toggleText) {
+            toggleText.textContent = showEmulation ? '(currently shown)' : '(currently hidden)';
+        }
+    };
+
+    // Toggle MQTT config visibility preference
+    window.toggleMqttConfigVisibility = function(checkbox) {
+        const showMqtt = checkbox.checked;
+        localStorage.setItem('fppHomekitShowMqttConfig', showMqtt);
+
+        const section = document.getElementById('mqtt-config-section');
+        if (section) {
+            if (showMqtt) {
+                section.style.display = 'block';
+                section.style.opacity = '1';
+                section.style.transform = 'translateY(0)';
+            } else {
+                section.style.display = 'none';
+            }
+        }
+
+        // Update the toggle text
+        const toggleText = document.getElementById('mqtt-visibility-text');
+        if (toggleText) {
+            toggleText.textContent = showMqtt ? '(currently shown)' : '(currently hidden)';
+        }
+    };
+
+    // Toggle last command visibility preference
+    window.toggleLastCommandVisibility = function(checkbox) {
+        const showLastCommand = checkbox.checked;
+        localStorage.setItem('fppHomekitShowLastCommand', showLastCommand);
+
+        const textElement = document.getElementById('last-command-text');
+        if (textElement) {
+            if (!showLastCommand) {
+                textElement.style.display = 'none';
+            } else {
+                // Show if there's a recent command
+                const timeElement = document.getElementById('last-command-time');
+                if (timeElement && timeElement.textContent !== 'none') {
+                    textElement.style.display = 'block';
+                }
+            }
+        }
+
+        // Update the toggle text
+        const toggleText = document.getElementById('last-command-visibility-text');
+        if (toggleText) {
+            toggleText.textContent = showLastCommand ? '(currently shown)' : '(currently hidden)';
+        }
+    };
+
     // Load status
-    function loadStatus() {
-        // Prevent concurrent updates
+    function loadStatus(forceFresh = false) {
+        // Prevent concurrent calls
         if (isUpdating) {
-            debugLog('Update already in progress, skipping...');
             return;
         }
-        
+
+        // Debounce (300ms), allow forced bypass
+        const now = Date.now();
+        if (!forceFresh && lastStatusUpdate && (now - lastStatusUpdate) < 300) {
+            return;
+        }
+        lastStatusUpdate = now;
+
         isUpdating = true;
-        debugLog('Loading status...');
-        fetch(API_BASE + '/status')
+        
+        // Only show loading animation on initial load or forced fresh check
+        const fppStatusTextEl = document.getElementById('fpp-status-text');
+        const fppStatusDotEl = document.getElementById('fpp-status-dot');
+        const hasExistingStatus = fppStatusTextEl && 
+            !fppStatusTextEl.textContent.includes('Loading...') && 
+            !fppStatusTextEl.textContent.includes('Unable to Check');
+        
+        if (!hasExistingStatus || forceFresh) {
+            // Set loading state only when needed
+            fppStatusLoading = true;
+            fppStatusLoadStartTime = Date.now();
+            if (fppStatusDotEl) {
+                fppStatusDotEl.className = 'status-dot-large restarting';
+            }
+        } else {
+            // Don't show loading if we already have valid status
+            fppStatusLoading = false;
+        }
+        
+        debugLog('Loading status...' + (forceFresh ? ' (forcing fresh check)' : ''));
+        const url = API_BASE + '/status' + (forceFresh ? '?force=1' : '');
+        fetch(url)
             .then(response => {
                 if (!response.ok) {
                     throw new Error('HTTP ' + response.status);
@@ -429,23 +884,44 @@ if (file_exists($cssPath)) {
                 return response.json();
             })
             .then(data => {
-                debugLog('Status response', data);
+                debugLog('Status updated', { playing: data.fpp_status?.playing, status: data.fpp_status?.status_name });
                 updateStatusDisplay(data);
-                // Clear any error messages on successful update
+                // Clear loading state after display update
+                fppStatusLoading = false;
+                fppStatusLoadStartTime = 0;
+                // Clear error messages
                 const messageContainer = document.getElementById('message-container');
                 if (messageContainer) {
                     const errorMessages = messageContainer.querySelectorAll('.message.error');
                     errorMessages.forEach(msg => {
                         if (msg.textContent.includes('Error loading status')) {
-                            msg.remove();
+                            msg.style.opacity = '0';
+                            msg.style.transform = 'translateY(-100%)';
+                            setTimeout(() => {
+                                if (msg.parentNode) {
+                                    msg.remove();
+                                }
+                            }, 300);
                         }
                     });
                 }
                 isUpdating = false;
             })
             .catch(error => {
-                debugLog('Error loading status', { error: error.message });
-                // Only show error message if it's not already showing
+                debugLog('Error loading status', error.message);
+                // Clear loading state
+                fppStatusLoading = false;
+                fppStatusLoadStartTime = 0;
+                // Set error state
+                const fppStatusTextEl = document.getElementById('fpp-status-text');
+                const fppStatusDotEl = document.getElementById('fpp-status-dot');
+                if (fppStatusTextEl) {
+                    fppStatusTextEl.textContent = 'Unable to Check Status';
+                }
+                if (fppStatusDotEl) {
+                    fppStatusDotEl.className = 'status-dot-large stopped';
+                }
+                // Show error if not already visible
                 const messageContainer = document.getElementById('message-container');
                 const existingError = messageContainer && 
                     Array.from(messageContainer.querySelectorAll('.message.error'))
@@ -457,94 +933,277 @@ if (file_exists($cssPath)) {
             });
     }
     
-    // Update status display
+    // Update status display (preserve last known values)
+    let lastKnownStatus = {
+        service_running: false,
+        paired: false,
+        fpp_status: {},
+        playlist: '',
+        recent_homekit_commands: []
+    };
+    let lastCommandUpdateTime = 0;
+    
     function updateStatusDisplay(data) {
-        const serviceRunning = data.service_running || false;
-        const paired = data.paired || false;
-        const fppStatus = data.fpp_status || {};
-        const playlist = data.playlist || '';
+        // Only update present fields
+        if (data.service_running !== undefined) {
+            lastKnownStatus.service_running = data.service_running;
+        }
+        // Always update paired status when provided (don't preserve if explicitly set)
+        if (data.paired !== undefined) {
+            lastKnownStatus.paired = data.paired;
+        }
         
-        // Update service status - indicator on right
-        const serviceStatusEl = document.getElementById('service-status');
-        const serviceStatusText = serviceRunning ? 'Running' : 'Stopped';
-        const serviceStatusClass = serviceRunning ? 'running' : 'stopped';
-        serviceStatusEl.innerHTML = serviceStatusText + '<span class="status-indicator ' + serviceStatusClass + '"></span>';
+        // Check for valid FPP status
+        const hasValidFppStatus = data.fpp_status !== undefined && 
+                                   data.fpp_status !== null && 
+                                   Object.keys(data.fpp_status).length > 0;
+        
+        if (hasValidFppStatus) {
+            // Merge FPP status (preserve existing fields)
+            lastKnownStatus.fpp_status = Object.assign({}, lastKnownStatus.fpp_status, data.fpp_status);
+        }
+        
+        if (data.playlist !== undefined) {
+            lastKnownStatus.playlist = data.playlist;
+        }
+        
+        // Preserve last command - update if new data has it, otherwise keep existing
+        if (data.recent_homekit_commands !== undefined) {
+            if (data.recent_homekit_commands.length > 0) {
+                // Update with new commands
+                lastKnownStatus.recent_homekit_commands = data.recent_homekit_commands;
+            }
+            // If data.recent_homekit_commands is empty array, don't overwrite - keep last known
+        }
+        
+        // Use last known values
+        const serviceRunning = lastKnownStatus.service_running;
+        const paired = lastKnownStatus.paired;
+        const fppStatus = lastKnownStatus.fpp_status || {};
+        const playlist = lastKnownStatus.playlist || '';
+        const recentCommands = lastKnownStatus.recent_homekit_commands || [];
+        
+        // Update service status card
+        const serviceStatusTextEl = document.getElementById('service-status-text');
+        const serviceStatusDotEl = document.getElementById('service-status-dot');
+        
+        // Keep restarting state visible (min 2s)
+        const minRestartDuration = 2000;
+        const elapsedSinceRestart = restartStartTime > 0 ? Date.now() - restartStartTime : 0;
+        const shouldShowRestarting = isServiceRestarting && (elapsedSinceRestart < minRestartDuration || !serviceRunning);
+        
+        if (shouldShowRestarting && serviceRunning && elapsedSinceRestart >= minRestartDuration) {
+            // Service restored, clear restarting state
+            isServiceRestarting = false;
+            restartStartTime = 0;
+            if (restartPollInterval) {
+                clearInterval(restartPollInterval);
+                restartPollInterval = null;
+            }
+        }
+
+        let serviceStatusText = serviceRunning ? 'Running' : 'Stopped';
+        let serviceStatusClass = serviceRunning ? 'running' : 'stopped';
+
+        if (shouldShowRestarting) {
+            serviceStatusText = 'Restarting...';
+            serviceStatusClass = 'restarting';
+        }
+
+        if (serviceStatusTextEl) {
+            serviceStatusTextEl.textContent = serviceStatusText;
+        }
+        if (serviceStatusDotEl) {
+            // Show restarting animation
+            if (shouldShowRestarting) {
+                serviceStatusDotEl.className = 'status-dot-large restarting';
+            } else {
+                serviceStatusDotEl.className = 'status-dot-large ' + serviceStatusClass;
+            }
+        }
         if (serviceRunning) {
             autoStartAttempted = false;
-        } else if (!autoStartAttempted) {
+        } else if (!autoStartAttempted && !isServiceRestarting) {
             attemptAutoStart();
         }
         
-        // Update pairing status - indicator on right
-        const pairingStatusEl = document.getElementById('pairing-status');
+        // Update pairing status card
+        const pairingStatusTextEl = document.getElementById('pairing-status-text');
+        const pairingStatusDotEl = document.getElementById('pairing-status-dot');
         const pairingStatusText = paired ? 'Paired' : 'Not Paired';
-        const pairingStatusClass = paired ? 'paired' : 'not-paired';
-        pairingStatusEl.innerHTML = pairingStatusText + '<span class="status-indicator ' + pairingStatusClass + '"></span>';
+        if (pairingStatusTextEl) {
+            pairingStatusTextEl.textContent = pairingStatusText;
+        }
+        if (pairingStatusDotEl) {
+            pairingStatusDotEl.className = 'status-dot-large ' + (paired ? 'paired' : 'not-paired');
+        }
         
-        // Update FPP status
+        // Update FPP status (preserve error state if needed)
+        const fppStatusTextEl = document.getElementById('fpp-status-text');
+        const currentFppStatusText = fppStatusTextEl ? fppStatusTextEl.textContent : '';
+        
+        // Preserve error state if no valid data
+        if (!hasValidFppStatus && currentFppStatusText.includes('Unable to Check')) {
+            // Keep error state
+            const fppStatusDotEl = document.getElementById('fpp-status-dot');
+            if (fppStatusDotEl && !fppStatusLoading) {
+                fppStatusDotEl.className = 'status-dot-large stopped';
+            }
+            // Clear loading state
+            fppStatusLoading = false;
+            fppStatusLoadStartTime = 0;
+            return;
+        }
+        
+        // Clear loading on valid data
+        if (hasValidFppStatus) {
+            fppStatusLoading = false;
+            fppStatusLoadStartTime = 0;
+        }
+        
+        // Initial load - keep loading animation
+        if (!hasValidFppStatus && Object.keys(fppStatus).length === 0) {
+            // Keep loading animation
+            const fppStatusDotEl = document.getElementById('fpp-status-dot');
+            if (fppStatusDotEl && fppStatusLoading) {
+                fppStatusDotEl.className = 'status-dot-large restarting';
+            }
+            return;
+        } else if (hasValidFppStatus) {
+            // Clear loading state when we have valid data
+            fppStatusLoading = false;
+            fppStatusLoadStartTime = 0;
+        }
+        
         const playing = fppStatus.playing || false;
         let statusText = fppStatus.status_text || fppStatus.status_name || 'Unknown';
         const statusName = (fppStatus.status_name || 'unknown').toLowerCase();
         const errorDetail = fppStatus.error_detail || '';
         const fppCurrentPlaylist = fppStatus.current_playlist || '';
         const fppCurrentSequence = fppStatus.current_sequence || '';
+        const statusCode = fppStatus.status || 0;
         
-        // Determine status indicator class based on status
-        let statusClass = 'stopped';
+        // Determine FPP status text and dot class
+        let fppStatusText = 'Unknown';
+        let fppDotClass = 'stopped';
+        let fppStatusDetails = '';
+        
         if (playing || statusName === 'playing') {
-            statusClass = 'playing';
-        } else if (statusName === 'paused') {
-            statusClass = 'paused';
-        } else if (statusName === 'testing') {
-            statusClass = 'testing';
-        } else if (statusText.includes('Running') && !statusText.includes('Not Running') && !statusText.includes('Unreachable')) {
-            // FPP is running (green indicator)
-            statusClass = 'running';
-        } else if (statusText.includes('Not Running') || statusText.includes('Unavailable') || statusText.includes('Unreachable')) {
-            statusClass = 'stopped';
-        }
-        
-        // Build status display with better formatting - indicator on right side
-        let statusHtml = '<div style="flex: 1; min-width: 0; text-align: right;">';
-        
-        if (playing) {
-            statusHtml += '<strong>Playing</strong>';
+            fppStatusText = '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M160-160v-320h160v320H160Zm240 0v-640h160v640H400Zm240 0v-440h160v440H640Z"/></svg>Playing';
+            fppDotClass = 'playing';
+            // Add details
             if (fppCurrentPlaylist) {
-                statusHtml += '<div style="color: var(--text-secondary); font-size: 13px; margin-top: 4px;">Playlist: ' + escapeHtml(fppCurrentPlaylist) + '</div>';
+                fppStatusDetails += '<div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Playlist: ' + escapeHtml(fppCurrentPlaylist) + '</div>';
             }
             if (fppCurrentSequence) {
-                statusHtml += '<div style="color: var(--text-secondary); font-size: 13px; margin-top: 2px;">Sequence: ' + escapeHtml(fppCurrentSequence) + '</div>';
+                fppStatusDetails += '<div style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">Sequence: ' + escapeHtml(fppCurrentSequence) + '</div>';
+            }
+        } else if (statusName === 'testing') {
+            fppStatusText = 'Testing';
+            fppDotClass = 'testing';
+        } else if (statusText.includes('Running') && !statusText.includes('Not Running') && !statusText.includes('Unreachable')) {
+            fppStatusText = 'Running';
+            fppDotClass = 'running';
+        } else if (statusText.includes('Available') || statusCode === 0 || statusName === 'idle' || (!errorDetail && statusName !== 'unknown' && statusName !== '')) {
+            // Check paused vs idle
+            const isPaused = statusCode === 2 || statusName === 'paused' || statusName.toLowerCase().includes('paused');
+            const idleText = isPaused ? 'Paused' : 'Idle';
+            const idleIcon = isPaused ?
+                '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="#e3e3e3" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M560-200v-560h160v560H560Zm-320 0v-560h160v560H240Z"/></svg>' :
+                '<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="#e3e3e3" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M360-840v-80h240v80H360ZM480-80q-74 0-139.5-28.5T226-186q-49-49-77.5-114.5T120-440q0-74 28.5-139.5T226-694q49-49 114.5-77.5T480-800q62 0 119 20t107 58l56-56 56 56-56 56q38 50 58 107t20 119q0 74-28.5 139.5T734-186q-49 49-114.5 77.5T480-80Zm0-80q116 0 198-82t82-198q0-116-82-198t-198-82q-116 0-198 82t-82 198q0 116 82 198t198 82Zm0-280ZM360-280h80v-320h-80v320Zm160 0h80v-320h-80v320Z"/></svg>';
+            fppStatusText = idleIcon + idleText;
+            fppDotClass = isPaused ? 'paused' : 'running';
+            // Show error details only if not idle (idle is normal state)
+            if (errorDetail && statusCode !== 0 && statusName !== 'idle') {
+                const errorParts = errorDetail.split('. ').filter(part => part.trim());
+                if (errorParts.length > 0) {
+                    fppStatusDetails += '<div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.4;">';
+                    errorParts.forEach((part, index) => {
+                        if (part.trim()) {
+                            const trimmedPart = part.trim();
+                            fppStatusDetails += escapeHtml(trimmedPart);
+                            if (!trimmedPart.endsWith('.') && !trimmedPart.endsWith(':')) {
+                                fppStatusDetails += '.';
+                            }
+                            if (index < errorParts.length - 1) {
+                                fppStatusDetails += '<br>';
+                            }
+                        }
+                    });
+                    fppStatusDetails += '</div>';
+                }
+            }
+        } else if (statusText.includes('Not Running') || statusText.includes('Unavailable') || statusText.includes('Unreachable')) {
+            fppStatusText = 'Unavailable';
+            fppDotClass = 'stopped';
+            if (errorDetail) {
+                const errorParts = errorDetail.split('. ').filter(part => part.trim());
+                if (errorParts.length > 0) {
+                    fppStatusDetails += '<div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.4;">';
+                    errorParts.forEach((part, index) => {
+                        if (part.trim()) {
+                            const trimmedPart = part.trim();
+                            fppStatusDetails += escapeHtml(trimmedPart);
+                            if (!trimmedPart.endsWith('.') && !trimmedPart.endsWith(':')) {
+                                fppStatusDetails += '.';
+                            }
+                            if (index < errorParts.length - 1) {
+                                fppStatusDetails += '<br>';
+                            }
+                        }
+                    });
+                    fppStatusDetails += '</div>';
+                }
             }
         } else {
-            statusHtml += '<div>' + escapeHtml(statusText) + '</div>';
-            if (errorDetail) {
-                // Format error detail with better styling - split into readable lines
-                const errorParts = errorDetail.split('. ').filter(part => part.trim());
-                statusHtml += '<div style="color: var(--text-secondary); font-size: 12px; margin-top: 6px; line-height: 1.5; text-align: right;">';
-                errorParts.forEach((part, index) => {
-                    if (part.trim()) {
-                        const trimmedPart = part.trim();
-                        statusHtml += escapeHtml(trimmedPart);
-                        if (!trimmedPart.endsWith('.') && !trimmedPart.endsWith(':')) {
-                            statusHtml += '.';
-                        }
-                        if (index < errorParts.length - 1) {
-                            statusHtml += '<br>';
-                        }
-                    }
-                });
-                statusHtml += '</div>';
+            fppStatusText = statusText || 'Unknown';
+            fppDotClass = 'stopped';
+        }
+        
+        // Update FPP status card
+        const fppStatusDotEl = document.getElementById('fpp-status-dot');
+        const fppStatusCard = document.getElementById('fpp-status-card');
+        if (fppStatusTextEl) {
+            fppStatusTextEl.innerHTML = fppStatusText;
+        }
+        if (fppStatusDotEl) {
+            // Show loading or status
+            if (fppStatusLoading) {
+                fppStatusDotEl.className = 'status-dot-large restarting';
+            } else {
+                fppStatusDotEl.className = 'status-dot-large ' + fppDotClass;
             }
         }
-        statusHtml += '</div><span class="status-indicator ' + statusClass + '"></span>';
-        
-        const fppStatusEl = document.getElementById('fpp-status');
-        fppStatusEl.innerHTML = statusHtml;
+        // Add status details
+        if (fppStatusCard && fppStatusDetails) {
+            let detailsEl = fppStatusCard.querySelector('.status-card-details');
+            if (!detailsEl) {
+                detailsEl = document.createElement('div');
+                detailsEl.className = 'status-card-details';
+                fppStatusCard.appendChild(detailsEl);
+            }
+            detailsEl.innerHTML = fppStatusDetails;
+        } else if (fppStatusCard) {
+            // Remove details
+            const detailsEl = fppStatusCard.querySelector('.status-card-details');
+            if (detailsEl) {
+                detailsEl.remove();
+            }
+        }
         
         // Update playlist
-        currentPlaylist = playlist || '';
-        updatePlaylistStatusText(currentPlaylist);
-        if (playlistSelect && playlistsLoaded) {
+        if (playlist && playlist !== '') {
+            // Update if changed
+            if (playlist !== currentPlaylist) {
+                currentPlaylist = playlist;
+                updatePlaylistStatusText(currentPlaylist);
+                // Update dropdown
+                if (playlistSelect && playlistsLoaded) {
+                    playlistSelect.value = currentPlaylist;
+                }
+            }
+        } else if (playlistSelect && playlistsLoaded && playlistSelect.value !== currentPlaylist) {
+            // Sync dropdown
             playlistSelect.value = currentPlaylist;
         }
         updateSaveButtonState();
@@ -562,15 +1221,53 @@ if (file_exists($cssPath)) {
             pairedSection.style.display = 'none';
             
             if (serviceRunning) {
-                if (!qrLoaded) {
-                    loadQRCode();
-                }
+                // Always reload QR code when service is running and not paired
+                // This ensures it reloads after unpairing
+                loadQRCode();
             } else {
-                document.getElementById('qr-loading').style.display = 'none';
+                // Show placeholder
+                document.getElementById('qr-loading').style.display = 'block';
                 document.getElementById('qr-content').style.display = 'none';
-                document.getElementById('qr-error').style.display = 'block';
+                document.getElementById('qr-error').style.display = 'none';
                 qrLoaded = false;
             }
+        }
+
+        // Update last command display (show last command received, keep it visible permanently if enabled)
+        const showLastCommand = localStorage.getItem('fppHomekitShowLastCommand') !== 'false';
+        const timeElement = document.getElementById('last-command-time');
+        const textElement = document.getElementById('last-command-text');
+
+        if (!showLastCommand && textElement) {
+            textElement.style.display = 'none';
+            return;
+        }
+
+        // Skip update if we're in the middle of a command (to avoid overwriting with stale data)
+        const now = Date.now();
+        if (lastCommandUpdateTime && (now - lastCommandUpdateTime) < 2000) {
+            return; // Skip this update to avoid overwriting recent commands
+        }
+        
+        // Use preserved commands if new data doesn't have them (preserve last known command)
+        const commandsToUse = (data.recent_homekit_commands && data.recent_homekit_commands.length > 0) 
+            ? data.recent_homekit_commands 
+            : recentCommands;
+        
+        // Show the last command from the array (most recent) - keep it visible permanently once received
+        if (commandsToUse && commandsToUse.length > 0 && timeElement && textElement) {
+            // Get the last command (most recent)
+            const lastCommand = commandsToUse[commandsToUse.length - 1];
+            const date = new Date(lastCommand.timestamp * 1000);
+            const timeString = date.toLocaleTimeString();
+            const sourceText = lastCommand.source === 'homekit' ? 'HomeKit' : 'Emulate';
+            timeElement.textContent = `${lastCommand.action} (${sourceText}) at ${timeString}`;
+            textElement.style.display = 'block';
+            lastCommandUpdateTime = now;
+        } else if (textElement) {
+            // Only hide if no commands exist at all (never received any commands)
+            // This ensures it stays visible permanently once a command is received
+            textElement.style.display = 'none';
         }
     }
     
@@ -579,8 +1276,29 @@ if (file_exists($cssPath)) {
             return;
         }
         autoStartAttempted = true;
-        debugLog('Attempting to auto-start HomeKit service...');
         showMessage('Starting HomeKit service...', 'info');
+        
+        // Set restarting state
+        restartStartTime = Date.now();
+        isServiceRestarting = true;
+        
+        // Update status dot
+        const serviceStatusTextEl = document.getElementById('service-status-text');
+        const serviceStatusDotEl = document.getElementById('service-status-dot');
+        if (serviceStatusTextEl) {
+            serviceStatusTextEl.textContent = 'Restarting...';
+        }
+        if (serviceStatusDotEl) {
+            serviceStatusDotEl.className = 'status-dot-large restarting';
+        }
+        
+        // Start polling
+        if (restartPollInterval) {
+            clearInterval(restartPollInterval);
+        }
+        restartPollInterval = setInterval(() => {
+            loadStatus();
+        }, 500);
         
         fetch(API_BASE + '/restart', { method: 'POST' })
             .then(response => {
@@ -590,18 +1308,25 @@ if (file_exists($cssPath)) {
                 return response.json();
             })
             .then(data => {
-                debugLog('Auto-start response', data);
                 if (data.started || data.status === 'restarted') {
                     showMessage('HomeKit service started.', 'success');
                 } else {
                     showMessage(data.message || 'Starting HomeKit service...', 'info');
                 }
-                // Give the service a moment before polling
-                setTimeout(() => loadStatus(), 1200);
+                // Refresh if no SSE
+                if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+                    setTimeout(() => loadStatus(), 1200);
+                }
             })
             .catch(error => {
-                debugLog('Auto-start failed', { error: error.message });
                 showMessage('Unable to start service automatically: ' + error.message, 'error');
+                // Clear restarting state
+                isServiceRestarting = false;
+                restartStartTime = 0;
+                if (restartPollInterval) {
+                    clearInterval(restartPollInterval);
+                    restartPollInterval = null;
+                }
             });
     }
     
@@ -619,12 +1344,17 @@ if (file_exists($cssPath)) {
                 return response.json();
             })
             .then(data => {
-                debugLog('Pairing info response', data);
-                const setupCode = data.setup_code || '123-45-678';
+                let setupCode = data.setup_code || '0000-0000';
+                
+                // Format to XXXX-XXXX
+                setupCode = setupCode.replace(/-/g, '');
+                if (setupCode.length === 8) {
+                    setupCode = setupCode.substring(0, 4) + '-' + setupCode.substring(4);
+                }
                 
                 document.getElementById('setup-code-text').textContent = setupCode;
                 
-                // Load QR code image
+                // Load QR image
                 const qrImage = document.getElementById('qr-image');
                 qrImage.src = API_BASE + '/qr-code?' + new Date().getTime();
                 qrImage.onload = () => {
@@ -639,7 +1369,6 @@ if (file_exists($cssPath)) {
                 };
             })
             .catch(error => {
-                debugLog('Error loading pairing info', { error: error.message });
                 document.getElementById('qr-loading').style.display = 'none';
                 document.getElementById('qr-error').style.display = 'block';
                 qrLoaded = false;
@@ -647,16 +1376,119 @@ if (file_exists($cssPath)) {
     }
     
     // Restart service
+    window.unpairHomeKit = function() {
+        if (!confirm('Are you sure you want to unpair HomeKit? This will remove all paired devices and generate a new pairing code. You will need to re-pair your iOS devices.')) {
+            return;
+        }
+        
+        debugLog('Unpairing HomeKit...');
+        const btn = document.getElementById('unpair-homekit-btn');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Unpairing...';
+        btn.style.opacity = '0.6';
+        
+        fetch(`${API_BASE}/unpair`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showMessage('HomeKit unpairing successful. Service is restarting with a new pairing code.', 'success');
+                // Close settings modal
+                hideMqttSettings();
+                // Reset QR loaded state to force reload
+                qrLoaded = false;
+                // Immediately update UI to show unpaired state
+                const pairingSection = document.getElementById('pairing-section');
+                const pairedSection = document.getElementById('paired-section');
+                if (pairingSection) pairingSection.style.display = 'block';
+                if (pairedSection) pairedSection.style.display = 'none';
+                
+                // Update pairing status indicators immediately
+                const pairingStatusTextEl = document.getElementById('pairing-status-text');
+                const pairingStatusDotEl = document.getElementById('pairing-status-dot');
+                if (pairingStatusTextEl) pairingStatusTextEl.textContent = 'Not Paired';
+                if (pairingStatusDotEl) pairingStatusDotEl.className = 'status-dot-large not-paired';
+                
+                // Refresh status and reload QR code after delays (service needs time to restart)
+                // First check status after 2 seconds
+                setTimeout(() => {
+                    loadStatus(true);
+                }, 2000);
+                // Then try to load QR code after service has had time to generate new pairing info
+                // Retry a few times in case service is still starting
+                let retryCount = 0;
+                const maxRetries = 6;
+                const retryQRCode = () => {
+                    setTimeout(() => {
+                        loadStatus(true);
+                        // Check if service is running before loading QR
+                        const serviceStatusTextEl = document.getElementById('service-status-text');
+                        const isRunning = serviceStatusTextEl && serviceStatusTextEl.textContent === 'Running';
+                        
+                        if (isRunning) {
+                            loadQRCode();
+                        } else if (retryCount < maxRetries) {
+                            retryCount++;
+                            retryQRCode();
+                        }
+                    }, 2000);
+                };
+                retryQRCode();
+            } else {
+                showMessage('Error unpairing HomeKit: ' + (data.message || 'Unknown error'), 'error');
+            }
+        })
+        .catch(error => {
+            showMessage('Error unpairing HomeKit: ' + error.message, 'error');
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = originalText;
+            btn.style.opacity = '1';
+        });
+    };
+
     window.restartService = function() {
         if (!confirm('Are you sure you want to restart the HomeKit service?')) {
             return;
         }
         
+        debugLog('Restarting service...');
         const btn = document.getElementById('restart-btn');
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner"></span> Restarting...';
+        btn.classList.add('restarting');
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg>';
         
-        debugLog('Restarting service...');
+        // Set restarting state
+        restartStartTime = Date.now();
+        isServiceRestarting = true;
+        const serviceStatusTextEl = document.getElementById('service-status-text');
+        const serviceStatusDotEl = document.getElementById('service-status-dot');
+        if (serviceStatusTextEl) {
+            serviceStatusTextEl.textContent = 'Restarting...';
+        }
+        if (serviceStatusDotEl) {
+            serviceStatusDotEl.className = 'status-dot-large restarting';
+        }
+
+        // Start polling (500ms)
+        if (restartPollInterval) {
+            clearInterval(restartPollInterval);
+        }
+        restartPollInterval = setInterval(() => {
+            loadStatus();
+        }, 500);
+
+        // Remove restarting class (5s)
+        setTimeout(() => {
+            btn.classList.remove('restarting');
+        }, 5000);
+        
         fetch(API_BASE + '/restart', {
             method: 'POST'
         })
@@ -670,37 +1502,108 @@ if (file_exists($cssPath)) {
                 try {
                     return JSON.parse(text);
                 } catch (e) {
-                    debugLog('Failed to parse JSON response', { text: text.substring(0, 500) });
                     throw new Error('Invalid JSON response: ' + text.substring(0, 200));
                 }
             });
         })
         .then(data => {
-            debugLog('Restart response', data);
+            debugLog('Service restart response', data);
             if (data && data.started) {
                 showMessage('Service restarted successfully', 'success');
             } else {
                 showMessage(data && data.message ? data.message : 'Service restart initiated. Please wait a few seconds...', 'info');
             }
-            // Refresh status after a short delay
+            // Status polled by interval
             setTimeout(() => {
-                loadStatus();
-            }, 2000);
-            // Refresh again after longer delay to ensure status is updated
-            setTimeout(() => {
-                loadStatus();
                 btn.disabled = false;
-                btn.textContent = 'Restart Service';
+                btn.classList.remove('restarting');
+                // Restore button
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg>';
             }, 5000);
         })
         .catch(error => {
-            debugLog('Error restarting service', { error: error.message, stack: error.stack });
+            debugLog('Error restarting service', error.message);
             showMessage('Error restarting service: ' + error.message, 'error');
             btn.disabled = false;
-            btn.textContent = 'Restart Service';
+            btn.classList.remove('restarting');
+            // Restore original button content
+            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M160-160v-80h110l-16-14q-52-46-73-105t-21-119q0-111 66.5-197.5T400-790v84q-72 26-116 88.5T240-478q0 45 17 87.5t53 78.5l10 10v-98h80v240H160Zm400-10v-84q72-26 116-88.5T720-482q0-45-17-87.5T650-648l-10-10v98h-80v-240h240v80H690l16 14q49 49 71.5 106.5T800-482q0 111-66.5 197.5T560-170Z"/></svg>';
+            isServiceRestarting = false;
+            restartStartTime = 0;
+            if (restartPollInterval) {
+                clearInterval(restartPollInterval);
+                restartPollInterval = null;
+            }
         });
     };
-    
+
+    // Update last command timestamp and type
+    function updateLastCommandTime(commandType) {
+        const now = new Date();
+        const timeString = now.toLocaleTimeString();
+        const timeElement = document.getElementById('last-command-time');
+        const rowElement = document.getElementById('last-command-row');
+        if (timeElement && textElement) {
+            timeElement.textContent = `${commandType} (Emulate) at ${timeString}`;
+            textElement.style.display = 'block';
+            lastCommandUpdateTime = Date.now();
+        }
+    }
+
+    window.emulateHomeKit = function(on) {
+        const action = on ? 'ON' : 'OFF';
+        const btnId = on ? 'emulate-on-btn' : 'emulate-off-btn';
+        const btn = document.getElementById(btnId);
+
+        btn.disabled = true;
+        const originalText = btn.textContent;
+        btn.textContent = `Sending ${action}...`;
+
+        debugLog(`Emulating HomeKit ${action} command`);
+
+        fetch(API_BASE + '/emulate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'value=' + (on ? '1' : '0')
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+            return response.json();
+        })
+        .then(data => {
+            debugLog(`HomeKit ${action} emulation successful`, data);
+            showMessage(`✓ HomeKit ${action} command emulated successfully`, 'success');
+
+            // Update last command timestamp and type
+            const commandType = on ? 'start' : 'stop';
+            updateLastCommandTime(commandType);
+
+            // Let SSE handle updates, or wait if no SSE
+            if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+                // Wait 2 seconds for FPP to process the command, then refresh
+                setTimeout(() => {
+                    // Only refresh if we still don't have SSE
+                    if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+                        loadStatus();
+                    }
+                }, 2000);
+            }
+        })
+        .catch(error => {
+            debugLog(`Error emulating HomeKit ${action}`, error.message);
+            showMessage(`✗ Failed to emulate HomeKit ${action}: ${error.message}`, 'error');
+        })
+        .finally(() => {
+            // Re-enable button
+            btn.disabled = false;
+            btn.textContent = originalText;
+        });
+    };
+
     function capitalize(str) {
         return str.charAt(0).toUpperCase() + str.slice(1);
     }
@@ -733,12 +1636,12 @@ if (file_exists($cssPath)) {
                         mqttPortInput.value = data.mqtt.port;
                     }
                 } else {
-                    // No MQTT config found - show placeholder hint
+                    // Show placeholder
                     mqttBrokerInput.placeholder = 'Enter broker IP/hostname';
                 }
             })
             .catch(error => {
-                debugLog('Error loading MQTT config', { error: error.message });
+                // MQTT config load failed silently
             });
     }
     
@@ -769,7 +1672,6 @@ if (file_exists($cssPath)) {
         }
         formData.append('mqtt_port', port);
         
-        debugLog('Saving MQTT configuration', { broker: broker, port: port });
         fetch(API_BASE + '/config', {
             method: 'POST',
             body: formData
@@ -784,22 +1686,22 @@ if (file_exists($cssPath)) {
                     try {
                         return JSON.parse(text);
                     } catch (e) {
-                        debugLog('Failed to parse JSON response', { text: text.substring(0, 500) });
                         throw new Error('Invalid JSON response: ' + text.substring(0, 200));
                     }
                 });
             })
             .then(data => {
-                debugLog('Save MQTT response', data);
                 if (data && data.status === 'saved') {
                     showMessage('MQTT configuration saved. Restart service to apply changes.', 'success');
-                    setTimeout(() => loadStatus(), 300);
+                    // SSE will update
+                    if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+                        setTimeout(() => loadStatus(), 300);
+                    }
                 } else {
                     throw new Error(data && data.message ? data.message : 'Failed to save configuration');
                 }
             })
             .catch(error => {
-                debugLog('Error saving MQTT config', { error: error.message, stack: error.stack });
                 showMessage('Error saving MQTT configuration: ' + error.message, 'error');
             })
             .finally(() => {
@@ -835,8 +1737,6 @@ if (file_exists($cssPath)) {
         const originalLabel = testMqttBtn.textContent;
         testMqttBtn.innerHTML = '<span class="spinner"></span> Testing...';
         
-        debugLog('Testing MQTT connection...', { broker: broker, port: port });
-        
         // Send broker and port from UI to test
         const formData = new FormData();
         formData.append('mqtt_broker', broker);
@@ -853,7 +1753,6 @@ if (file_exists($cssPath)) {
                 return response.json();
             })
             .then(data => {
-                debugLog('MQTT test response', data);
                 if (data.success) {
                     showMessage('✓ ' + (data.message || 'MQTT connection successful!'), 'success');
                 } else {
@@ -868,7 +1767,6 @@ if (file_exists($cssPath)) {
                 }
             })
             .catch(error => {
-                debugLog('Error testing MQTT', { error: error.message });
                 showMessage('Error testing MQTT: ' + error.message, 'error');
             })
             .finally(() => {
@@ -881,11 +1779,21 @@ if (file_exists($cssPath)) {
         const homekitIpSelect = document.getElementById('homekit-ip');
         if (!homekitIpSelect) return;
         
-        // Get available network interfaces from API
+        // Get network interfaces
         fetch('/api/plugin/fpp-Homekit/network-interfaces')
-            .then(response => response.json())
-            .then(data => {
-                debugLog('Network interfaces', data);
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.text();
+            })
+            .then(text => {
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    throw new Error('Invalid JSON: ' + e.message);
+                }
                 
                 // Clear all options
                 homekitIpSelect.innerHTML = '';
@@ -894,33 +1802,50 @@ if (file_exists($cssPath)) {
                 homekitIpSelect.add(new Option('Auto-detect (Primary Interface)', ''));
                 homekitIpSelect.add(new Option('All Interfaces (0.0.0.0)', '0.0.0.0'));
                 
-                // Add separator if we have interfaces
-                if (data.interfaces && data.interfaces.length > 0) {
-                    const separator = new Option('──────────────────────', '', true, false);
-                    separator.disabled = true;
-                    homekitIpSelect.add(separator);
+                // Check interfaces
+                const interfaces = data && data.interfaces ? data.interfaces : [];
+                
+                // Add separator
+                if (interfaces.length > 0) {
+                    try {
+                        const separator = new Option('──────────────────────', '', true, false);
+                        separator.disabled = true;
+                        homekitIpSelect.add(separator);
+                    } catch (e) {
+                        // Separator failed silently
+                    }
                 }
                 
                 // Add each detected interface as a separate option
-                if (data.interfaces && data.interfaces.length > 0) {
-                    data.interfaces.forEach(iface => {
-                        const label = `${iface.name} - ${iface.ip}`;
-                        const option = new Option(label, iface.ip);
-                        homekitIpSelect.add(option);
+                if (interfaces.length > 0) {
+                    interfaces.forEach((iface, index) => {
+                        try {
+                            if (iface && iface.name && iface.ip) {
+                                const label = iface.name + ' - ' + iface.ip;
+                                const option = new Option(label, iface.ip);
+                                homekitIpSelect.add(option);
+                            }
+                        } catch (e) {
+                            // Interface option failed silently
+                        }
                     });
                 }
                 
                 // Set current value (empty string or saved IP)
-                homekitIpSelect.value = data.current_ip || '';
-                
-                debugLog('Network selector populated', {
-                    interfaceCount: data.interfaces.length,
-                    currentIp: data.current_ip
-                });
+                const currentIp = data && data.current_ip ? data.current_ip : '';
+                try {
+                    homekitIpSelect.value = currentIp;
+                } catch (e) {
+                    // IP value set failed silently
+                }
             })
             .catch(error => {
-                debugLog('Error loading network interfaces', { error: error.message });
-                showMessage('Error loading network interfaces: ' + error.message, 'error');
+                // Still add basic options so user can select something
+                homekitIpSelect.innerHTML = '';
+                homekitIpSelect.add(new Option('Auto-detect (Primary Interface)', ''));
+                homekitIpSelect.add(new Option('All Interfaces (0.0.0.0)', '0.0.0.0'));
+                
+                showMessage('Could not load network interfaces. Using basic options.', 'warning');
             });
     }
     
@@ -928,15 +1853,15 @@ if (file_exists($cssPath)) {
         const homekitIpSelect = document.getElementById('homekit-ip');
         const saveBtn = document.getElementById('save-homekit-network-btn');
         
-        if (!homekitIpSelect || !saveBtn) return;
+        if (!homekitIpSelect || !saveBtn) {
+            return;
+        }
         
         const originalLabel = saveBtn.textContent;
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving...';
         
         const homekitIp = homekitIpSelect.value || '';
-        
-        debugLog('Saving HomeKit network config', { homekit_ip: homekitIp });
         
         const formData = new FormData();
         formData.append('homekit_ip', homekitIp);
@@ -945,29 +1870,30 @@ if (file_exists($cssPath)) {
             method: 'POST',
             body: formData
         })
-            .then(response => response.text())
+            .then(response => {
+                return response.text();
+            })
             .then(text => {
-                debugLog('Raw save response', text);
+                let data;
                 try {
-                    return JSON.parse(text);
+                    data = JSON.parse(text);
                 } catch (e) {
                     throw new Error('Invalid JSON response: ' + text.substring(0, 200));
                 }
-            })
-            .then(data => {
-                debugLog('HomeKit network config save response', data);
-                if (data.success) {
+                
+                // Check success
+                if (data.success || data.status === 'saved' || data.status === 'OK') {
                     showMessage('✓ HomeKit network config saved. Restarting service...', 'success');
                     // Restart the service to apply changes
                     setTimeout(() => {
                         restartService();
                     }, 1000);
                 } else {
-                    showMessage('Error saving HomeKit network config: ' + (data.error || 'Unknown error'), 'error');
+                    const errorMsg = data.error || data.message || 'Unknown error';
+                    showMessage('Error saving HomeKit network config: ' + errorMsg, 'error');
                 }
             })
             .catch(error => {
-                debugLog('Error saving HomeKit network config', { error: error.message });
                 showMessage('Error saving HomeKit network config: ' + error.message, 'error');
             })
             .finally(() => {
@@ -978,6 +1904,11 @@ if (file_exists($cssPath)) {
     
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
+        // Show loading animation on load
+        const fppStatusDotEl = document.getElementById('fpp-status-dot');
+        if (fppStatusDotEl) {
+            fppStatusDotEl.className = 'status-dot-large restarting';
+        }
         if (savePlaylistBtn) {
             savePlaylistBtn.addEventListener('click', savePlaylist);
             savePlaylistBtn.disabled = true;
@@ -1002,28 +1933,122 @@ if (file_exists($cssPath)) {
         }
         
         loadPlaylists(true);
-        loadHomekitNetworkConfig();
-        loadStatus();
-        loadMQTTConfig();
+        Promise.all([
+            new Promise(resolve => setTimeout(() => { loadHomekitNetworkConfig(); resolve(); }, 100)),
+            new Promise(resolve => setTimeout(() => { loadMQTTConfig(); resolve(); }, 200))
+        ]);
         
-        if (refreshInterval) {
-            clearInterval(refreshInterval);
+        // Initialize visibility toggles
+        const emulationToggle = document.getElementById('emulation-visibility-toggle');
+        const mqttToggle = document.getElementById('mqtt-visibility-toggle');
+        const lastCommandToggle = document.getElementById('last-command-visibility-toggle');
+        
+        if (emulationToggle) {
+            const showEmulation = localStorage.getItem('fppHomekitShowEmulation') === 'true';
+            emulationToggle.checked = showEmulation;
+            if (showEmulation) {
+                const section = document.getElementById('emulation-section');
+                if (section) {
+                    section.style.display = 'block';
+                }
+            }
+            const emulationText = document.getElementById('emulation-visibility-text');
+            if (emulationText) {
+                emulationText.textContent = showEmulation ? '(currently shown)' : '(currently hidden)';
+            }
         }
-        refreshInterval = setInterval(function() {
-            loadStatus();
-            if (!playlistFetchInProgress) {
-                loadPlaylists();
-            }
-        }, 10000);
         
-        document.addEventListener('click', function(evt) {
-            if (evt.target.closest('button')) {
-                setTimeout(() => loadStatus(), 500);
+        if (mqttToggle) {
+            const showMqtt = localStorage.getItem('fppHomekitShowMqttConfig') === 'true';
+            mqttToggle.checked = showMqtt;
+            if (showMqtt) {
+                const section = document.getElementById('mqtt-config-section');
+                if (section) {
+                    section.style.display = 'block';
+                }
             }
-        });
+            const mqttText = document.getElementById('mqtt-visibility-text');
+            if (mqttText) {
+                mqttText.textContent = showMqtt ? '(currently shown)' : '(currently hidden)';
+            }
+        }
         
+        if (lastCommandToggle) {
+            const showLastCommand = localStorage.getItem('fppHomekitShowLastCommand') !== 'false';
+            lastCommandToggle.checked = showLastCommand;
+            const lastCommandText = document.getElementById('last-command-visibility-text');
+            if (lastCommandText) {
+                lastCommandText.textContent = showLastCommand ? '(currently shown)' : '(currently hidden)';
+            }
+        }
+
+        setTimeout(() => {
+            const showEmulation = localStorage.getItem('fppHomekitShowEmulation') === 'true';
+            const emulationSection = document.getElementById('emulation-section');
+            const emulationToggle = document.getElementById('emulation-visibility-toggle');
+            const emulationText = document.getElementById('emulation-visibility-text');
+
+            if (emulationSection) {
+                emulationSection.style.display = showEmulation ? 'block' : 'none';
+            }
+            if (emulationToggle) {
+                emulationToggle.checked = showEmulation;
+            }
+            if (emulationText) {
+                emulationText.textContent = showEmulation ? 'Hide HomeKit Emulation Section' : 'Show HomeKit Emulation Section';
+            }
+
+            // MQTT config section (hide by default)
+            const showMqtt = localStorage.getItem('fppHomekitShowMqttConfig') === 'true';
+            const mqttSection = document.getElementById('mqtt-config-section');
+            const mqttToggle = document.getElementById('mqtt-visibility-toggle');
+            const mqttText = document.getElementById('mqtt-visibility-text');
+
+            if (mqttSection) {
+                mqttSection.style.display = showMqtt ? 'block' : 'none';
+            }
+            if (mqttToggle) {
+                mqttToggle.checked = showMqtt;
+            }
+            if (mqttText) {
+                mqttText.textContent = showMqtt ? '(currently shown)' : '(currently hidden)';
+            }
+
+            // Last command visibility (shown by default)
+            const showLastCommand = localStorage.getItem('fppHomekitShowLastCommand') !== 'false';
+            const lastCommandToggle = document.getElementById('last-command-visibility-toggle');
+            const lastCommandText = document.getElementById('last-command-visibility-text');
+
+            if (lastCommandToggle) {
+                lastCommandToggle.checked = showLastCommand;
+            }
+            if (lastCommandText) {
+                lastCommandText.textContent = showLastCommand ? '(currently shown)' : '(currently hidden)';
+            }
+        }, 500);
+        
+        // Load status (force fresh)
+        loadStatus(true);
+        loadPlaylists();
+        
+        initializeEventSource();
+        
+        // Fallback: If QR code hasn't loaded after SSE connects, trigger load again
+        setTimeout(function() {
+            const qrLoadingEl = document.getElementById('qr-loading');
+            const qrContentEl = document.getElementById('qr-content');
+            // If still showing loading state and content not shown, trigger load
+            if (qrLoadingEl && qrLoadingEl.style.display !== 'none' && 
+                (!qrContentEl || qrContentEl.style.display === 'none')) {
+                // SSE might not have sent status yet, trigger another load
+                loadStatus();
+            }
+        }, 1500); // Reduced from 2 seconds - just a quick fallback check
+        
+        // Refresh if no SSE
         document.addEventListener('visibilitychange', function() {
-            if (!document.hidden) {
+            if (!document.hidden && !eventSource) {
+                // SSE not active, do a one-time refresh
                 loadStatus();
                 if (!playlistFetchInProgress) {
                     loadPlaylists();
@@ -1032,7 +2057,6 @@ if (file_exists($cssPath)) {
         });
     });
     
-    // Clean up interval on page unload
     window.addEventListener('beforeunload', function() {
         if (refreshInterval) {
             clearInterval(refreshInterval);

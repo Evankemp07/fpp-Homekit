@@ -1,26 +1,27 @@
 <?php
-/*
-A way for plugins to provide their own PHP API endpoints.
 
-To use, create a file called api.php file in the plugin's directory
-and provide a getEndpointsPLUGINNAME() function which returns an
-array describing the endpoints the plugin implements.  Since PHP
-does not allow hyphens in function names, any hyphens in the plugin
-name must be removed when substituting for PLUGINNAME above and if
-the plugin name is used in any callback function names.  It is
-also best to use unique endpoint names as shown below to eliminate
-any conflicts with stock FPP code or other plugin API callbacks.
+function _record_command($action, $source) {
+    $commandsFile = dirname(__FILE__) . '/scripts/homekit_commands.json';
+    $commands = array();
+    
+    if (file_exists($commandsFile)) {
+        $existing = json_decode(file_get_contents($commandsFile), true);
+        if (is_array($existing)) {
+            $commands = $existing;
+        }
+    }
 
-All endpoints are prefixed with /api/plugin/PLUGIN-NAME but only
-the part after PLUGIN-NAME is specified in the getEndpointsPLUGINNAME()
-data.  The plugin name is used as-is in the endpoint URL, hyphens
-are not removed.  -- limonade.php is used for the underlying implementation so
-param("param1" ) can be used for an api like /api/plugin/fpp-BigButtons/:param1
+    $commands[] = array(
+        'action' => $action,
+        'timestamp' => time(),
+        'source' => $source
+    );
+    $commands = array_slice($commands, -10);
 
-Here is a simple example which would add a
-/api/plugin/fpp-BigButtons/version endpoint to the fpp-Bigbuttons plugin.
-*/
-
+    if (file_put_contents($commandsFile, json_encode($commands, JSON_PRETTY_PRINT)) === false) {
+        error_log("Failed to write command to $commandsFile");
+    }
+}
 
 function getEndpointsfppHomekit() {
     $result = array();
@@ -79,6 +80,36 @@ function getEndpointsfppHomekit() {
         'callback' => 'fppHomekitMQTTDiagnostics');
     array_push($result, $ep);
 
+    $ep = array(
+        'method' => 'POST',
+        'endpoint' => 'emulate',
+        'callback' => 'fppHomekitEmulate');
+    array_push($result, $ep);
+
+    $ep = array(
+        'method' => 'GET',
+        'endpoint' => 'network-interfaces',
+        'callback' => 'fppHomekitNetworkInterfaces');
+    array_push($result, $ep);
+
+    $ep = array(
+        'method' => 'GET',
+        'endpoint' => 'diagnostics',
+        'callback' => 'fppHomekitDiagnostics');
+    array_push($result, $ep);
+
+    $ep = array(
+        'method' => 'GET',
+        'endpoint' => 'events',
+        'callback' => 'fppHomekitEvents');
+    array_push($result, $ep);
+
+    $ep = array(
+        'method' => 'POST',
+        'endpoint' => 'unpair',
+        'callback' => 'fppHomekitUnpair');
+    array_push($result, $ep);
+
     return $result;
 }
 
@@ -110,20 +141,173 @@ function fppHomekitReadHttpPort($settingsPath) {
         return 0;
     }
     $contents = @file_get_contents($settingsPath);
-    if ($contents && preg_match('/^HTTPPort\s*=\s*(\d+)/m', $contents, $matches)) {
-        $port = (int)$matches[1];
-        if ($port > 0) {
-            return $port;
+    if ($contents) {
+        // Try multiple patterns to find HTTPPort
+        // Pattern 1: HTTPPort=32320 or HTTPPort = 32320 (multiline match)
+        if (preg_match('/^HTTPPort\s*[=:]\s*(\d+)/m', $contents, $matches)) {
+            $port = (int)$matches[1];
+            if ($port > 0) {
+                return $port;
+            }
+        }
+        // Pattern 2: Look for any HTTPPort line (case-insensitive, more flexible)
+        $lines = explode("\n", $contents);
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if (preg_match('/^HTTPPort\s*[=:]\s*(\d+)/i', $line, $matches)) {
+                $port = (int)$matches[1];
+                if ($port > 0) {
+                    return $port;
+                }
+            }
         }
     }
     return 0;
 }
 
-function fppHomekitBuildApiEndpoints() {
-    static $cached = null;
-    if ($cached !== null) {
-        return $cached;
+function fppHomekitDetectHttpPortsFromSystem() {
+    $ports = array();
+    if (!function_exists('shell_exec')) {
+        return $ports;
     }
+    
+    $commands = array(
+        'ss -tlnp | grep fppd',
+        'netstat -tulpn | grep fppd'
+    );
+    
+    foreach ($commands as $cmd) {
+        $output = @shell_exec($cmd . ' 2>/dev/null');
+        if (!$output) {
+            continue;
+        }
+        
+        $lines = explode("\n", trim($output));
+        foreach ($lines as $line) {
+            if (!$line) {
+                continue;
+            }
+            
+            if (preg_match_all('/:(\d+)\s+/', $line, $matches)) {
+                foreach ($matches[1] as $portStr) {
+                    $port = (int)$portStr;
+                    if ($port > 0 && !in_array($port, $ports)) {
+                        $ports[] = $port;
+                    }
+                }
+            } elseif (preg_match('/\[(\d+)\]/', $line, $matches)) {
+                // IPv6 format like [::]:32320
+                $port = (int)$matches[1];
+                if ($port > 0 && !in_array($port, $ports)) {
+                    $ports[] = $port;
+                }
+            }
+        }
+        
+        if (!empty($ports)) {
+            break; // Ports found; no need to run other commands
+        }
+    }
+    
+    return $ports;
+}
+
+function fppHomekitDetectHostIPs() {
+    $hosts = array();
+    
+    $prependIfValid = function(&$list, $value) {
+        if (!empty($value) && is_string($value)) {
+            $value = trim($value);
+            // Skip if empty, IPv6, localhost variants, or external IPs
+            if ($value === '' || strpos($value, ':') !== false || $value === '::1' || $value === '127.0.0.1' || $value === 'localhost') {
+                return;
+            }
+            // Only accept valid IPv4 addresses (exclude IPv6 and invalid formats)
+            if (filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+                return;
+            }
+            // Additional check: only accept private IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+            if (!preg_match('/^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/', $value)) {
+                return;
+            }
+            if (!in_array($value, $list)) {
+                $list[] = $value;
+            }
+        }
+    };
+    
+    // Server environment
+    if (isset($_SERVER['SERVER_ADDR'])) {
+        $prependIfValid($hosts, $_SERVER['SERVER_ADDR']);
+    }
+    if (isset($_SERVER['SERVER_NAME'])) {
+        $resolved = @gethostbyname($_SERVER['SERVER_NAME']);
+        if ($resolved && $resolved !== $_SERVER['SERVER_NAME']) {
+            $prependIfValid($hosts, $resolved);
+        }
+    }
+    
+    // Hostname based detection
+    $hostname = @gethostname();
+    if ($hostname) {
+        $resolved = @gethostbyname($hostname);
+        if ($resolved && $resolved !== $hostname) {
+            $prependIfValid($hosts, $resolved);
+        }
+    }
+    
+    $unameHost = php_uname('n');
+    if ($unameHost && $unameHost !== $hostname) {
+        $resolved = @gethostbyname($unameHost);
+        if ($resolved && $resolved !== $unameHost) {
+            $prependIfValid($hosts, $resolved);
+        }
+    }
+    
+    // hostname -I
+    if (function_exists('shell_exec')) {
+        $output = @shell_exec('hostname -I 2>/dev/null');
+        if (!empty($output)) {
+            $tokens = preg_split('/\s+/', trim($output));
+            foreach ($tokens as $token) {
+                $prependIfValid($hosts, $token);
+            }
+        }
+        
+        // ip -4 -o addr show
+        $ipOutput = @shell_exec('ip -4 -o addr show 2>/dev/null');
+        if (!empty($ipOutput)) {
+            $lines = explode("\n", trim($ipOutput));
+            foreach ($lines as $line) {
+                if (preg_match('/inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
+                    $prependIfValid($hosts, $matches[1]);
+                }
+            }
+        }
+        
+        // ifconfig fallback (macOS/BSD)
+        $ifconfigOutput = @shell_exec('ifconfig 2>/dev/null');
+        if (!empty($ifconfigOutput)) {
+            if (preg_match_all('/inet\s+(\d+\.\d+\.\d+\.\d+)/', $ifconfigOutput, $matches)) {
+                foreach ($matches[1] as $ip) {
+                    $prependIfValid($hosts, $ip);
+                }
+            }
+        }
+    }
+    
+    return $hosts;
+}
+
+function fppHomekitBuildApiEndpoints() {
+    // Caching is disabled to ensure endpoint order is recalculated on each request
+    // This guarantees that port 32320 (the preferred port) is always tried first
+    // after plugin updates or configuration changes
+    // Note: Caching can be re-enabled once endpoint discovery order stabilizes
+    // static $cached = null;
+    // if ($cached !== null) {
+    //     return $cached;
+    // }
     
     $pluginDir = dirname(__FILE__);
     $apiConfigFile = $pluginDir . '/scripts/fpp_api_config.json';
@@ -137,7 +321,13 @@ function fppHomekitBuildApiEndpoints() {
         if ($apiConfig && isset($apiConfig['host']) && isset($apiConfig['port'])) {
             $hosts[] = $apiConfig['host'];
             $ports[] = (int)$apiConfig['port'];
+            // Debug: log that config was loaded
+            error_log("FPP API Config loaded: {$apiConfig['host']}:{$apiConfig['port']}");
+        } else {
+            error_log("FPP API Config file exists but invalid: " . json_encode($apiConfig));
         }
+    } else {
+        error_log("FPP API Config file not found at: $apiConfigFile");
     }
     
     // Second priority: Environment variables
@@ -161,6 +351,20 @@ function fppHomekitBuildApiEndpoints() {
             $ports[] = $port;
         }
     }
+
+    // Fourth priority: Detect from system sockets (ss/netstat)
+    foreach (fppHomekitDetectHttpPortsFromSystem() as $detectedPort) {
+        if ($detectedPort > 0 && !in_array($detectedPort, $ports)) {
+            $ports[] = $detectedPort;
+        }
+    }
+
+    // Enrich hosts list with detected IPs from the system
+    foreach (fppHomekitDetectHostIPs() as $detectedHost) {
+        if (!in_array($detectedHost, $hosts)) {
+            $hosts[] = $detectedHost;
+        }
+    }
     
     // Add default hosts if none found
     if (empty($hosts)) {
@@ -168,20 +372,82 @@ function fppHomekitBuildApiEndpoints() {
         $hosts[] = '127.0.0.1';
     }
     
-    // Add common fallback ports if none found
+    // ALWAYS ensure 32320 is in the ports list (FPP default)
+    // Even if detected ports exist, 32320 should be tried first
+    if (!in_array(32320, $ports)) {
+        array_unshift($ports, 32320);
+    }
+    
+    // Add common fallback ports if none found or if we want to scan
+    // Common FPP ports to try
+    $commonPorts = array(32320, 32321, 32322, 80, 8080, 8000, 8888);
+    foreach ($commonPorts as $commonPort) {
+        if (!in_array($commonPort, $ports)) {
+            $ports[] = $commonPort;
+        }
+    }
+    
+    // If still empty (shouldn't happen), add defaults
     if (empty($ports)) {
-        $ports[] = 32320; // Default FPP port
-        $ports[] = 80;
-        $ports[] = 8080;
+        $ports[] = 32320;
     }
     
     $hosts = array_values(array_unique(array_filter($hosts)));
     $ports = array_values(array_unique(array_filter($ports)));
     
     // Prioritize detected port (first in array)
+    // Also prioritize localhost/127.0.0.1 first, and port 32320 first
     $endpoints = array();
+    
+    // Sort hosts: localhost first, then 127.0.0.1, then others
+    $sortedHosts = array();
+    $hasLocalhost = false;
+    $has127 = false;
+    
+    // First, collect localhost and 127.0.0.1
     foreach ($hosts as $host) {
-        foreach ($ports as $port) {
+        if ($host === 'localhost') {
+            $hasLocalhost = true;
+        } elseif ($host === '127.0.0.1') {
+            $has127 = true;
+        } else {
+            $sortedHosts[] = $host;
+        }
+    }
+    
+    // Add localhost first, then 127.0.0.1
+    if ($hasLocalhost) {
+        array_unshift($sortedHosts, 'localhost');
+    }
+    if ($has127) {
+        // Insert 127.0.0.1 after localhost
+        if ($hasLocalhost) {
+            array_splice($sortedHosts, 1, 0, '127.0.0.1');
+        } else {
+            array_unshift($sortedHosts, '127.0.0.1');
+        }
+    }
+    
+    if (empty($sortedHosts)) {
+        $sortedHosts = array('localhost', '127.0.0.1');
+    }
+    
+    // Sort ports: ALWAYS put 32320 first (FPP default), then others
+    $sortedPorts = array();
+    // ALWAYS start with 32320 (FPP default port)
+    $sortedPorts[] = 32320;
+    // Then add other ports (excluding 32320 if it was already in the list)
+    foreach ($ports as $port) {
+        if ($port != 32320) {
+            $sortedPorts[] = $port;
+        }
+    }
+    // Remove duplicates while preserving order
+    $sortedPorts = array_values(array_unique($sortedPorts));
+    
+    // Build endpoints: try localhost:32320 first, then other combinations
+    foreach ($sortedHosts as $host) {
+        foreach ($sortedPorts as $port) {
             if ($port === 80) {
                 $endpoints[] = "http://{$host}/api";
             } else {
@@ -191,11 +457,13 @@ function fppHomekitBuildApiEndpoints() {
     }
     
     if (empty($endpoints)) {
+        $endpoints[] = 'http://localhost:32320/api';
         $endpoints[] = 'http://localhost/api';
     }
-    
-    $cached = array_values(array_unique($endpoints));
-    return $cached;
+
+    // $cached = array_values(array_unique($endpoints));
+    // return $cached;
+    return array_values(array_unique($endpoints));
 }
 
 function fppHomekitApiRequest($method, $path, $options = array()) {
@@ -212,11 +480,14 @@ function fppHomekitApiRequest($method, $path, $options = array()) {
     $lastEndpoint = '';
     $lastResponse = '';
     $lastUrl = '';
+    $triedEndpoints = array(); // Track all endpoints tried for debugging
     
-    foreach (fppHomekitBuildApiEndpoints() as $endpoint) {
+    $endpoints = fppHomekitBuildApiEndpoints();
+    foreach ($endpoints as $endpoint) {
         $url = rtrim($endpoint, '/') . $path;
         $lastEndpoint = $endpoint;
         $lastUrl = $url;
+        $triedEndpoints[] = $url; // Track this endpoint
         
         $ch = curl_init($url);
         if ($ch === false) {
@@ -270,75 +541,74 @@ function fppHomekitApiRequest($method, $path, $options = array()) {
         'url' => $lastUrl,
         'http_code' => $lastHttpCode,
         'body' => $lastResponse,
-        'error' => $lastError
+        'error' => $lastError,
+        'tried_endpoints' => $triedEndpoints, // Show all endpoints that were tried
+        'first_endpoint' => !empty($triedEndpoints) ? $triedEndpoints[0] : null
     );
 }
 
-// GET /api/plugin/fpp-Homekit/status
 function fppHomekitStatus() {
+    static $cached = null;
+    static $cache_time = 0;
+    $cache_ttl = 5;
+    
+    // Allow bypassing cache with ?force=1 parameter (useful for initial page load)
+    $force = isset($_GET['force']) && $_GET['force'] == '1';
+
+    if (!$force && $cached !== null && (time() - $cache_time) < $cache_ttl) {
+        return json($cached);
+    }
+
     $pluginDir = dirname(__FILE__);
     $pidFile = $pluginDir . '/scripts/homekit_service.pid';
     $configFile = $pluginDir . '/scripts/homekit_config.json';
     $stateFile = $pluginDir . '/scripts/homekit_accessory.state';
-    
+    $statusFile = $pluginDir . '/scripts/homekit_status.json';
+
     $result = array();
     
-    // Check if service is running
     $running = false;
+    if (file_exists($statusFile)) {
+        $statusData = json_decode(file_get_contents($statusFile), true);
+        if ($statusData && isset($statusData['service_running'], $statusData['timestamp'])) {
+            $running = (bool)$statusData['service_running'];
+            if ((time() - $statusData['timestamp']) < 5) {
+                $result['service_running'] = $running;
+                goto skip_pid_check;
+            }
+        }
+    }
+    
     if (file_exists($pidFile)) {
         $pid = trim(file_get_contents($pidFile));
         if ($pid) {
-            // Check if process is running (works on Unix-like systems)
-            if (function_exists('posix_kill')) {
-                if (@posix_kill($pid, 0)) {
-                    $running = true;
-                }
-            }
-
-            if (!$running) {
-                // Fallback #1: /proc/<pid>
-                if (file_exists("/proc/{$pid}")) {
-                    $running = true;
-                }
-            }
-
-            if (!$running) {
-                // Fallback #2: kill -0
-                $output = array();
+            if (file_exists("/proc/{$pid}")) {
+                $running = true;
+            } elseif (function_exists('posix_kill') && posix_kill($pid, 0)) {
+                $running = true;
+            } else {
                 $return_var = 0;
-                @exec("kill -0 $pid 2>/dev/null", $output, $return_var);
+                exec("kill -0 $pid 2>/dev/null", $output, $return_var);
                 if ($return_var === 0) {
                     $running = true;
                 }
             }
-
-            if (!$running) {
-                // Fallback #3: ps command (works on macOS/BusyBox)
-                $output = array();
-                $return_var = 0;
-                @exec("ps $pid 2>/dev/null", $output, $return_var);
-                if ($return_var === 0 && count($output) > 1) {
-                    $running = true;
-                }
-            }
         }
     }
+    
+    skip_pid_check:
     $result['service_running'] = $running;
     
-    // Check pairing status
     $paired = false;
     if (file_exists($stateFile)) {
-        $stateData = @file_get_contents($stateFile);
-        if ($stateData) {
-            $state = @json_decode($stateData, true);
-            if ($state && isset($state['paired_clients']) && count($state['paired_clients']) > 0) {
-                $paired = true;
-            }
+        $state = json_decode(file_get_contents($stateFile), true);
+        if ($state && !empty($state['paired_clients'])) {
+            $paired = true;
         }
     }
     $result['paired'] = $paired;
     
-    // Get REAL FPP status via MQTT (not just checking if fppd process exists)
+    // Get REAL FPP status - try HTTP API first (more reliable), fallback to MQTT
     $fppStatus = array(
         'playing' => false, 
         'status_name' => 'unknown',
@@ -351,113 +621,388 @@ function fppHomekitStatus() {
         'error_detail' => ''
     );
     
-    // Get MQTT config
+    $apiData = null;
+    $lastError = '';
+
     $mqttBroker = 'localhost';
     $mqttPort = 1883;
     $mqttTopicPrefix = 'FPP';
-    
+
     if (file_exists($configFile)) {
-        $config = @json_decode(file_get_contents($configFile), true);
-        if ($config) {
-            if (isset($config['mqtt']['broker'])) {
-                $mqttBroker = $config['mqtt']['broker'];
-            }
-            if (isset($config['mqtt']['port'])) {
-                $mqttPort = intval($config['mqtt']['port']);
-            }
+        $config = json_decode(file_get_contents($configFile), true);
+        if ($config && isset($config['mqtt'])) {
+            $mqttBroker = $config['mqtt']['broker'] ?? $mqttBroker;
+            $mqttPort = intval($config['mqtt']['port'] ?? $mqttPort);
+            $mqttTopicPrefix = $config['mqtt']['topic_prefix'] ?? $mqttTopicPrefix;
         }
     }
-    
-    // Python script to check FPP status via MQTT
-    $pythonStatusScript = <<<'PYCODE'
-import sys, json, time
-try:
-    import paho.mqtt.client as mqtt
-except ImportError:
-    print(json.dumps({"error": "paho-mqtt not installed", "available": False}))
-    sys.exit(0)
 
-broker = sys.argv[1] if len(sys.argv) > 1 else 'localhost'
-port = int(sys.argv[2]) if len(sys.argv) > 2 else 1883
-prefix = sys.argv[3] if len(sys.argv) > 3 else 'FPP'
+    // Use shorter timeout for forced fresh checks (initial page load)
+    $mqttTimeout = $force ? 2 : 5;  // 2 seconds for forced checks, 5 for normal
+    $hasTimeout = @shell_exec('which timeout 2>/dev/null');
 
-status_data = {"available": False, "timeout": True}
+    $checkScriptPath = $pluginDir . '/scripts/check_mqtt_status.py';
+    $checkScriptArg = escapeshellarg($checkScriptPath);
+    $pythonExecutables = array(
+        'sudo -u fpp -H python3',
+        'sudo -u fpp -H /usr/bin/python3',
+        'sudo -u fpp -H python',
+        'python3',
+        '/usr/bin/python3',
+        'python'
+    );
 
-def on_connect(client, userdata, flags, rc, *args, **kwargs):
-    if rc == 0:
-        client.subscribe(f"{prefix}/status")
+    $output = '';
+    $triedCommands = array();
 
-def on_message(client, userdata, msg):
-    global status_data
-    try:
-        data = json.loads(msg.payload.decode('utf-8'))
-        status_data = {
-            "available": True,
-            "timeout": False,
-            "status_name": data.get("status_name", "unknown"),
-            "status": data.get("status", 0),
-            "current_playlist": data.get("current_playlist", {}).get("playlist", ""),
-            "current_sequence": data.get("current_sequence", ""),
-            "seconds_played": data.get("seconds_played", 0),
-            "seconds_remaining": data.get("seconds_remaining", 0)
+    foreach ($pythonExecutables as $pythonExe) {
+        $baseCommand = $pythonExe . ' ' . $checkScriptArg . ' ' .
+                       escapeshellarg($mqttBroker) . ' ' .
+                       escapeshellarg($mqttPort) . ' ' .
+                       escapeshellarg($mqttTopicPrefix);
+
+        $fullCommand = $hasTimeout ? "timeout $mqttTimeout " . $baseCommand : $baseCommand;
+        $fullCommand .= " 2>&1";
+        $triedCommands[] = $fullCommand;
+
+        $cmdOutput = @shell_exec($fullCommand);
+        if ($cmdOutput) {
+            $output = $cmdOutput;
+            break; // Found a working command
         }
-    except:
-        pass
+    }
 
-try:
-    try:
-        client = mqtt.Client(client_id="fpp-hk-status", callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
-    except:
-        client = mqtt.Client(client_id="fpp-hk-status")
-    
-    client.on_connect = on_connect
-    client.on_message = on_message
-    client.connect(broker, port, keepalive=5)
-    client.loop_start()
-    
-    for _ in range(20):
-        if status_data.get("available"):
-            break
-        time.sleep(0.1)
-    
-    client.loop_stop()
-    client.disconnect()
-    print(json.dumps(status_data))
-except Exception as e:
-    print(json.dumps({"error": str(e), "available": False}))
-PYCODE;
-    
-    $command = "timeout 3 python3 -W ignore -c " . escapeshellarg($pythonStatusScript) . " " . 
-               escapeshellarg($mqttBroker) . " " . 
-               escapeshellarg($mqttPort) . " " . 
-               escapeshellarg($mqttTopicPrefix) . " 2>/dev/null";
-    
-    $output = shell_exec($command);
-    
     if ($output) {
         $mqttStatus = @json_decode(trim($output), true);
         if ($mqttStatus && is_array($mqttStatus)) {
             if (isset($mqttStatus['available']) && $mqttStatus['available']) {
                 // Got real status from FPP via MQTT
-                $fppStatus['status_name'] = $mqttStatus['status_name'] ?? 'unknown';
-                $fppStatus['current_playlist'] = $mqttStatus['current_playlist'] ?? '';
-                $fppStatus['current_sequence'] = $mqttStatus['current_sequence'] ?? '';
-                $fppStatus['seconds_elapsed'] = $mqttStatus['seconds_played'] ?? 0;
-                $fppStatus['seconds_remaining'] = $mqttStatus['seconds_remaining'] ?? 0;
-                $fppStatus['playing'] = ($mqttStatus['status'] ?? 0) == 1;
-                $fppStatus['status_text'] = 'FPP Available';
-                $fppStatus['error_detail'] = '';
+                $statusCode = isset($mqttStatus['status']) ? (int)$mqttStatus['status'] : 0;
+                $statusName = strtolower($mqttStatus['status_name'] ?? 'unknown');
+                $currentPlaylist = $mqttStatus['current_playlist'] ?? '';
+                $currentSequence = $mqttStatus['current_sequence'] ?? '';
+                
+                // Determine playing state: status code 1, status_name contains 'playing', or has active sequence/playlist
+                $isPlaying = ($statusCode === 1 || 
+                             $statusName === 'playing' || 
+                             $statusName === 'play' ||
+                             (strpos($statusName, 'play') !== false && strpos($statusName, 'stop') === false) ||
+                             (!empty($currentSequence) || !empty($currentPlaylist)));
+                
+                $apiData = array(
+                    'status_name' => $mqttStatus['status_name'] ?? 'unknown',
+                    'status' => $statusCode,
+                    'current_playlist' => $currentPlaylist,
+                    'current_sequence' => $currentSequence,
+                    'seconds_played' => $mqttStatus['seconds_played'] ?? 0,
+                    'seconds_remaining' => $mqttStatus['seconds_remaining'] ?? 0,
+                    'volume' => 0, // MQTT doesn't provide volume
+                    'playing' => $isPlaying
+                );
             } elseif (isset($mqttStatus['timeout']) && $mqttStatus['timeout']) {
-                $fppStatus['status_text'] = 'FPP Not Responding';
-                $fppStatus['error_detail'] = 'MQTT connected but FPP not publishing. Is fppd running?';
+                $lastError = 'FPP not responding to MQTT status requests. This worked before our optimizations - MQTT Input may need to be re-enabled.';
+                if (isset($mqttStatus['commands_sent'])) {
+                    $lastError .= ' Commands sent: ' . implode(', ', $mqttStatus['commands_sent']);
+                }
             } elseif (isset($mqttStatus['error'])) {
-                $fppStatus['status_text'] = 'MQTT Error';
-                $fppStatus['error_detail'] = $mqttStatus['error'];
+                $errorMsg = $mqttStatus['error'];
+                if (strpos($errorMsg, 'Connection refused') !== false) {
+                    $lastError = 'Cannot connect to MQTT broker at ' . $mqttBroker . ':' . $mqttPort . '. Start mosquitto: sudo systemctl start mosquitto';
+                } elseif (strpos($errorMsg, 'paho-mqtt not installed') !== false || strpos($errorMsg, 'paho.mqtt') !== false) {
+                    // Show helpful install instructions
+                    $installCmd = isset($mqttStatus['install_command']) ? $mqttStatus['install_command'] : 'python3 -m pip install paho-mqtt --user';
+                    $lastError = 'paho-mqtt Python package is not installed. Install it with: ' . $installCmd;
+                } else {
+                    $lastError = 'MQTT Error: ' . $errorMsg;
+                }
             }
+        } else {
+            // Failed to parse JSON - might be a Python error
+            $lastError = 'MQTT status check failed: ' . htmlspecialchars(substr($output, 0, 200));
         }
     } else {
-        $fppStatus['status_text'] = 'Status Check Failed';
-        $fppStatus['error_detail'] = 'Could not check FPP status via MQTT.';
+        // No output - command might have failed
+        // Try a simple connectivity test with nc/netcat
+        $connectivityTest = @shell_exec("timeout 2 bash -c 'echo > /dev/tcp/$mqttBroker/$mqttPort' 2>/dev/null && echo 'CONNECTED' || echo 'FAILED'");
+
+        if (trim($connectivityTest) === 'CONNECTED') {
+            $lastError = 'Can connect to MQTT broker, but no status received. Ensure FPP MQTT is enabled and the broker/hostname is set to localhost. Commands tried: ' . implode('; ', array_slice($triedCommands, 0, 2));
+        } else {
+            $lastError = 'Cannot connect to MQTT broker at ' . $mqttBroker . ':' . $mqttPort . '. Start mosquitto: sudo systemctl start mosquitto';
+        }
+    }
+
+    // Fallback to HTTP API if MQTT fails
+    if (!$apiData && empty($lastError)) {
+        // Build more helpful error message
+        $lastError = $apiResult['error'] ?: "Failed to connect to FPP API";
+        
+        // Check if FPP daemon is running and what ports it's listening on
+        $fppRunning = false;
+        $listeningPorts = array();
+        if (function_exists('shell_exec')) {
+            // Check if fppd process exists
+            $fppCheck = @shell_exec('pgrep -f "fppd" 2>/dev/null');
+            if (!empty($fppCheck)) {
+                $fppRunning = true;
+            } else {
+                // Alternative check
+                $fppCheck2 = @shell_exec('ps aux | grep -i "[f]ppd" 2>/dev/null');
+                if (!empty($fppCheck2)) {
+                    $fppRunning = true;
+                }
+            }
+            
+            // If FPP is running, try to detect what ports it's actually listening on
+            if ($fppRunning) {
+                // Try netstat first (common on most systems)
+                $netstatOutput = @shell_exec('netstat -tuln 2>/dev/null | grep LISTEN | grep -E ":(80|443|8080|32320|32321)" 2>/dev/null');
+                if (!$netstatOutput) {
+                    // Try ss command (newer Linux systems)
+                    $netstatOutput = @shell_exec('ss -tuln 2>/dev/null | grep LISTEN | grep -E ":(80|443|8080|32320|32321)" 2>/dev/null');
+                }
+                if ($netstatOutput) {
+                    // Parse output to find ports
+                    if (preg_match_all('/:(\d+)\s/', $netstatOutput, $matches)) {
+                        $listeningPorts = array_unique($matches[1]);
+                        sort($listeningPorts);
+                    }
+                }
+            }
+        }
+        
+        if (isset($apiResult['tried_endpoints']) && is_array($apiResult['tried_endpoints']) && !empty($apiResult['tried_endpoints'])) {
+            $triedList = implode(', ', array_slice($apiResult['tried_endpoints'], 0, 3));
+            if (count($apiResult['tried_endpoints']) > 3) {
+                $triedList .= ' (and ' . (count($apiResult['tried_endpoints']) - 3) . ' more)';
+            }
+            $lastError .= " (tried endpoints: {$triedList})";
+        } elseif (isset($apiResult['url'])) {
+            $lastError .= " (tried: {$apiResult['url']})";
+        }
+        
+        // Add helpful troubleshooting info
+        if (!$fppRunning) {
+            $lastError .= ". FPP daemon (fppd) does not appear to be running. Start it with: sudo systemctl start fppd";
+        } else {
+            $lastError .= ". FPP daemon is running but API is not accessible on the tried ports";
+            
+            // Try to detect what port FPP might be listening on
+            if (function_exists('shell_exec')) {
+                $listeningPorts = @shell_exec("netstat -tulpn 2>/dev/null | grep -i 'fppd\\|lighttpd\\|nginx' | grep LISTEN | awk '{print $4}' | awk -F: '{print $NF}' | sort -u 2>/dev/null");
+                if (empty($listeningPorts)) {
+                    // Try alternative method (works on systems without netstat)
+                    $listeningPorts = @shell_exec("ss -tulpn 2>/dev/null | grep -i 'fppd\\|lighttpd\\|nginx' | grep LISTEN | awk '{print $5}' | awk -F: '{print $NF}' | sort -u 2>/dev/null");
+                }
+                if (empty($listeningPorts)) {
+                    // Try lsof as last resort
+                    $listeningPorts = @shell_exec("lsof -iTCP -sTCP:LISTEN -n -P 2>/dev/null | grep -i 'fppd\\|lighttpd\\|nginx' | awk '{print $9}' | awk -F: '{print $NF}' | sort -u 2>/dev/null");
+                }
+                
+                if (!empty($listeningPorts)) {
+                    $ports = array_filter(array_map('trim', explode("\n", trim($listeningPorts))));
+                    if (!empty($ports)) {
+                        $lastError .= ". Detected listening ports: " . implode(', ', $ports);
+                    }
+                }
+            }
+        }
+    }
+    
+    if ($apiData) {
+        // Got status from HTTP API
+        $fppStatus['status_name'] = $apiData['status_name'] ?? 'unknown';
+        
+        // Handle current_playlist - can be string or object
+        $currentPlaylist = $apiData['current_playlist'] ?? '';
+        if (is_array($currentPlaylist)) {
+            $fppStatus['current_playlist'] = $currentPlaylist['playlist'] ?? $currentPlaylist['name'] ?? '';
+        } else {
+            $fppStatus['current_playlist'] = $currentPlaylist;
+        }
+        
+        $fppStatus['current_sequence'] = $apiData['current_sequence'] ?? '';
+        $fppStatus['seconds_elapsed'] = $apiData['seconds_played'] ?? $apiData['seconds_elapsed'] ?? 0;
+        $fppStatus['seconds_remaining'] = $apiData['seconds_remaining'] ?? 0;
+        $fppStatus['volume'] = $apiData['volume'] ?? 0;
+        
+        // Determine playing state - check multiple fields
+        // FPP status codes: 0=idle, 1=playing, 2=paused, 3=stopped
+        $statusCode = isset($apiData['status']) ? (int)$apiData['status'] : 0;
+        $statusName = strtolower($fppStatus['status_name']);
+        $isPlaying = isset($apiData['playing']) ? (bool)$apiData['playing'] : false;
+        $hasActiveContent = !empty($fppStatus['current_sequence']) || !empty($fppStatus['current_playlist']);
+        
+        // Check if playing: status code 1, or status_name contains 'playing', or playing flag is true, or has active sequence/playlist
+        $fppStatus['playing'] = ($statusCode === 1 || 
+                                 $statusName === 'playing' || 
+                                 $statusName === 'play' ||
+                                 $isPlaying === true ||
+                                 (strpos($statusName, 'play') !== false && strpos($statusName, 'stop') === false) ||
+                                 $hasActiveContent);
+        
+        $fppStatus['status_text'] = 'FPP Available';
+        $fppStatus['error_detail'] = '';
+        
+        $result['fpp_status'] = $fppStatus;
+        $result['control_method'] = 'MQTT (Status via MQTT)';
+
+        // Get configured playlist
+        $playlist = '';
+        if (file_exists($configFile)) {
+            $config = @json_decode(file_get_contents($configFile), true);
+            if ($config && isset($config['playlist_name'])) {
+                $playlist = $config['playlist_name'];
+            }
+        }
+        $result['playlist'] = $playlist;
+
+        // Get recent HomeKit commands for UI display (always return last command regardless of age)
+        $commandsFile = $pluginDir . '/scripts/homekit_commands.json';
+        $recentCommands = array();
+        if (file_exists($commandsFile)) {
+            $commands = @json_decode(file_get_contents($commandsFile), true);
+            if (is_array($commands) && count($commands) > 0) {
+                // Always return the last command (most recent), regardless of age
+                $lastCommand = end($commands);
+                $recentCommands = array($lastCommand);
+            }
+        }
+        $result['recent_homekit_commands'] = array_values($recentCommands);
+        
+        return json($result);
+    }
+    
+    // Fallback to MQTT if HTTP API failed
+    if (!$apiData && function_exists('shell_exec')) {
+        // Get MQTT config
+        $mqttBroker = 'localhost';
+        $mqttPort = 1883;
+        $mqttTopicPrefix = 'FPP';
+        
+        if (file_exists($configFile)) {
+            $config = @json_decode(file_get_contents($configFile), true);
+            if ($config) {
+                if (isset($config['mqtt']['broker'])) {
+                    $mqttBroker = $config['mqtt']['broker'];
+                }
+                if (isset($config['mqtt']['port'])) {
+                    $mqttPort = intval($config['mqtt']['port']);
+                }
+            }
+        }
+        
+        // Try with timeout
+        // Use shorter timeout for forced fresh checks (initial page load)
+        $mqttTimeout = $force ? 2 : 5;  // 2 seconds for forced checks, 5 for normal
+        $hasTimeout = @shell_exec('which timeout 2>/dev/null');
+
+        $checkScriptPath = $pluginDir . '/scripts/check_mqtt_status.py';
+        $checkScriptArg = escapeshellarg($checkScriptPath);
+
+        // Try multiple Python commands in case python3 isn't in PATH
+        $pythonExecutables = array(
+            'sudo -u fpp -H python3',
+            'sudo -u fpp -H /usr/bin/python3',
+            'sudo -u fpp -H python',
+            'python3',
+            '/usr/bin/python3',
+            'python'
+        );
+
+        $output = '';
+        $triedCommands = array();
+
+        foreach ($pythonExecutables as $pythonExe) {
+            $baseCommand = $pythonExe . ' ' . $checkScriptArg . ' ' .
+                           escapeshellarg($mqttBroker) . ' ' .
+                           escapeshellarg($mqttPort) . ' ' .
+                           escapeshellarg($mqttTopicPrefix);
+
+            $fullCommand = $hasTimeout ? "timeout $mqttTimeout " . $baseCommand : $baseCommand;
+            $fullCommand .= " 2>&1";
+            $triedCommands[] = $fullCommand;
+
+            $cmdOutput = @shell_exec($fullCommand);
+            if ($cmdOutput) {
+                $output = $cmdOutput;
+                break; // Found a working command
+            }
+        }
+
+        if ($output) {
+            $mqttStatus = @json_decode(trim($output), true);
+            if ($mqttStatus && is_array($mqttStatus)) {
+                if (isset($mqttStatus['available']) && $mqttStatus['available']) {
+                    // Got real status from FPP via MQTT
+                    $fppStatus['status_name'] = $mqttStatus['status_name'] ?? 'unknown';
+                    $fppStatus['current_playlist'] = $mqttStatus['current_playlist'] ?? '';
+                    $fppStatus['current_sequence'] = $mqttStatus['current_sequence'] ?? '';
+                    $fppStatus['seconds_elapsed'] = $mqttStatus['seconds_played'] ?? 0;
+                    $fppStatus['seconds_remaining'] = $mqttStatus['seconds_remaining'] ?? 0;
+                    
+                    // Determine playing state from MQTT status (same logic as HTTP API)
+                    $mqttStatusCode = isset($mqttStatus['status']) ? (int)$mqttStatus['status'] : 0;
+                    $mqttStatusName = strtolower($fppStatus['status_name']);
+                    $hasActiveContent = !empty($fppStatus['current_sequence']) || !empty($fppStatus['current_playlist']);
+                    $fppStatus['playing'] = ($mqttStatusCode === 1 || 
+                                             $mqttStatusName === 'playing' || 
+                                             $mqttStatusName === 'play' ||
+                                             (strpos($mqttStatusName, 'play') !== false && strpos($mqttStatusName, 'stop') === false) ||
+                                             $hasActiveContent);
+                    
+                    $fppStatus['status_text'] = 'FPP Available';
+                    $fppStatus['error_detail'] = '';
+                } elseif (isset($mqttStatus['timeout']) && $mqttStatus['timeout']) {
+                    $fppStatus['status_text'] = 'FPP Not Responding';
+                    $fppStatus['error_detail'] = 'FPP not responding to MQTT commands. This worked before optimizations - MQTT Input may need re-enabling.';
+                    if (isset($mqttStatus['commands_sent'])) {
+                        $fppStatus['error_detail'] .= ' Commands sent: ' . implode(', ', $mqttStatus['commands_sent']);
+                    }
+                } elseif (isset($mqttStatus['error'])) {
+                    $fppStatus['status_text'] = 'MQTT Connection Failed';
+                    $errorMsg = $mqttStatus['error'];
+                    if (strpos($errorMsg, 'Connection refused') !== false) {
+                        $fppStatus['error_detail'] = 'Cannot connect to MQTT broker at ' . $mqttBroker . ':' . $mqttPort . '. Start mosquitto: sudo systemctl start mosquitto';
+                    } elseif (strpos($errorMsg, 'paho-mqtt not installed') !== false || strpos($errorMsg, 'paho.mqtt') !== false) {
+                        // Show helpful install instructions
+                        $installCmd = isset($mqttStatus['install_command']) ? $mqttStatus['install_command'] : 'python3 -m pip install paho-mqtt --user';
+                        $fppStatus['error_detail'] = 'paho-mqtt Python package is not installed. Install it with: ' . $installCmd . ' (or reinstall the plugin to install all dependencies)';
+                    } else {
+                        $fppStatus['error_detail'] = 'MQTT Error: ' . $errorMsg;
+                    }
+                }
+            } else {
+                // Failed to parse JSON - might be a Python error
+                $fppStatus['status_text'] = 'Status Check Error';
+                // Show actual output for debugging
+                $cleanOutput = preg_replace('/\s+/', ' ', substr($output, 0, 150));
+                $fppStatus['error_detail'] = 'Check failed: ' . $cleanOutput;
+            }
+        } else {
+            // No output - command might have failed
+            $fppStatus['status_text'] = 'Unable to Check Status';
+            $fppStatus['error_detail'] = 'Cannot connect to FPP. Check that: 1) FPP is running, 2) MQTT broker is accessible, 3) Network connectivity is working.';
+        }
+    } elseif (!$apiData) {
+        // HTTP API failed and shell_exec disabled - try direct HTTP API call
+        $directApiUrl = 'http://localhost:32320/api/system/status';
+        $directApiData = @file_get_contents($directApiUrl);
+        if ($directApiData) {
+            $directStatus = @json_decode($directApiData, true);
+            if ($directStatus && isset($directStatus['status'])) {
+                $fppStatus['status_text'] = 'FPP Available';
+                $fppStatus['status_name'] = $directStatus['status'];
+                $fppStatus['playing'] = ($directStatus['status'] === 'playing');
+                $fppStatus['error_detail'] = '';
+            } else {
+                $fppStatus['status_text'] = 'Status Check Failed';
+                $fppStatus['error_detail'] = 'Direct HTTP API call succeeded but returned invalid data.';
+            }
+        } else {
+            $fppStatus['status_text'] = 'Status Check Disabled';
+            $fppStatus['error_detail'] = 'HTTP API failed: ' . $lastError . '. PHP shell_exec is disabled, cannot try MQTT fallback.';
+        }
     }
     
     $result['fpp_status'] = $fppStatus;
@@ -472,7 +1017,11 @@ PYCODE;
         }
     }
     $result['playlist'] = $playlist;
-    
+
+    // Cache the result
+    $cached = $result;
+    $cache_time = time();
+
     return json($result);
 }
 
@@ -481,11 +1030,11 @@ function fppHomekitQRCode() {
     $pluginDir = dirname(__FILE__);
     $infoFile = $pluginDir . '/scripts/homekit_pairing_info.json';
     $stateFile = $pluginDir . '/scripts/homekit_accessory.state';
-    
+
     // Try to get setup code and setup ID from pairing info file first
-    $setupCode = '123-45-678';
+    $setupCode = '0000-0000';
     $setupID = 'HOME';
-    
+
     if (file_exists($infoFile)) {
         $infoData = @file_get_contents($infoFile);
         if ($infoData) {
@@ -516,7 +1065,13 @@ function fppHomekitQRCode() {
         }
     }
     
-    // Check if QR code data is already in the info file
+    // Normalize setup code format - ensure it's in XXXX-XXXX format for consistency
+    $setupCodeClean = str_replace('-', '', $setupCode);
+    if (strlen($setupCodeClean) === 8 && ctype_digit($setupCodeClean)) {
+        $setupCode = substr($setupCodeClean, 0, 4) . '-' . substr($setupCodeClean, 4);
+    }
+
+    // Check if QR code data is already in the info file (prefer this as it's generated by Python service)
     $qrData = null;
     if (file_exists($infoFile)) {
         $infoData = @file_get_contents($infoFile);
@@ -527,34 +1082,35 @@ function fppHomekitQRCode() {
             }
         }
     }
-    
-    // If not available, generate QR code data
+
+    // If not available, generate QR code data using the normalized setup code
     if (!$qrData) {
-        // Format: X-HM://[8-char hex setup ID][setup code without dashes]
-        // Setup code should be 8 digits: XXX-XX-XXX -> XXXXXXXX
+        // HomeKit QR code format: X-HM://[8-character hex setup ID][8-digit setup code]
+        // Setup code format: XXXX-XXXX (display) -> XXXXXXXX (encoded, no dashes)
+        // Example: 1234-5678 becomes 12345678 in the QR code
+        // Use the normalized setup code (already normalized above)
         $setupCodeClean = str_replace('-', '', $setupCode);
-        if (strlen($setupCodeClean) !== 8) {
+        if (strlen($setupCodeClean) !== 8 || !ctype_digit($setupCodeClean)) {
             // Invalid setup code format
             header('HTTP/1.1 500 Internal Server Error');
-            return json(array('error' => 'Invalid setup code format'));
+            return json(array('error' => 'Invalid setup code format: ' . $setupCode));
         }
         
-        // Setup ID should already be hex (4 chars), pad to 8 if needed
+        // Setup ID should be 4 chars for HomeKit QR codes, pad to 8 for X-HM format
         $setupIDHex = strtoupper($setupID);
+        // Remove any non-alphanumeric characters first
+        $setupIDHex = preg_replace('/[^A-Z0-9]/', '', $setupIDHex);
+
         if (strlen($setupIDHex) < 8) {
-            // If setup ID is shorter, pad with zeros or use MAC address
-            if (strlen($setupIDHex) === 4) {
-                // Common case: 4-char setup ID, duplicate it
-                $setupIDHex = $setupIDHex . $setupIDHex;
-            } else {
-                $setupIDHex = str_pad($setupIDHex, 8, '0', STR_PAD_LEFT);
-            }
+            // If setup ID is shorter than 8, pad with zeros
+            $setupIDHex = str_pad($setupIDHex, 8, '0', STR_PAD_LEFT);
         }
         $setupIDHex = substr($setupIDHex, 0, 8);
         
         $qrData = "X-HM://" . $setupIDHex . $setupCodeClean;
     }
     
+
     // Use Python to generate QR code image
     $pythonScript = <<<'PYCODE'
 import sys
@@ -584,7 +1140,7 @@ PYCODE;
 
     $command = "python3 -c " . escapeshellarg($pythonScript) . " " . escapeshellarg($qrData);
     $output = shell_exec($command);
-    
+
     if ($output) {
         $decoded = base64_decode(trim($output), true);
         if ($decoded !== false) {
@@ -593,7 +1149,7 @@ PYCODE;
             return;
         }
     }
-    
+
     // Fallback: return QR code data as JSON
     $result = array(
         'qr_data' => $qrData,
@@ -609,83 +1165,129 @@ function fppHomekitRestart() {
     $pidFile = $pluginDir . '/scripts/homekit_service.pid';
     $script = $pluginDir . '/scripts/homekit_service.py';
     $startScript = $pluginDir . '/scripts/postStart.sh';
-    
-    // Stop service
-    if (file_exists($pidFile)) {
-        $pid = trim(file_get_contents($pidFile));
-        if ($pid) {
-            // Try posix_kill if available
-            if (function_exists('posix_kill')) {
-                // Use numeric signal values (SIGTERM=15, SIGKILL=9) since constants may not be defined
-                $sigterm = defined('SIGTERM') ? SIGTERM : 15;
-                $sigkill = defined('SIGKILL') ? SIGKILL : 9;
-                
-                if (posix_kill($pid, 0)) {
-                    posix_kill($pid, $sigterm);
-                    sleep(1);
-                    if (posix_kill($pid, 0)) {
-                        posix_kill($pid, $sigkill);
-                    }
-                }
-            } else {
-                // Fallback: use kill command
-                @exec("kill $pid 2>&1", $output, $return_var);
-                sleep(1);
-                @exec("kill -9 $pid 2>&1", $output, $return_var);
-            }
-        }
-        @unlink($pidFile);
-    }
-    
-    // Start service using postStart.sh script for consistency
-    if (file_exists($startScript)) {
-        // Use nohup and background execution to ensure it runs
-        $cmd = "cd " . escapeshellarg($pluginDir . '/scripts') . " && nohup bash " . escapeshellarg($startScript) . " >> " . escapeshellarg($pluginDir . '/scripts/restart.log') . " 2>&1 &";
-        shell_exec($cmd);
-        
-        // Wait a moment for service to start
-        sleep(3);
-        
-        // Check if service started successfully
-        $started = false;
+
+    try {
+        // Stop service using PID file first
         if (file_exists($pidFile)) {
-            $newPid = trim(file_get_contents($pidFile));
-            if ($newPid) {
-                // Check if process is running
+            $pid = trim(file_get_contents($pidFile));
+            if ($pid) {
+                // Try posix_kill if available
                 if (function_exists('posix_kill')) {
-                    if (posix_kill($newPid, 0)) {
-                        $started = true;
+                    // Use numeric signal values (SIGTERM=15, SIGKILL=9) since constants may not be defined
+                    $sigterm = defined('SIGTERM') ? SIGTERM : 15;
+                    $sigkill = defined('SIGKILL') ? SIGKILL : 9;
+
+                    if (posix_kill($pid, 0)) {
+                        posix_kill($pid, $sigterm);
+                        sleep(2);
+                        if (posix_kill($pid, 0)) {
+                            posix_kill($pid, $sigkill);
+                            sleep(1);
+                        }
                     }
                 } else {
-                    $output = array();
-                    $return_var = 0;
-                    @exec("ps -p $newPid 2>&1", $output, $return_var);
-                    if ($return_var === 0 && !empty($output)) {
-                        $started = true;
-                    }
+                    // Fallback: use kill command
+                    @exec("kill $pid 2>&1", $output, $return_var);
+                    sleep(2);
+                    @exec("kill -9 $pid 2>&1", $output, $return_var);
                 }
             }
+            @unlink($pidFile);
         }
         
-        $result = array(
-            'status' => $started ? 'restarted' : 'restart_initiated',
-            'started' => $started,
-            'message' => $started ? 'Service restarted successfully' : 'Restart initiated, checking status...'
-        );
-    } elseif (file_exists($script)) {
-        // Fallback: start directly
-        $python3 = trim(shell_exec("which python3 2>/dev/null"));
-        if (empty($python3)) {
-            $python3 = 'python3';
+        // Fallback: kill all instances by process name to catch any orphaned processes
+        // This handles cases where the PID file is stale or missing
+        // Use pkill if available (most reliable)
+        @exec("pkill -f homekit_service.py 2>&1", $pkillOutput, $pkillReturn);
+        if ($pkillReturn !== 0) {
+            // If pkill fails, try killall
+            @exec("killall homekit_service.py 2>&1", $killallOutput, $killallReturn);
         }
-        $cmd = "cd " . escapeshellarg($pluginDir . '/scripts') . " && nohup " . escapeshellarg($python3) . " " . escapeshellarg($script) . " >> " . escapeshellarg($pluginDir . '/scripts/homekit_service.log') . " 2>&1 &";
-        shell_exec($cmd);
-        sleep(3);
-        $result = array('status' => 'restarted');
-    } else {
-        $result = array('status' => 'error', 'message' => 'Service script not found');
+        // Give processes time to terminate
+        sleep(1);
+
+        // Start service using postStart.sh script for consistency
+        if (file_exists($startScript)) {
+            // Use nohup and background execution to ensure it runs
+            $cmd = "cd " . escapeshellarg($pluginDir . '/scripts') . " && bash " . escapeshellarg($startScript) . " 2>&1";
+            $output = shell_exec($cmd);
+
+            if ($output) {
+                // Check for errors in output
+                if (strpos($output, 'ERROR') !== false || strpos($output, 'exit 1') !== false) {
+                    $result = array(
+                        'status' => 'error',
+                        'message' => 'Service failed to start: ' . trim($output)
+                    );
+                } else {
+                    $result = array(
+                        'status' => 'restarted',
+                        'started' => true,
+                        'message' => 'Service restarted successfully'
+                    );
+                }
+            } else {
+                // Check if service started successfully by looking for PID file
+                $started = false;
+                if (file_exists($pidFile)) {
+                    $newPid = trim(file_get_contents($pidFile));
+                    if ($newPid) {
+                        // Check if process is running
+                        if (function_exists('posix_kill')) {
+                            if (posix_kill($newPid, 0)) {
+                                $started = true;
+                            }
+                        } else {
+                            $output_ps = array();
+                            $return_var = 0;
+                            @exec("ps -p $newPid 2>&1", $output_ps, $return_var);
+                            if ($return_var === 0 && !empty($output_ps)) {
+                                $started = true;
+                            }
+                        }
+                    }
+                }
+
+                $result = array(
+                    'status' => $started ? 'restarted' : 'restart_initiated',
+                    'started' => $started,
+                    'message' => $started ? 'Service restarted successfully' : 'Restart initiated, service may still be starting...'
+                );
+            }
+        } elseif (file_exists($script)) {
+            // Fallback: start directly
+            $python3 = trim(shell_exec("which python3 2>/dev/null"));
+            if (empty($python3)) {
+                $python3 = 'python3';
+            }
+            $cmd = "cd " . escapeshellarg($pluginDir . '/scripts') . " && timeout 10 " . escapeshellarg($python3) . " " . escapeshellarg($script) . " 2>&1";
+            $output = shell_exec($cmd);
+
+            if ($output && (strpos($output, 'ERROR') !== false || strpos($output, 'ModuleNotFoundError') !== false)) {
+                $result = array(
+                    'status' => 'error',
+                    'message' => 'Service failed to start: ' . trim($output)
+                );
+            } else {
+                $result = array(
+                    'status' => 'restarted',
+                    'started' => true,
+                    'message' => 'Service restarted successfully'
+                );
+            }
+        } else {
+            $result = array(
+                'status' => 'error',
+                'message' => 'Service script not found at: ' . $script
+            );
+        }
+    } catch (Exception $e) {
+        $result = array(
+            'status' => 'error',
+            'message' => 'Exception during restart: ' . $e->getMessage()
+        );
     }
-    
+
     return json($result);
 }
 
@@ -697,7 +1299,7 @@ function fppHomekitPairingInfo() {
     
     $result = array(
         'paired' => false,
-        'setup_code' => '123-45-678',
+        'setup_code' => '0000-0000',
         'setup_id' => 'HOME'
     );
     
@@ -708,7 +1310,14 @@ function fppHomekitPairingInfo() {
             $info = @json_decode($infoData, true);
             if ($info) {
                 if (isset($info['setup_code'])) {
-                    $result['setup_code'] = $info['setup_code'];
+                    // Normalize setup code format to XXXX-XXXX
+                    $setupCode = $info['setup_code'];
+                    $setupCodeClean = str_replace('-', '', $setupCode);
+                    if (strlen($setupCodeClean) === 8 && ctype_digit($setupCodeClean)) {
+                        $result['setup_code'] = substr($setupCodeClean, 0, 4) . '-' . substr($setupCodeClean, 4);
+                    } else {
+                        $result['setup_code'] = $setupCode;
+                    }
                 }
                 if (isset($info['setup_id'])) {
                     $result['setup_id'] = $info['setup_id'];
@@ -733,8 +1342,96 @@ function fppHomekitPairingInfo() {
     return json($result);
 }
 
+// POST /api/plugin/fpp-Homekit/unpair
+function fppHomekitUnpair() {
+    try {
+        $pluginDir = dirname(__FILE__);
+        $stateFile = $pluginDir . '/scripts/homekit_accessory.state';
+        
+        $result = array(
+            'success' => false,
+            'message' => ''
+        );
+        
+        // Stop the service first
+        $pidFile = $pluginDir . '/scripts/homekit_service.pid';
+        if (file_exists($pidFile)) {
+            $pid = trim(file_get_contents($pidFile));
+            if ($pid && is_numeric($pid)) {
+                // Send SIGTERM to gracefully stop (use numeric value 15 if constant not defined)
+                $sigterm = defined('SIGTERM') ? SIGTERM : 15;
+                $sigkill = defined('SIGKILL') ? SIGKILL : 9;
+                
+                if (function_exists('posix_kill')) {
+                    @posix_kill($pid, $sigterm);
+                    sleep(2);
+                    // Force kill if still running
+                    if (file_exists($pidFile)) {
+                        @posix_kill($pid, $sigkill);
+                    }
+                } else {
+                    // Fallback if posix_kill not available
+                    @exec("kill $pid 2>/dev/null");
+                    sleep(2);
+                    if (file_exists($pidFile)) {
+                        @exec("kill -9 $pid 2>/dev/null");
+                    }
+                }
+            }
+        }
+        
+        // Remove or clear the state file to unpair
+        if (file_exists($stateFile)) {
+            // Backup the state file before deleting
+            $backupFile = $stateFile . '.backup.' . time();
+            @copy($stateFile, $backupFile);
+            
+            // Delete the state file to remove pairing
+            if (@unlink($stateFile)) {
+                $result['success'] = true;
+                $result['message'] = 'HomeKit pairing removed successfully. Service will restart with new pairing code.';
+            } else {
+                $result['message'] = 'Failed to delete state file. Check file permissions.';
+            }
+        } else {
+            $result['success'] = true;
+            $result['message'] = 'No pairing found to remove.';
+        }
+        
+        // Restart the service to generate new pairing
+        $mediadir = getenv('MEDIADIR') ?: '/home/fpp/media';
+        $postStartScript = $pluginDir . '/scripts/postStart.sh';
+        if (file_exists($postStartScript)) {
+            // Start service in background
+            $cmd = "MEDIADIR=" . escapeshellarg($mediadir) . " bash " . escapeshellarg($postStartScript) . " > /dev/null 2>&1 &";
+            @exec($cmd);
+        }
+        
+        return json($result);
+    } catch (Exception $e) {
+        return json(array(
+            'success' => false,
+            'message' => 'Error during unpair: ' . $e->getMessage()
+        ));
+    } catch (Error $e) {
+        return json(array(
+            'success' => false,
+            'message' => 'Error during unpair: ' . $e->getMessage()
+        ));
+    }
+}
+
 // GET /api/plugin/fpp-Homekit/playlists
 function fppHomekitPlaylists() {
+    // Cache playlists for 30 seconds (they don't change often)
+    static $cached = null;
+    static $cache_time = 0;
+    $cache_ttl = 30; // 30 seconds
+
+    if ($cached !== null && (time() - $cache_time) < $cache_ttl) {
+        return json($cached);
+    }
+
     $playlists = array();
     
     // Read playlists directly from filesystem (MQTT-only, no HTTP API)
@@ -769,11 +1466,25 @@ function fppHomekitPlaylists() {
     sort($playlists);
     
     $result = array('playlists' => $playlists);
+
+    // Cache the result
+    $cached = $result;
+    $cache_time = time();
+
     return json($result);
 }
 
 // GET /api/plugin/fpp-Homekit/config
 function fppHomekitGetConfig() {
+    // Cache config for 10 seconds (configuration doesn't change often)
+    static $cached = null;
+    static $cache_time = 0;
+    $cache_ttl = 10; // 10 seconds
+
+    if ($cached !== null && (time() - $cache_time) < $cache_ttl) {
+        return json($cached);
+    }
+
     $pluginDir = dirname(__FILE__);
     $scriptsDir = $pluginDir . '/scripts';
     $configFile = $scriptsDir . '/homekit_config.json';
@@ -883,7 +1594,11 @@ PYCODE;
             }
         }
     }
-    
+
+    // Cache the result
+    $cached = $result;
+    $cache_time = time();
+
     return json($result);
 }
 
@@ -943,7 +1658,7 @@ function fppHomekitSaveConfig() {
     // Update HomeKit IP
     if (isset($_POST['homekit_ip'])) {
         $homekitIp = trim($_POST['homekit_ip']);
-        // Empty string means auto-detect
+        // Empty string means auto-detect, store it
         $config['homekit_ip'] = $homekitIp;
     }
     
@@ -1118,7 +1833,8 @@ warnings.filterwarnings('ignore', category=DeprecationWarning)
 try:
     import paho.mqtt.client as mqtt
 except ImportError:
-    print(json.dumps({"success": False, "error": "paho-mqtt not installed"}))
+    error_msg = "paho-mqtt not installed. Install with: python3 -m pip install paho-mqtt --user"
+    print(json.dumps({"success": False, "error": error_msg, "install_command": "python3 -m pip install paho-mqtt --user"}))
     sys.exit(1)
 
 broker = sys.argv[1]
@@ -1226,6 +1942,100 @@ PYCODE;
         $result['error'] = 'No output from MQTT test script';
     }
 
+    return json($result);
+}
+
+// GET /api/plugin/fpp-Homekit/diagnostics
+function fppHomekitDiagnostics() {
+    $pluginDir = dirname(__FILE__);
+    $scriptsDir = $pluginDir . '/scripts';
+    $pidFile = $scriptsDir . '/homekit_service.pid';
+    $configFile = $scriptsDir . '/homekit_config.json';
+    $pairingInfoFile = $scriptsDir . '/homekit_pairing_info.json';
+    
+    $result = array(
+        'service_running' => false,
+        'pid' => null,
+        'listen_address' => '',
+        'network' => array('interfaces' => array()),
+        'port_51826_open' => false,
+        'avahi_running' => false,
+        'mosquitto_running' => false,
+        'mqtt_broker' => 'localhost',
+        'mqtt_port' => 1883,
+        'setup_code' => null,
+        'setup_id' => null,
+        'paired' => false
+    );
+    
+    // Check service running
+    if (file_exists($pidFile)) {
+        $pid = trim(file_get_contents($pidFile));
+        if ($pid) {
+            $result['pid'] = $pid;
+            if (file_exists("/proc/$pid")) {
+                $result['service_running'] = true;
+            }
+        }
+    }
+    
+    // Get listen address
+    if (file_exists($configFile)) {
+        $config = @json_decode(file_get_contents($configFile), true);
+        if ($config && isset($config['homekit_ip'])) {
+            $result['listen_address'] = $config['homekit_ip'] ?: 'Auto-detect';
+        }
+        if ($config && isset($config['mqtt'])) {
+            $result['mqtt_broker'] = $config['mqtt']['broker'] ?? 'localhost';
+            $result['mqtt_port'] = $config['mqtt']['port'] ?? 1883;
+        }
+    }
+    
+    // Get network interfaces
+    $interfacesResult = fppHomekitNetworkInterfaces();
+    if ($interfacesResult) {
+        $interfacesData = json_decode($interfacesResult, true);
+        if ($interfacesData && isset($interfacesData['interfaces'])) {
+            $result['network']['interfaces'] = $interfacesData['interfaces'];
+        }
+    }
+    
+    // Check port 51826
+    if (function_exists('shell_exec')) {
+        $portCheck = @shell_exec('netstat -tuln 2>/dev/null | grep ":51826 " || ss -tuln 2>/dev/null | grep ":51826 "');
+        $result['port_51826_open'] = !empty($portCheck);
+    }
+    
+    // Check avahi-daemon
+    if (function_exists('shell_exec')) {
+        $avahiCheck = @shell_exec('systemctl is-active avahi-daemon 2>/dev/null');
+        $result['avahi_running'] = (trim($avahiCheck) === 'active');
+    }
+    
+    // Check mosquitto
+    if (function_exists('shell_exec')) {
+        $mosquittoCheck = @shell_exec('systemctl is-active mosquitto 2>/dev/null');
+        $result['mosquitto_running'] = (trim($mosquittoCheck) === 'active');
+    }
+    
+    // Get pairing info
+    if (file_exists($pairingInfoFile)) {
+        $pairingInfo = @json_decode(file_get_contents($pairingInfoFile), true);
+        if ($pairingInfo) {
+            $result['setup_code'] = $pairingInfo['setup_code'] ?? null;
+            $result['setup_id'] = $pairingInfo['setup_id'] ?? null;
+        }
+    }
+    
+    // Check if paired
+    $stateFile = $scriptsDir . '/homekit_accessory.state';
+    if (file_exists($stateFile)) {
+        $state = @json_decode(file_get_contents($stateFile), true);
+        if ($state && isset($state['paired_clients']) && count($state['paired_clients']) > 0) {
+            $result['paired'] = true;
+        }
+    }
+    
     return json($result);
 }
 
@@ -1372,12 +2182,12 @@ PYCODE;
 function fppHomekitNetworkInterfaces() {
     $interfaces = array();
     $currentIp = null;
-    
+
     // Read current config
     $pluginDir = dirname(__FILE__);
     $scriptsDir = $pluginDir . '/scripts';
     $configFile = $scriptsDir . '/homekit_config.json';
-    
+
     if (file_exists($configFile)) {
         $configData = @file_get_contents($configFile);
         if ($configData) {
@@ -1387,36 +2197,17 @@ function fppHomekitNetworkInterfaces() {
             }
         }
     }
-    
-    // Get network interfaces using 'ip' command (Linux)
-    if (command_exists('ip')) {
-        // Get all interfaces with their IPs (excluding loopback and IPv6)
-        $output = shell_exec('ip -4 addr show 2>/dev/null | grep -E "^[0-9]+:|inet " | sed "N;s/\n/ /"');
-        if ($output) {
-            $lines = explode("\n", trim($output));
-            foreach ($lines as $line) {
-                // Parse: "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP>     inet 192.168.1.100/24"
-                if (preg_match('/\d+:\s+(\S+):.*inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
-                    $ifname = $matches[1];
-                    $ip = $matches[2];
-                    // Skip loopback
-                    if ($ifname !== 'lo' && $ip !== '127.0.0.1') {
-                        $interfaces[] = array(
-                            'name' => $ifname,
-                            'ip' => $ip
-                        );
-                    }
-                }
-            }
-        }
-        
-        // Fallback: simpler parsing
-        if (empty($interfaces)) {
-            $output = shell_exec('ip -4 -o addr show scope global 2>/dev/null');
+
+    // Try multiple methods to get network interfaces (with performance optimizations)
+    if (function_exists('shell_exec')) {
+        // Method 1: Use 'ip' command (Linux)
+        if (command_exists('ip')) {
+            $output = @shell_exec('ip -4 -o addr show 2>/dev/null | grep -v "127.0.0.1"');
             if ($output) {
                 $lines = explode("\n", trim($output));
                 foreach ($lines as $line) {
-                    if (preg_match('/\d+:\s+(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
+                    // Parse: "2: eth0    inet 192.168.1.100/24 ..."
+                    if (preg_match('/^\d+:\s+(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
                         $ifname = $matches[1];
                         $ip = $matches[2];
                         if ($ifname !== 'lo' && $ip !== '127.0.0.1') {
@@ -1429,34 +2220,61 @@ function fppHomekitNetworkInterfaces() {
                 }
             }
         }
-    }
-    
-    // Fallback: try ifconfig (macOS/BSD)
-    if (empty($interfaces) && command_exists('ifconfig')) {
-        $output = shell_exec('ifconfig -a 2>/dev/null');
-        if ($output) {
-            $lines = explode("\n", $output);
-            $currentIface = null;
-            foreach ($lines as $line) {
-                // New interface
-                if (preg_match('/^(\S+):/', $line, $matches)) {
-                    $currentIface = $matches[1];
-                }
-                // IP address line
-                if ($currentIface && preg_match('/inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
-                    $ip = $matches[1];
-                    if ($currentIface !== 'lo' && $currentIface !== 'lo0' && $ip !== '127.0.0.1') {
-                        $interfaces[] = array(
-                            'name' => $currentIface,
-                            'ip' => $ip
-                        );
+        
+        // Method 2: Try hostname command
+        if (empty($interfaces) && command_exists('hostname')) {
+            $ip = @shell_exec('hostname -I 2>/dev/null | awk \'{print $1}\'');
+            if ($ip && trim($ip) && trim($ip) !== '127.0.0.1') {
+                $interfaces[] = array(
+                    'name' => 'Primary',
+                    'ip' => trim($ip)
+                );
+            }
+        }
+        
+        // Method 3: Try ifconfig (macOS/BSD)
+        if (empty($interfaces) && command_exists('ifconfig')) {
+            $output = @shell_exec('ifconfig 2>/dev/null | grep -A 1 "^[a-z]" | grep "inet " | grep -v "127.0.0.1"');
+            if ($output) {
+                $lines = explode("\n", trim($output));
+                $index = 1;
+                foreach ($lines as $line) {
+                    if (preg_match('/inet\s+(\d+\.\d+\.\d+\.\d+)/', $line, $matches)) {
+                        $ip = $matches[1];
+                        if ($ip !== '127.0.0.1') {
+                            $interfaces[] = array(
+                                'name' => 'Interface ' . $index,
+                                'ip' => $ip
+                            );
+                            $index++;
+                        }
                     }
                 }
             }
         }
     }
     
-    // Remove duplicates (same IP on multiple interfaces)
+    // Method 4: PHP socket method (most reliable)
+    if (empty($interfaces)) {
+        try {
+            $sock = @socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
+            if ($sock) {
+                @socket_connect($sock, '8.8.8.8', 53);
+                @socket_getsockname($sock, $ip);
+                @socket_close($sock);
+                if ($ip && $ip !== '127.0.0.1') {
+                    $interfaces[] = array(
+                        'name' => 'Primary Interface',
+                        'ip' => $ip
+                    );
+                }
+            }
+        } catch (Exception $e) {
+            // Ignore socket errors
+        }
+    }
+    
+    // Remove duplicates
     $seen = array();
     $uniqueInterfaces = array();
     foreach ($interfaces as $iface) {
@@ -1468,23 +2286,388 @@ function fppHomekitNetworkInterfaces() {
     }
     $interfaces = $uniqueInterfaces;
     
-    // If no current IP set and we have interfaces, don't set a default (let it be empty for auto-detect)
-    // Current IP will be empty string or the saved value
-    if ($currentIp === null) {
-        $currentIp = ''; // Empty means auto-detect
+    // Ensure we always have at least something
+    if (empty($interfaces)) {
+        // Last resort: Try to get server IP
+        if (isset($_SERVER['SERVER_ADDR']) && $_SERVER['SERVER_ADDR'] !== '127.0.0.1') {
+            $interfaces[] = array(
+                'name' => 'Server IP',
+                'ip' => $_SERVER['SERVER_ADDR']
+            );
+        }
+    }
+    
+    // If no current IP is set, default to the hardwired ethernet interface
+    if ($currentIp === null || $currentIp === '') {
+        // Find the first ethernet interface (eth0, enp*, ens*, etc.)
+        foreach ($interfaces as $iface) {
+            $name = strtolower($iface['name']);
+            // Prioritize wired interfaces: eth, enp, ens
+            if (strpos($name, 'eth') === 0 || 
+                strpos($name, 'enp') === 0 || 
+                strpos($name, 'ens') === 0 ||
+                strpos($name, 'primary') !== false) {
+                $currentIp = $iface['ip'];
+                break;
+            }
+        }
+        
+        // If still not set, use first interface
+        if (($currentIp === null || $currentIp === '') && !empty($interfaces)) {
+            $currentIp = $interfaces[0]['ip'];
+        }
+        
+        // If still nothing, leave empty for auto-detect
+        if ($currentIp === null) {
+            $currentIp = '';
+        }
     }
     
     $result = array(
         'interfaces' => $interfaces,
-        'current_ip' => $currentIp
+        'current_ip' => $currentIp,
+        'default_is_ethernet' => !empty($currentIp)
     );
-    
+
     return json($result);
 }
 
 function command_exists($cmd) {
-    $return = shell_exec(sprintf("which %s 2>/dev/null", escapeshellarg($cmd)));
+    if (!function_exists('shell_exec')) {
+        return false;
+    }
+    $return = @shell_exec(sprintf("which %s 2>/dev/null", escapeshellarg($cmd)));
     return !empty($return);
+}
+
+// POST /api/plugin/fpp-Homekit/emulate
+function fppHomekitEmulate() {
+    // Get the value from POST data
+    $value = isset($_POST['value']) ? intval($_POST['value']) : 0;
+
+    // Load plugin configuration
+    $pluginDir = dirname(__FILE__);
+    $scriptsDir = $pluginDir . '/scripts';
+    $configFile = $scriptsDir . '/homekit_config.json';
+
+    $playlistName = '';
+    $mqttConfig = array(
+        'broker' => 'localhost',
+        'port' => 1883,
+        'topic_prefix' => 'FPP'
+    );
+
+    // Load configuration
+    if (file_exists($configFile)) {
+        $config = @json_decode(file_get_contents($configFile), true);
+        if ($config) {
+            $playlistName = $config['playlist_name'] ?? '';
+            if (isset($config['mqtt'])) {
+                $mqttConfig = array_merge($mqttConfig, $config['mqtt']);
+            }
+        }
+    }
+
+    // Validate playlist is configured
+    if (empty($playlistName)) {
+        return json(array(
+            'success' => false,
+            'error' => 'No playlist configured. Please set a playlist in the plugin configuration.'
+        ));
+    }
+
+    $normalizedPrefix = isset($mqttConfig['topic_prefix']) ? trim($mqttConfig['topic_prefix'], '/') : '';
+
+    // Build list of MQTT prefix variations to maximize compatibility
+    $prefixCandidates = array();
+    $addCandidate = function ($candidate) use (&$prefixCandidates) {
+        $normalized = trim((string)$candidate, '/');
+        if (!in_array($normalized, $prefixCandidates, true)) {
+            $prefixCandidates[] = $normalized;
+        }
+    };
+
+    if ($normalizedPrefix !== '') {
+        $addCandidate($normalizedPrefix);
+    }
+
+    foreach (array(
+        'falcon/player/FPP2',
+        'falcon/player/FPP',
+        'FPP',
+        'fpp',
+    ) as $fallbackPrefix) {
+        $addCandidate($fallbackPrefix);
+    }
+
+    if (!in_array('', $prefixCandidates, true)) {
+        $prefixCandidates[] = '';
+    }
+
+    $topics_to_try = array();
+    $addTopic = function ($basePrefix, $suffix) use (&$topics_to_try) {
+        $suffix = trim($suffix, '/');
+        if ($suffix === '') {
+            return;
+        }
+        $topic = $basePrefix !== '' ? trim($basePrefix . '/' . $suffix, '/') : $suffix;
+        $topic = preg_replace('#//+#', '/', $topic);
+        if (!in_array($topic, $topics_to_try, true)) {
+            $topics_to_try[] = $topic;
+        }
+    };
+
+    // Determine command based on value
+    if ($value === 1) {
+        // Emulate ON - start playlist
+        $command = "StartPlaylist/{$playlistName}";
+        $action = 'start';
+        foreach ($prefixCandidates as $base) {
+            $addTopic($base, "set/playlist/{$playlistName}/start");
+            $addTopic($base, "command/StartPlaylist/{$playlistName}");
+            $addTopic($base, "set/command/StartPlaylist/{$playlistName}");
+        }
+    } else {
+        // Emulate OFF - stop playback
+        $command = "Stop";
+        $action = 'stop';
+        foreach ($prefixCandidates as $base) {
+            $addTopic($base, "set/playlist/{$playlistName}/stop/now");
+            $addTopic($base, "set/playlist/{$playlistName}/stop");
+            $addTopic($base, "command/Stop");
+            $addTopic($base, "set/command/Stop");
+        }
+    }
+
+    $success = false;
+    $errors = array();
+    $payload = '';
+    $logFile = $scriptsDir . '/homekit_php.log';
+
+    if (function_exists('exec')) {
+        foreach ($topics_to_try as $topic) {
+            $commandLine = sprintf(
+                "mosquitto_pub -h %s -p %s -t %s -m %s 2>&1",
+                escapeshellarg($mqttConfig['broker']),
+                escapeshellarg((string)$mqttConfig['port']),
+                escapeshellarg($topic),
+                escapeshellarg($payload)
+            );
+
+            $output = array();
+            $exitCode = 1;
+            exec($commandLine, $output, $exitCode);
+
+            $outputText = trim(implode("\n", $output));
+            $logMessage = sprintf(
+                "[%s] MQTT publish attempt topic=\"%s\" exit=%d output=%s\n",
+                date('c'),
+                $topic,
+                $exitCode,
+                $outputText === '' ? 'none' : $outputText
+            );
+            @file_put_contents($logFile, $logMessage, FILE_APPEND);
+
+            if ($exitCode === 0) {
+                $success = true;
+                break; // Stop trying once we succeed
+            } else {
+                $errors[] = sprintf(
+                    'Failed to publish to %s (exit=%d%s)',
+                    $topic,
+                    $exitCode,
+                    $outputText !== '' ? ', output=' . $outputText : ''
+                );
+            }
+        }
+    } else {
+        $errors[] = 'PHP exec() is disabled; cannot publish MQTT commands from PHP.';
+    }
+
+    // Always record the command attempt, even if it failed (for debugging)
+    // But only log successful ones as "emulate" source
+    if ($success) {
+        _record_command($action, 'emulate');
+        
+        return json(array(
+            'success' => true,
+            'action' => $action,
+            'command' => $command,
+            'playlist' => $playlistName,
+            'topics_tried' => $topics_to_try,
+            'mqtt_config' => array(
+                'broker' => $mqttConfig['broker'],
+                'port' => $mqttConfig['port'],
+                'prefix' => $mqttConfig['topic_prefix']
+            )
+        ));
+    } else {
+        return json(array(
+            'success' => false,
+            'error' => 'Failed to send MQTT command. Check MQTT broker connection.',
+            'action' => $action,
+            'command' => $command,
+            'topics_tried' => $topics_to_try,
+            'errors' => $errors,
+            'mqtt_config' => array(
+                'broker' => $mqttConfig['broker'],
+                'port' => $mqttConfig['port'],
+                'prefix' => $mqttConfig['topic_prefix']
+            )
+        ));
+    }
+}
+
+function fppHomekitEvents() {
+    // Server-Sent Events endpoint for real-time UI updates
+    $pluginDir = dirname(__FILE__);
+
+    // Set headers for SSE
+    header('Content-Type: text/event-stream');
+    header('Cache-Control: no-cache');
+    header('Connection: keep-alive');
+    header('Access-Control-Allow-Origin: *');
+    header('Access-Control-Allow-Headers: Cache-Control');
+
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+
+    $lastStatusMod = 0;
+    $lastCommandsMod = 0;
+
+    $statusFile = $pluginDir . '/scripts/homekit_status.json';
+    $commandsFile = $pluginDir . '/scripts/homekit_commands.json';
+
+    // Send full status on initial connection (for QR code loading)
+    // Get status data directly (bypass json() wrapper)
+    $pidFile = $pluginDir . '/scripts/homekit_service.pid';
+    $configFile = $pluginDir . '/scripts/homekit_config.json';
+    $stateFile = $pluginDir . '/scripts/homekit_accessory.state';
+    
+    $fullStatusData = array();
+    
+    // Get service running status
+    $running = false;
+    if (file_exists($statusFile)) {
+        $statusData = @json_decode(file_get_contents($statusFile), true);
+        if ($statusData && isset($statusData['service_running'], $statusData['timestamp'])) {
+            $running = (bool)$statusData['service_running'];
+            if ((time() - $statusData['timestamp']) >= 5) {
+                $running = false; // Status too old, check PID
+            }
+        }
+    }
+    
+    if (!$running && file_exists($pidFile)) {
+        $pid = trim(file_get_contents($pidFile));
+        if ($pid && (file_exists("/proc/{$pid}") || (function_exists('posix_kill') && posix_kill($pid, 0)))) {
+            $running = true;
+        }
+    }
+    
+    $fullStatusData['service_running'] = $running;
+    
+    // Get paired status
+    $paired = false;
+    if (file_exists($stateFile)) {
+        $state = @json_decode(file_get_contents($stateFile), true);
+        if ($state && !empty($state['paired_clients'])) {
+            $paired = true;
+        }
+    }
+    $fullStatusData['paired'] = $paired;
+    
+    // Get FPP status (simplified - just check if service is running for QR code)
+    $fullStatusData['fpp_status'] = array('playing' => false);
+    
+    // Get playlist
+    $playlist = '';
+    if (file_exists($configFile)) {
+        $config = @json_decode(file_get_contents($configFile), true);
+        if ($config && isset($config['playlist_name'])) {
+            $playlist = $config['playlist_name'];
+        }
+    }
+    $fullStatusData['playlist'] = $playlist;
+    
+    // Send initial full status
+    $initialStatus = array(
+        'type' => 'status_update',
+        'data' => $fullStatusData,
+        'timestamp' => time()
+    );
+    echo "data: " . json_encode($initialStatus) . "\n\n";
+    flush();
+    
+    if (file_exists($commandsFile)) {
+        $commandsData = @json_decode(file_get_contents($commandsFile), true);
+        if ($commandsData && is_array($commandsData) && count($commandsData) > 0) {
+            $lastCommand = end($commandsData);
+            $initialCommand = array(
+                'type' => 'command_update',
+                'data' => $lastCommand,
+                'timestamp' => time()
+            );
+            echo "data: " . json_encode($initialCommand) . "\n\n";
+            flush();
+        }
+    }
+    
+    $initialData = array('type' => 'connected', 'timestamp' => time());
+    echo "data: " . json_encode($initialData) . "\n\n";
+    flush();
+
+    $iteration = 0;
+    while (true) {
+        $iteration++;
+
+        if (file_exists($statusFile)) {
+            $currentMod = filemtime($statusFile);
+            if ($currentMod > $lastStatusMod) {
+                $statusData = @json_decode(file_get_contents($statusFile), true);
+                if ($statusData) {
+                    $eventData = array(
+                        'type' => 'status_update',
+                        'data' => $statusData,
+                        'timestamp' => time()
+                    );
+                    echo "data: " . json_encode($eventData) . "\n\n";
+                    flush();
+                }
+                $lastStatusMod = $currentMod;
+            }
+        }
+
+        if (file_exists($commandsFile)) {
+            $currentMod = filemtime($commandsFile);
+            if ($currentMod > $lastCommandsMod) {
+                $commandsData = @json_decode(file_get_contents($commandsFile), true);
+                if ($commandsData && is_array($commandsData) && count($commandsData) > 0) {
+                    $lastCommand = end($commandsData);
+                    $eventData = array(
+                        'type' => 'command_update',
+                        'data' => $lastCommand,
+                        'timestamp' => time()
+                    );
+                    echo "data: " . json_encode($eventData) . "\n\n";
+                    flush();
+                }
+                $lastCommandsMod = $currentMod;
+            }
+        }
+
+        if ($iteration % 30 == 0) {
+            echo "data: " . json_encode(array('type' => 'heartbeat', 'timestamp' => time())) . "\n\n";
+            flush();
+        }
+
+        usleep(500000);
+
+        if (connection_aborted()) {
+            break;
+        }
+    }
 }
 
 ?>
