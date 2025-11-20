@@ -128,7 +128,7 @@ if (file_exists($cssPath)) {
                     <div class="status-card pairing-card">
                         <div class="status-card-label">Pair with HomeKit</div>
                         <div id="pairing-section">
-                            <div class="qr-container">
+                            <div class="qr-container" style="display: none;">
                                 <div id="qr-loading" style="display: block;">
                                     <div class="qr-code-box">
                                         <div class="qr-placeholder">
