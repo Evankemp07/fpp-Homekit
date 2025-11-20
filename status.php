@@ -174,8 +174,8 @@ if (file_exists($cssPath)) {
         
         <div class="info-debug-layout" style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-color);">
             <div class="info-section">
-                <h3>Information</h3>
                 <div class="info-group">
+                    <div class="status-card-label" style="padding: 18px 22px 12px 22px; margin: 0; border-bottom: 1px solid var(--border-color);">Information</div>
                     <div class="info-row">
                         <div class="info-label">Accessory Name</div>
                         <div class="info-value">FPP-Controller</div>
