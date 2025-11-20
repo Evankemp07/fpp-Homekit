@@ -1182,7 +1182,7 @@ input:checked+.toggle-slider:before {
 }
 
 /* Make last command text bold */
-#last-command-row .info-value {
+#last-command-text {
     font-weight: 600;
     color: var(--text-primary);
 }

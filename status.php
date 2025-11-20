@@ -162,23 +162,9 @@ if (file_exists($cssPath)) {
                         </div>
                         
                         <div id="paired-section" style="display: none;">
-                            <div class="info-group">
-                                <div class="info-row">
-                                    <div class="info-label">Status</div>
-                                    <div class="info-value" style="color: var(--success-color); font-weight: 500;">
-                                        <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M240-200h120v-240h240v240h120v-360L480-740 240-560v360Zm-80 80v-480l320-240 320 240v480H520v-240h-80v240H160Zm320-350Z"/></svg>
-                                        Successfully paired with HomeKit
-                                    </div>
-                                </div>
-                                <div class="info-row">
-                                    <div class="info-label">Instructions</div>
-                                    <div class="info-value">You can now control FPP from the Home app on your iOS devices.</div>
-                                </div>
-                                <div class="info-row" id="last-command-row" style="display: none;">
-                                    <div class="info-label">Last Command</div>
-                                    <div class="info-value" id="last-command-time">none</div>
-                                </div>
-                            </div>
+                            <p class="success-message"><svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#4caf50" style="display: inline-block; vertical-align: middle; margin-right: 6px;"><path d="M240-200h120v-240h240v240h120v-360L480-740 240-560v360Zm-80 80v-480l320-240 320 240v480H520v-240h-80v240H160Zm320-350Z"/></svg>Successfully paired with HomeKit</p>
+                            <p class="info-text">You can now control FPP from the Home app on your iOS devices.</p>
+                            <p class="info-text" id="last-command-text" style="display: none;">Last command: <span id="last-command-time">none</span></p>
                         </div>
                     </div>
                 </div>
@@ -400,17 +386,17 @@ if (file_exists($cssPath)) {
                     // Show last command received (regardless of age)
                     const showLastCommand = localStorage.getItem('fppHomekitShowLastCommand') !== 'false';
                     const timeElement = document.getElementById('last-command-time');
-                    const rowElement = document.getElementById('last-command-row');
+                    const textElement = document.getElementById('last-command-text');
 
-                    if (showLastCommand && timeElement && rowElement) {
+                    if (showLastCommand && timeElement && textElement) {
                         const date = new Date(data.data.timestamp * 1000);
                         const timeString = date.toLocaleTimeString();
                         const sourceText = data.data.source === 'homekit' ? 'HomeKit' : 'Emulate';
                         timeElement.textContent = `${data.data.action} (${sourceText}) at ${timeString}`;
-                        rowElement.style.display = 'flex';
-                    } else if (rowElement && !showLastCommand) {
+                        textElement.style.display = 'block';
+                    } else if (textElement && !showLastCommand) {
                         // Hide if disabled
-                        rowElement.style.display = 'none';
+                        textElement.style.display = 'none';
                     }
                 }
                 break;
@@ -833,15 +819,15 @@ if (file_exists($cssPath)) {
         const showLastCommand = checkbox.checked;
         localStorage.setItem('fppHomekitShowLastCommand', showLastCommand);
 
-        const rowElement = document.getElementById('last-command-row');
-        if (rowElement) {
+        const textElement = document.getElementById('last-command-text');
+        if (textElement) {
             if (!showLastCommand) {
-                rowElement.style.display = 'none';
+                textElement.style.display = 'none';
             } else {
                 // Show if there's a recent command
                 const timeElement = document.getElementById('last-command-time');
                 if (timeElement && timeElement.textContent !== 'none') {
-                    rowElement.style.display = 'flex';
+                    textElement.style.display = 'block';
                 }
             }
         }
@@ -1251,8 +1237,8 @@ if (file_exists($cssPath)) {
         const timeElement = document.getElementById('last-command-time');
         const rowElement = document.getElementById('last-command-row');
 
-        if (!showLastCommand && rowElement) {
-            rowElement.style.display = 'none';
+        if (!showLastCommand && textElement) {
+            textElement.style.display = 'none';
             return;
         }
 
@@ -1268,19 +1254,19 @@ if (file_exists($cssPath)) {
             : recentCommands;
         
         // Show the last command from the array (most recent) - keep it visible permanently once received
-        if (commandsToUse && commandsToUse.length > 0 && timeElement && rowElement) {
+        if (commandsToUse && commandsToUse.length > 0 && timeElement && textElement) {
             // Get the last command (most recent)
             const lastCommand = commandsToUse[commandsToUse.length - 1];
             const date = new Date(lastCommand.timestamp * 1000);
             const timeString = date.toLocaleTimeString();
             const sourceText = lastCommand.source === 'homekit' ? 'HomeKit' : 'Emulate';
             timeElement.textContent = `${lastCommand.action} (${sourceText}) at ${timeString}`;
-            rowElement.style.display = 'flex';
+            textElement.style.display = 'block';
             lastCommandUpdateTime = now;
-        } else if (rowElement) {
+        } else if (textElement) {
             // Only hide if no commands exist at all (never received any commands)
             // This ensures it stays visible permanently once a command is received
-            rowElement.style.display = 'none';
+            textElement.style.display = 'none';
         }
     }
     
@@ -1521,9 +1507,9 @@ if (file_exists($cssPath)) {
         const timeString = now.toLocaleTimeString();
         const timeElement = document.getElementById('last-command-time');
         const rowElement = document.getElementById('last-command-row');
-        if (timeElement && rowElement) {
+        if (timeElement && textElement) {
             timeElement.textContent = `${commandType} (Emulate) at ${timeString}`;
-            rowElement.style.display = 'flex';
+            textElement.style.display = 'block';
             lastCommandUpdateTime = Date.now();
         }
     }
