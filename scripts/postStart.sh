@@ -126,8 +126,8 @@ fi
 rm -f "${PID_FILE}"
 
 # Give system time to fully clean up async tasks from previous instance
-echo "Waiting for async cleanup..."
-sleep 1
+# Reduced wait time - service can start faster
+sleep 0.3
 
 # Start the service in background with logging
 cd "${PLUGIN_DIR}/scripts"
@@ -140,8 +140,9 @@ START_PID=$!
 trap 'echo "Interrupted, cleaning up..."; kill $START_PID 2>/dev/null || true; rm -f "${PID_FILE}"; exit 1' INT TERM
 
 # Give it time to initialize (HomeKit setup takes several seconds)
+# Reduced wait - check PID file sooner
 echo "Starting HomeKit service..."
-sleep 3
+sleep 2
 
 # Check if service started successfully
 if [ -f "${PID_FILE}" ]; then

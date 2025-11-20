@@ -134,8 +134,9 @@ else
     if [ "${UPDATED_USING_SCRIPT}" -eq 1 ]; then
         echo "Ensuring Python dependencies after update..." | tee -a "${INSTALL_LOG}"
         if [ -n "$PYTHON3" ]; then
-            # Install dependencies first (critical for service startup)
-            echo "Installing dependencies..." | tee -a "${INSTALL_LOG}"
+            # Skip full validation on updates - just ensure dependencies are installed
+            # Cache check will skip verification if recently done
+            echo "Installing dependencies (minimal validation)..." | tee -a "${INSTALL_LOG}"
             "${SCRIPTS_DIR}/install_python_deps.sh" "${PLUGIN_DIR}" "$PYTHON3" 2>&1 | tee -a "${INSTALL_LOG}" || \
                 echo "Warning: Could not install Python dependencies" | tee -a "${INSTALL_LOG}"
         fi
