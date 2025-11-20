@@ -126,13 +126,14 @@ run_pip_with_timeout() {
         done
         
         # Execute with timeout using bash -c to properly handle command with spaces
-        # Filter out verbose "Removing" messages from pip output, but preserve exit code
-        local pip_output
-        pip_output=$($TIMEOUT_CMD "$timeout_sec" bash -c "$cmd_str" 2>&1 | grep -v "^Removing ")
-        local exit_code=$?
-        
-        # Append filtered output to log (already filtered above)
-        echo "$pip_output" >> "${INSTALL_LOG}"
+        # Suppress all pip output during upgrade/removal operations (redirect to log only)
+        # This prevents verbose "Removing" messages from appearing in terminal
+        local pip_exit_code
+        # Run pip and redirect all output to log only (not displayed to user)
+        # With --quiet flag, output should be minimal, but we suppress it entirely
+        $TIMEOUT_CMD "$timeout_sec" bash -c "$cmd_str" >> "${INSTALL_LOG}" 2>&1
+        pip_exit_code=$?
+        local exit_code=$pip_exit_code
         
         if [ $exit_code -eq 0 ]; then
             echo "[$(date '+%H:%M:%S')] ✓ Completed: $description" | tee -a "${INSTALL_LOG}"
@@ -169,13 +170,14 @@ run_pip_with_timeout() {
             cmd_str="$cmd_str $(printf '%q' "$arg")"
         done
         # Execute using bash -c to properly handle command with spaces
-        # Filter out verbose "Removing" messages from pip output, but preserve exit code
-        local pip_output
-        pip_output=$(bash -c "$cmd_str" 2>&1 | grep -v "^Removing ")
-        local exit_code=$?
-        
-        # Append filtered output to log (already filtered above)
-        echo "$pip_output" >> "${INSTALL_LOG}"
+        # Suppress all pip output during upgrade/removal operations (redirect to log only)
+        # This prevents verbose "Removing" messages from appearing in terminal
+        local pip_exit_code
+        # Run pip and redirect all output to log only (not displayed to user)
+        # With --quiet flag, output should be minimal, but we suppress it entirely
+        bash -c "$cmd_str" >> "${INSTALL_LOG}" 2>&1
+        pip_exit_code=$?
+        local exit_code=$pip_exit_code
         
         if [ $exit_code -eq 0 ]; then
             echo "[$(date '+%H:%M:%S')] ✓ Completed: $description" | tee -a "${INSTALL_LOG}"
@@ -218,7 +220,7 @@ install_with() {
     fi
     
     # Add non-interactive flags to prevent hanging and suppress verbose output
-    # Use --quiet to suppress most output, but also filter out "Removing" messages
+    # Use --quiet to suppress most output including package removal messages
     args+=("--no-input" "--disable-pip-version-check" "--quiet" "--no-warn-script-location")
 
     if run_pip_with_timeout "$PIP_TIMEOUT" "dependency installation (${1:-default flags})" install -r "${REQUIREMENTS_FILE}" "${args[@]}"; then

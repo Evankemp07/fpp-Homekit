@@ -44,7 +44,7 @@
     margin: 0 0 16px 0;
     box-shadow: var(--card-shadow);
     border: 1px solid var(--border-color);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: box-shadow 0.2s ease;
 }
 
 .homekit-card:hover {
@@ -441,6 +441,9 @@ input:checked+.toggle-slider:before {
 .debug-section {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 @media (max-width: 900px) {
@@ -462,7 +465,7 @@ input:checked+.toggle-slider:before {
     flex-direction: column;
     gap: 10px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-    transition: background 0.2s ease, transform 0.2s ease;
+    transition: background 0.2s ease;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -475,7 +478,6 @@ input:checked+.toggle-slider:before {
 
 .status-card:hover {
     background: rgba(255, 255, 255, 0.55);
-    transform: translateY(-2px);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -727,12 +729,11 @@ input:checked+.toggle-slider:before {
 
 .homekit-button:hover {
     background: #0051d5;
-    transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
 }
 
 .homekit-button:active {
-    transform: translateY(0);
+    opacity: 0.9;
 }
 
 .homekit-button:disabled {
@@ -976,17 +977,31 @@ input:checked+.toggle-slider:before {
 }
 
 #message-container {
-    margin-bottom: 5px;
+    position: fixed;
+    top: 0;
+    left: 15px;
+    right: 15px;
+    width: auto;
+    max-width: calc(100% - 30px);
+    padding-top: 15px;
+    z-index: 10000;
+    pointer-events: none;
     overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
 }
 
 .message {
     padding: 12px 16px;
     border-radius: 10px;
-    margin-top: 16px;
+    margin: 0;
     font-size: 15px;
     transition: opacity 0.3s ease, transform 0.3s ease;
     transform-origin: top;
+    pointer-events: auto;
+    width: fit-content;
+    max-width: 100%;
 }
 
 .message.success {
@@ -1048,10 +1063,11 @@ input:checked+.toggle-slider:before {
 .debug-messages {
     color: var(--text-secondary);
     line-height: 1.6;
-    max-height: 300px;
+    height: 300px;
     overflow-y: auto;
     display: none;
     margin-top: 12px;
+    flex-shrink: 0;
 }
 
 .debug-messages.open {
@@ -1108,10 +1124,32 @@ input:checked+.toggle-slider:before {
 
 /* Apple-style Info Group */
 .info-group {
-    background: var(--bg-secondary);
-    border-radius: 12px;
-    overflow: hidden;
-    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 16px;
+    padding: 18px 22px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+    transition: background 0.2s ease;
+}
+
+@media (prefers-color-scheme: dark) {
+    .info-group {
+        background: rgba(28, 28, 30, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+}
+
+.info-group:hover {
+    background: rgba(255, 255, 255, 0.55);
+}
+
+@media (prefers-color-scheme: dark) {
+    .info-group:hover {
+        background: rgba(28, 28, 30, 0.6);
+    }
 }
 
 .info-row {

@@ -117,6 +117,7 @@ if [ $FIRST_INSTALL -eq 1 ]; then
     # Install Python dependencies
     echo "Installing dependencies..." | tee -a "${INSTALL_LOG}"
     # Use tee to show output while also logging it
+    # install_python_deps.sh already suppresses verbose venv removal output
     "${SCRIPTS_DIR}/install_python_deps.sh" "${PLUGIN_DIR}" "${PYTHON3}" 2>&1 | tee -a "${INSTALL_LOG}"
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to install Python dependencies. Check ${INSTALL_LOG}" | tee -a "${INSTALL_LOG}"
@@ -134,6 +135,7 @@ else
         echo "Ensuring Python dependencies after update..." | tee -a "${INSTALL_LOG}"
         if [ -n "$PYTHON3" ]; then
             # Use tee to show output while also logging it
+            # install_python_deps.sh already suppresses verbose venv removal output
             "${SCRIPTS_DIR}/install_python_deps.sh" "${PLUGIN_DIR}" "$PYTHON3" 2>&1 | tee -a "${INSTALL_LOG}" || \
                 echo "Warning: Could not verify Python dependencies" | tee -a "${INSTALL_LOG}"
         fi
