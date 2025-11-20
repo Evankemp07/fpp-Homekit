@@ -1358,13 +1358,16 @@ function fppHomekitUnpair() {
         if (file_exists($pidFile)) {
             $pid = trim(file_get_contents($pidFile));
             if ($pid && is_numeric($pid)) {
-                // Send SIGTERM to gracefully stop
+                // Send SIGTERM to gracefully stop (use numeric value 15 if constant not defined)
+                $sigterm = defined('SIGTERM') ? SIGTERM : 15;
+                $sigkill = defined('SIGKILL') ? SIGKILL : 9;
+                
                 if (function_exists('posix_kill')) {
-                    @posix_kill($pid, SIGTERM);
+                    @posix_kill($pid, $sigterm);
                     sleep(2);
                     // Force kill if still running
                     if (file_exists($pidFile)) {
-                        @posix_kill($pid, SIGKILL);
+                        @posix_kill($pid, $sigkill);
                     }
                 } else {
                     // Fallback if posix_kill not available
