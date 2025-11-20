@@ -65,9 +65,7 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 # Verify Python can import required modules before starting
-echo "Verifying Python dependencies..."
-PYTHON_EXEC=$($PYTHON3 -c 'import sys; print(sys.executable)' 2>/dev/null)
-echo "Using Python: $PYTHON_EXEC"
+# Silent dependency verification
 
 # Test import with user site-packages enabled
 if ! $PYTHON3 -c "import site; site.ENABLE_USER_SITE = True; import pyhap" 2>/dev/null; then
@@ -132,41 +130,28 @@ echo "Waiting for async cleanup..."
 sleep 1
 
 # Start the service in background with logging
-echo "Starting FPP HomeKit service..."
 cd "${PLUGIN_DIR}/scripts"
 
-# Start with logging to file for debugging
-nohup "${PYTHON3}" "${SERVICE_SCRIPT}" >> "${LOG_FILE}" 2>&1 &
+# Start with logging to file for debugging (suppress stdout/stderr)
+nohup "${PYTHON3}" "${SERVICE_SCRIPT}" >> "${LOG_FILE}" 2>&1 </dev/null &
 START_PID=$!
 
 # Set up trap to clean up if script is interrupted
 trap 'echo "Interrupted, cleaning up..."; kill $START_PID 2>/dev/null || true; rm -f "${PID_FILE}"; exit 1' INT TERM
 
-# Give it more time to start up properly (asyncio needs time)
-sleep 1
+# Give it time to initialize (HomeKit setup takes several seconds)
+echo "Starting HomeKit service..."
+sleep 3
 
-# Verify it started
+# Check if service started successfully
 if [ -f "${PID_FILE}" ]; then
     NEW_PID=$(cat "${PID_FILE}" 2>/dev/null)
     if [ -n "$NEW_PID" ] && ps -p "${NEW_PID}" > /dev/null 2>&1; then
-        echo "FPP HomeKit service started successfully (PID: ${NEW_PID})"
+        echo "✓ HomeKit service started successfully"
     else
-        echo "Warning: HomeKit service PID file exists but process not found"
-        echo "Check log file: ${LOG_FILE}"
-        # Show last few lines of log
-        if [ -f "${LOG_FILE}" ]; then
-            echo "Last log entries:"
-            tail -5 "${LOG_FILE}" 2>/dev/null || true
-        fi
+        echo "⚠ Service may still be starting up. Check status in the web interface."
     fi
 else
-    echo "Error: PID file not created, service may have failed to start"
-    echo "Check log file: ${LOG_FILE}"
-    # Show last few lines of log
-    if [ -f "${LOG_FILE}" ]; then
-        echo "Last log entries:"
-        tail -10 "${LOG_FILE}" 2>/dev/null || true
-    fi
-    exit 1
+    echo "⚠ Service startup in progress. Check status in the web interface."
 fi
 

@@ -1072,7 +1072,7 @@ input:checked+.toggle-slider:before {
 }
 
 .debug-messages.open {
-    max-height: 300px;
+    max-height: 200px;
     overflow-y: auto;
     margin-top: 12px;
 }
@@ -1179,4 +1179,10 @@ input:checked+.toggle-slider:before {
 .info-value {
     color: var(--text-secondary);
     flex: 1;
+}
+
+/* Make last command text bold */
+#last-command-row .info-value {
+    font-weight: 600;
+    color: var(--text-primary);
 }

@@ -11,7 +11,7 @@ PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VENV_PYTHON = os.path.join(PLUGIN_DIR, 'venv', 'bin', 'python3')
 
 if os.path.exists(VENV_PYTHON) and sys.executable != VENV_PYTHON:
-    print(f"Re-launching script using venv: {VENV_PYTHON}")
+    # Silent relaunch - don't print anything to avoid confusing users
     os.execv(VENV_PYTHON, [VENV_PYTHON] + sys.argv)
 
 import site
