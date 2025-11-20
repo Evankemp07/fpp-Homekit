@@ -1220,9 +1220,9 @@ if (file_exists($cssPath)) {
             pairedSection.style.display = 'none';
             
             if (serviceRunning) {
-                if (!qrLoaded) {
-                    loadQRCode();
-                }
+                // Always reload QR code when service is running and not paired
+                // This ensures it reloads after unpairing
+                loadQRCode();
             } else {
                 // Show placeholder
                 document.getElementById('qr-loading').style.display = 'block';
@@ -1399,14 +1399,33 @@ if (file_exists($cssPath)) {
                 showMessage('HomeKit unpairing successful. Service is restarting with a new pairing code.', 'success');
                 // Close settings modal
                 hideMqttSettings();
-                // Refresh status and reload QR code after a delay (service needs time to restart)
+                // Reset QR loaded state to force reload
+                qrLoaded = false;
+                // Refresh status and reload QR code after delays (service needs time to restart)
+                // First check status after 3 seconds
                 setTimeout(() => {
                     loadStatus(true);
-                    // Also explicitly reload QR code after status update
+                }, 3000);
+                // Then try to load QR code after service has had time to generate new pairing info
+                // Retry a few times in case service is still starting
+                let retryCount = 0;
+                const maxRetries = 5;
+                const retryQRCode = () => {
                     setTimeout(() => {
-                        loadQRCode();
-                    }, 1000);
-                }, 2000);
+                        loadStatus(true);
+                        // Check if service is running before loading QR
+                        const serviceStatusTextEl = document.getElementById('service-status-text');
+                        const isRunning = serviceStatusTextEl && serviceStatusTextEl.textContent === 'Running';
+                        
+                        if (isRunning) {
+                            loadQRCode();
+                        } else if (retryCount < maxRetries) {
+                            retryCount++;
+                            retryQRCode();
+                        }
+                    }, 2000);
+                };
+                retryQRCode();
             } else {
                 showMessage('Error unpairing HomeKit: ' + (data.message || 'Unknown error'), 'error');
             }
