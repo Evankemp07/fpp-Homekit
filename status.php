@@ -1397,12 +1397,16 @@ if (file_exists($cssPath)) {
         .then(data => {
             if (data.success) {
                 showMessage('HomeKit unpairing successful. Service is restarting with a new pairing code.', 'success');
-                // Refresh status after a delay
-                setTimeout(() => {
-                    loadStatus(true);
-                }, 2000);
                 // Close settings modal
                 hideMqttSettings();
+                // Refresh status and reload QR code after a delay (service needs time to restart)
+                setTimeout(() => {
+                    loadStatus(true);
+                    // Also explicitly reload QR code after status update
+                    setTimeout(() => {
+                        loadQRCode();
+                    }, 1000);
+                }, 2000);
             } else {
                 showMessage('Error unpairing HomeKit: ' + (data.message || 'Unknown error'), 'error');
             }
