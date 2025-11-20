@@ -948,6 +948,7 @@ if (file_exists($cssPath)) {
         if (data.service_running !== undefined) {
             lastKnownStatus.service_running = data.service_running;
         }
+        // Always update paired status when provided (don't preserve if explicitly set)
         if (data.paired !== undefined) {
             lastKnownStatus.paired = data.paired;
         }
@@ -1401,15 +1402,27 @@ if (file_exists($cssPath)) {
                 hideMqttSettings();
                 // Reset QR loaded state to force reload
                 qrLoaded = false;
+                // Immediately update UI to show unpaired state
+                const pairingSection = document.getElementById('pairing-section');
+                const pairedSection = document.getElementById('paired-section');
+                if (pairingSection) pairingSection.style.display = 'block';
+                if (pairedSection) pairedSection.style.display = 'none';
+                
+                // Update pairing status indicators immediately
+                const pairingStatusTextEl = document.getElementById('pairing-status-text');
+                const pairingStatusDotEl = document.getElementById('pairing-status-dot');
+                if (pairingStatusTextEl) pairingStatusTextEl.textContent = 'Not Paired';
+                if (pairingStatusDotEl) pairingStatusDotEl.className = 'status-dot-large not-paired';
+                
                 // Refresh status and reload QR code after delays (service needs time to restart)
-                // First check status after 3 seconds
+                // First check status after 2 seconds
                 setTimeout(() => {
                     loadStatus(true);
-                }, 3000);
+                }, 2000);
                 // Then try to load QR code after service has had time to generate new pairing info
                 // Retry a few times in case service is still starting
                 let retryCount = 0;
-                const maxRetries = 5;
+                const maxRetries = 6;
                 const retryQRCode = () => {
                     setTimeout(() => {
                         loadStatus(true);
