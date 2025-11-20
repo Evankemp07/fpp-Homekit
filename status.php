@@ -1235,7 +1235,7 @@ if (file_exists($cssPath)) {
         // Update last command display (show last command received, keep it visible permanently if enabled)
         const showLastCommand = localStorage.getItem('fppHomekitShowLastCommand') !== 'false';
         const timeElement = document.getElementById('last-command-time');
-        const rowElement = document.getElementById('last-command-row');
+        const textElement = document.getElementById('last-command-text');
 
         if (!showLastCommand && textElement) {
             textElement.style.display = 'none';
