@@ -128,11 +128,11 @@ run_pip_with_timeout() {
         # Execute with timeout using bash -c to properly handle command with spaces
         # Filter out verbose "Removing" messages from pip output, but preserve exit code
         local pip_output
-        pip_output=$($TIMEOUT_CMD "$timeout_sec" bash -c "$cmd_str" 2>&1)
+        pip_output=$($TIMEOUT_CMD "$timeout_sec" bash -c "$cmd_str" 2>&1 | grep -v "^Removing ")
         local exit_code=$?
         
-        # Filter out "Removing" messages and append to log
-        echo "$pip_output" | grep -v "^Removing " >> "${INSTALL_LOG}"
+        # Append filtered output to log (already filtered above)
+        echo "$pip_output" >> "${INSTALL_LOG}"
         
         if [ $exit_code -eq 0 ]; then
             echo "[$(date '+%H:%M:%S')] ✓ Completed: $description" | tee -a "${INSTALL_LOG}"
@@ -171,11 +171,11 @@ run_pip_with_timeout() {
         # Execute using bash -c to properly handle command with spaces
         # Filter out verbose "Removing" messages from pip output, but preserve exit code
         local pip_output
-        pip_output=$(bash -c "$cmd_str" 2>&1)
+        pip_output=$(bash -c "$cmd_str" 2>&1 | grep -v "^Removing ")
         local exit_code=$?
         
-        # Filter out "Removing" messages and append to log
-        echo "$pip_output" | grep -v "^Removing " >> "${INSTALL_LOG}"
+        # Append filtered output to log (already filtered above)
+        echo "$pip_output" >> "${INSTALL_LOG}"
         
         if [ $exit_code -eq 0 ]; then
             echo "[$(date '+%H:%M:%S')] ✓ Completed: $description" | tee -a "${INSTALL_LOG}"
