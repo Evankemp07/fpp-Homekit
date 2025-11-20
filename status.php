@@ -172,10 +172,10 @@ if (file_exists($cssPath)) {
             
         </div>
         
-        <div class="info-debug-layout" style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-color);">
+        <div class="info-debug-layout" style="margin-top: 32px; padding-top: 32px;">
             <div class="info-section">
                 <div class="info-group" style="padding: 0;">
-                    <div class="status-card-label" style="padding: 18px 22px 12px 22px; margin: 0; border-bottom: 1px solid var(--border-color);">Information</div>
+                    <div class="status-card-label" style="padding: 18px 22px 12px 22px; margin: 0;">Information</div>
                     <div class="info-row">
                         <div class="info-label">Accessory Name</div>
                         <div class="info-value">FPP-Controller</div>
@@ -295,7 +295,7 @@ if (file_exists($cssPath)) {
                 </p>
             </div>
 
-            <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border-color);">
+            <div style="margin-top: 32px; padding-top: 24px;">
                 <button id="unpair-homekit-btn" onclick="unpairHomeKit()" style="width: 100%; padding: 14px 20px; background: #ff3b30; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 0.2s ease, opacity 0.2s ease;" onmouseover="this.style.background='#ff2d20'" onmouseout="this.style.background='#ff3b30'">
                     UNPAIR HOMEKIT
                 </button>
