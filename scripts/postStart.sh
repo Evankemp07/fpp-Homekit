@@ -56,7 +56,7 @@ if command -v systemctl >/dev/null 2>&1; then
         echo "mosquitto not running, attempting to start it..."
         if systemctl start mosquitto 2>/dev/null || sudo systemctl start mosquitto 2>/dev/null; then
             echo "✓ Started mosquitto"
-            sleep 1
+            sleep 0.5
         else
             echo "WARNING: Could not start mosquitto. MQTT control may not work."
             echo "Run: sudo systemctl start mosquitto"
@@ -109,11 +109,11 @@ chmod +x "${SERVICE_SCRIPT}" 2>/dev/null
 echo "Ensuring no existing HomeKit service is running..."
 if command -v pkill >/dev/null 2>&1; then
     pkill -f homekit_service.py 2>/dev/null || true
-    sleep 2  # Give processes time to terminate gracefully
+    sleep 0.5  # Give processes time to terminate gracefully (reduced)
     pkill -9 -f homekit_service.py 2>/dev/null || true  # Force kill if still running
 elif command -v killall >/dev/null 2>&1; then
     killall homekit_service.py 2>/dev/null || true
-    sleep 2
+    sleep 0.5
     killall -9 homekit_service.py 2>/dev/null || true
 else
     # Fallback: loop through ps output
@@ -129,7 +129,7 @@ rm -f "${PID_FILE}"
 
 # Give system time to fully clean up async tasks from previous instance
 echo "Waiting for async cleanup..."
-sleep 5
+sleep 1
 
 # Start the service in background with logging
 echo "Starting FPP HomeKit service..."
@@ -143,7 +143,7 @@ START_PID=$!
 trap 'echo "Interrupted, cleaning up..."; kill $START_PID 2>/dev/null || true; rm -f "${PID_FILE}"; exit 1' INT TERM
 
 # Give it more time to start up properly (asyncio needs time)
-sleep 5
+sleep 1
 
 # Verify it started
 if [ -f "${PID_FILE}" ]; then

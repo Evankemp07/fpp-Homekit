@@ -38,6 +38,7 @@
 }
 
 .homekit-card {
+    position: relative;
     background: var(--bg-primary);
     border-radius: 18px;
     padding: 24px 28px;
@@ -977,13 +978,12 @@ input:checked+.toggle-slider:before {
 }
 
 #message-container {
-    position: fixed;
-    top: 0;
+    position: absolute;
+    top: 15px;
     left: 15px;
     right: 15px;
     width: auto;
     max-width: calc(100% - 30px);
-    padding-top: 15px;
     z-index: 10000;
     pointer-events: none;
     overflow: hidden;
@@ -1063,15 +1063,18 @@ input:checked+.toggle-slider:before {
 .debug-messages {
     color: var(--text-secondary);
     line-height: 1.6;
-    height: 300px;
-    overflow-y: auto;
-    display: none;
-    margin-top: 12px;
+    max-height: 0;
+    overflow: hidden;
+    margin-top: 0;
     flex-shrink: 0;
+    transition: max-height 0.3s ease, margin-top 0.3s ease, overflow 0.3s ease;
+    box-sizing: border-box;
 }
 
 .debug-messages.open {
-    display: block;
+    max-height: 300px;
+    overflow-y: auto;
+    margin-top: 12px;
 }
 
 .debug-entry {

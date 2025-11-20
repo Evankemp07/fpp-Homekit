@@ -89,17 +89,17 @@ if [ $FIRST_INSTALL -eq 1 ]; then
             INSTALL_CMD="sudo apt-get"
         fi
         
-        if [ -n "$INSTALL_CMD" ]; then
-            if $INSTALL_CMD update -qq >> "${INSTALL_LOG}" 2>&1 && \
-               $INSTALL_CMD install -y python3-pip >> "${INSTALL_LOG}" 2>&1; then
-                sleep 2
-                if $PYTHON3 -m pip --version >> "${INSTALL_LOG}" 2>&1; then
-                    PIP3="$PYTHON3 -m pip"
-                elif command -v pip3 >/dev/null 2>&1; then
-                    PIP3="pip3"
-                fi
+    if [ -n "$INSTALL_CMD" ]; then
+        if $INSTALL_CMD update -qq >> "${INSTALL_LOG}" 2>&1 && \
+           $INSTALL_CMD install -y python3-pip >> "${INSTALL_LOG}" 2>&1; then
+            sleep 0.5
+            if $PYTHON3 -m pip --version >> "${INSTALL_LOG}" 2>&1; then
+                PIP3="$PYTHON3 -m pip"
+            elif command -v pip3 >/dev/null 2>&1; then
+                PIP3="pip3"
             fi
         fi
+    fi
     fi
     
     # If still no pip, give helpful error
@@ -134,10 +134,10 @@ else
     if [ "${UPDATED_USING_SCRIPT}" -eq 1 ]; then
         echo "Ensuring Python dependencies after update..." | tee -a "${INSTALL_LOG}"
         if [ -n "$PYTHON3" ]; then
-            # Use tee to show output while also logging it
-            # install_python_deps.sh already suppresses verbose venv removal output
+            # Install dependencies first (critical for service startup)
+            echo "Installing dependencies..." | tee -a "${INSTALL_LOG}"
             "${SCRIPTS_DIR}/install_python_deps.sh" "${PLUGIN_DIR}" "$PYTHON3" 2>&1 | tee -a "${INSTALL_LOG}" || \
-                echo "Warning: Could not verify Python dependencies" | tee -a "${INSTALL_LOG}"
+                echo "Warning: Could not install Python dependencies" | tee -a "${INSTALL_LOG}"
         fi
     fi
 fi
@@ -165,6 +165,8 @@ fi
 # Start HomeKit service after install/update
 if [ $FIRST_INSTALL -eq 1 ] || [ "${UPDATED_USING_SCRIPT}" -eq 1 ]; then
     if [ -x "${PLUGIN_DIR}/scripts/postStart.sh" ]; then
+        echo "Starting HomeKit service..." | tee -a "${INSTALL_LOG}"
+        # Start service after dependencies are confirmed installed
         if command -v sudo >/dev/null 2>&1; then
             sudo -u fpp MEDIADIR="${MEDIADIR}" bash "${PLUGIN_DIR}/scripts/postStart.sh" >> "${INSTALL_LOG}" 2>&1 || true
         else
@@ -173,40 +175,42 @@ if [ $FIRST_INSTALL -eq 1 ] || [ "${UPDATED_USING_SCRIPT}" -eq 1 ]; then
     fi
 fi
 
+# Dependencies and service are already completed above, proceed with SHA update
+
 # Update pluginInfo.json SHA after update (so FPP knows plugin is up to date)
 if [ $FIRST_INSTALL -eq 0 ]; then
     PLUGIN_INFO_FILE="${PLUGIN_DIR}/pluginInfo.json"
-    
+
     CURRENT_SHA=""
     CURRENT_BRANCH="master"
-    
+
     # Try multiple methods to get the SHA
     # Method 1: If this is a git repository, get SHA from git
     if [ -d "${PLUGIN_DIR}/.git" ] && command -v git >/dev/null 2>&1; then
         cd "${PLUGIN_DIR}" || exit 1
-        
+
         # Get the branch name
         CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
-        
+
         # Fetch latest from remote to ensure we have current refs (quiet, no output)
         git fetch origin "${CURRENT_BRANCH}" >/dev/null 2>&1 || true
-        
+
         # Try to get SHA from remote branch first (what FPP checks against)
         REMOTE_SHA=""
         if git rev-parse --verify "origin/${CURRENT_BRANCH}" >/dev/null 2>&1; then
             REMOTE_SHA=$(git rev-parse "origin/${CURRENT_BRANCH}" 2>/dev/null)
         fi
-        
+
         # Use remote SHA if available, otherwise use local HEAD (should match after pull)
         CURRENT_SHA="${REMOTE_SHA:-$(git rev-parse HEAD 2>/dev/null)}"
-        
+
         if [ -n "${REMOTE_SHA}" ]; then
             echo "Using remote SHA: ${REMOTE_SHA}" >> "${INSTALL_LOG}"
         else
             echo "Using local HEAD SHA: ${CURRENT_SHA}" >> "${INSTALL_LOG}"
         fi
     fi
-    
+
     # Method 2: If no git repo, try to get SHA from FPP's plugin update mechanism
     # FPP stores the remote SHA somewhere - check if we can find it
     if [ -z "${CURRENT_SHA}" ]; then
@@ -217,7 +221,7 @@ if [ $FIRST_INSTALL -eq 0 ]; then
             echo "Using SHA from FPP environment: ${CURRENT_SHA}" >> "${INSTALL_LOG}"
         fi
     fi
-    
+
     # Method 3: Try to get SHA from the srcURL by querying GitHub API
     if [ -z "${CURRENT_SHA}" ] && [ -f "${PLUGIN_INFO_FILE}" ] && command -v curl >/dev/null 2>&1; then
         SRC_URL=$(grep -o '"srcURL":\s*"[^"]*"' "${PLUGIN_INFO_FILE}" | cut -d'"' -f4)
@@ -225,7 +229,7 @@ if [ $FIRST_INSTALL -eq 0 ]; then
             REPO_PATH=$(echo "${SRC_URL}" | sed 's/.*github.com[:/]\([^.]*\)\.git/\1/' | sed 's/.*github.com\/\([^.]*\)\.git/\1/')
             BRANCH_NAME=$(grep -o '"branch":\s*"[^"]*"' "${PLUGIN_INFO_FILE}" | cut -d'"' -f4 || echo "master")
             API_URL="https://api.github.com/repos/${REPO_PATH}/commits/${BRANCH_NAME}"
-            
+
             SHA_RESPONSE=$(curl -s "${API_URL}" 2>/dev/null)
             if [ $? -eq 0 ] && [ -n "${SHA_RESPONSE}" ]; then
                 API_SHA=$(echo "${SHA_RESPONSE}" | grep -o '"sha":\s*"[^"]*"' | head -1 | cut -d'"' -f4)
@@ -236,7 +240,7 @@ if [ $FIRST_INSTALL -eq 0 ]; then
             fi
         fi
     fi
-    
+
     if [ -n "${CURRENT_SHA}" ] && [ -f "${PLUGIN_INFO_FILE}" ]; then
         # Update SHA in pluginInfo.json using Python (more reliable than sed for JSON)
         if command -v python3 >/dev/null 2>&1; then
@@ -249,27 +253,27 @@ try:
     plugin_info_file = '${PLUGIN_INFO_FILE}'
     current_sha = '${CURRENT_SHA}'
     current_branch = '${CURRENT_BRANCH}'
-    
+
     # Verify file exists
     if not os.path.exists(plugin_info_file):
         print(f"Error: pluginInfo.json not found at {plugin_info_file}")
         sys.exit(1)
-    
+
     # Read existing file
     with open(plugin_info_file, 'r') as f:
         data = json.load(f)
-    
+
     # Update SHA in first version entry
     if 'versions' in data and len(data['versions']) > 0:
         old_sha = data['versions'][0].get('sha', '')
         data['versions'][0]['sha'] = current_sha
         if current_branch and current_branch.strip():
             data['versions'][0]['branch'] = current_branch
-        
+
         # Write back to file
         with open(plugin_info_file, 'w') as f:
             json.dump(data, f, indent='\t')
-        
+
         sys.exit(0)
     else:
         print("Warning: No versions array found in pluginInfo.json")
@@ -286,11 +290,11 @@ EOF
             fi
         fi
     fi
-    
+
     # Restart service if it was running
     PID_FILE="${SCRIPTS_DIR}/homekit_service.pid"
     SERVICE_WAS_RUNNING=0
-    
+
     if [ -f "${PID_FILE}" ]; then
         OLD_PID=$(cat "${PID_FILE}" 2>/dev/null)
         if [ -n "$OLD_PID" ]; then
@@ -301,12 +305,12 @@ EOF
             fi
         fi
     fi
-    
+
     if [ $SERVICE_WAS_RUNNING -eq 1 ]; then
         if [ -f "${SCRIPTS_DIR}/postStop.sh" ]; then
             "${SCRIPTS_DIR}/postStop.sh" >> "${INSTALL_LOG}" 2>&1
         fi
-        sleep 1
+        sleep 0.5
         if [ -f "${SCRIPTS_DIR}/postStart.sh" ]; then
             "${SCRIPTS_DIR}/postStart.sh" >> "${INSTALL_LOG}" 2>&1
         fi

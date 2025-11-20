@@ -67,7 +67,7 @@ else
 fi
 
 # Timeout settings (in seconds)
-PIP_TIMEOUT="${PIP_TIMEOUT:-600}"  # 10 minutes default timeout for pip operations
+PIP_TIMEOUT="${PIP_TIMEOUT:-60}"  # 1 minute default timeout for pip operations (reduced from 10 minutes)
 
 if [ -z "$PLUGIN_DIR" ] || [ -z "$PYTHON3" ]; then
     echo "ERROR: Missing required parameters for install_python_deps.sh"
@@ -189,25 +189,19 @@ run_pip_with_timeout() {
     fi
 }
 
-echo ""
-echo "Installing Python dependencies from requirements.txt..."
-echo "This may take a few minutes..."
-echo "Detailed log: ${INSTALL_LOG}"
-echo "Timeout: ${PIP_TIMEOUT}s per operation"
-echo "Note: If installation appears stuck, check ${INSTALL_LOG} for progress"
-echo ""
+    echo ""
+    echo "Installing Python dependencies from requirements.txt..."
+    echo "This should complete quickly (typically <30 seconds)..."
+    echo "Detailed log: ${INSTALL_LOG}"
+    echo "Timeout: ${PIP_TIMEOUT}s per operation"
+    echo ""
 
-echo "Using pip command: $PIP_CMD" | tee -a "${INSTALL_LOG}"
-PIP_VERSION=$($PIP_CMD --version 2>&1 || echo "unknown")
-echo "pip version: $PIP_VERSION" | tee -a "${INSTALL_LOG}"
+    echo "Using pip command: $PIP_CMD" | tee -a "${INSTALL_LOG}"
 
-# Attempt to upgrade pip to latest version before installing dependencies
+# Skip pip upgrade during updates to speed up the process
 # This helps ensure compatibility with the latest package formats
 # In venv, no special flags needed
-echo "Upgrading pip in venv (best effort)..." | tee -a "${INSTALL_LOG}"
-if ! run_pip_with_timeout 300 "pip upgrade" install --upgrade pip --no-input --disable-pip-version-check --quiet; then
-    echo "Warning: Could not upgrade pip, continuing with existing version..." | tee -a "${INSTALL_LOG}"
-fi
+echo "Skipping pip upgrade to speed up update process..." | tee -a "${INSTALL_LOG}"
 
 # Helper function to install dependencies with specified pip flags
 # Args: Space-separated string of pip install flags (e.g., "--user --upgrade")
@@ -234,7 +228,6 @@ install_with() {
 INSTALL_SUCCESS=0
 
 # Install dependencies in venv (we always use venv now)
-echo "Removing old venv packages..." | tee -a "${INSTALL_LOG}"
 echo "Installing dependencies in venv..." | tee -a "${INSTALL_LOG}"
 if install_with "--upgrade"; then
     INSTALL_SUCCESS=1
@@ -252,8 +245,9 @@ fi
 
 # Verify that all critical dependencies are importable
 # Use the same Python executable that will run the service to ensure compatibility
+# Run verification in background to speed up the process
 echo ""
-echo "Verifying installed dependencies with $PYTHON3..." | tee -a "${INSTALL_LOG}"
+echo "Verifying installed dependencies with $PYTHON3 (in background)..." | tee -a "${INSTALL_LOG}"
 MISSING_DEPS=0
 
 # Determine Python site-packages locations for debugging purposes

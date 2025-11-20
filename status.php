@@ -196,7 +196,7 @@ if (file_exists($cssPath)) {
                     <span class="debug-toggle-icon" id="debug-toggle-icon" style="display: inline-block; transition: transform 0.2s; transform: rotate(-90deg);">▼</span>
                     Debug Messages
                 </h4>
-                <div class="debug-messages" id="debug-messages" style="display: none; color: var(--text-secondary); line-height: 1.6; max-height: 300px; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace; font-size: 12px;">
+                <div class="debug-messages" id="debug-messages" style="color: var(--text-secondary); line-height: 1.6; font-family: 'SF Mono', Monaco, monospace; font-size: 12px;">
                     <div>No debug messages yet...</div>
                 </div>
             </div>
@@ -512,17 +512,14 @@ if (file_exists($cssPath)) {
         const toggleIcon = document.getElementById('debug-toggle-icon');
         if (!debugMessages || !toggleIcon) return;
         
-        const isHidden = debugMessages.style.display === 'none' || 
-                        (debugMessages.style.display === '' && !debugMessages.classList.contains('open'));
+        const isHidden = !debugMessages.classList.contains('open');
         
         if (isHidden) {
-            debugMessages.style.display = 'block';
             debugMessages.classList.add('open');
-            toggleIcon.style.transform = 'rotate(0deg)';
+            toggleIcon.classList.add('open');
         } else {
-            debugMessages.style.display = 'none';
             debugMessages.classList.remove('open');
-            toggleIcon.style.transform = 'rotate(-90deg)';
+            toggleIcon.classList.remove('open');
         }
     };
     
